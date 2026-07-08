@@ -26,11 +26,11 @@ const String kNavigationExamplePage = '''
 <head><title>Navigation Delegate Example</title></head>
 <body>
 <p>
-The navigation delegate is set to block navigation to the youtube website.
+The navigation delegate is set to block navigation to the YouTube website.
 </p>
 <ul>
-<ul><a href="https://www.youtube.com/">https://www.youtube.com/</a></ul>
-<ul><a href="https://www.google.com/">https://www.google.com/</a></ul>
+<li><a href="https://www.youtube.com/">https://www.youtube.com/</a></li>
+<li><a href="https://www.google.com/">https://www.google.com/</a></li>
 </ul>
 </body>
 </html>
@@ -91,7 +91,7 @@ const String kLogExamplePage = '''
 
 <style>
     .btn-group button {
-      padding: 24px; 24px;
+      padding: 24px;
       display: block;
       width: 25%;
       margin: 5px 0px 0px 0px;
@@ -161,7 +161,7 @@ Page resource error:
           ''');
           },
           onNavigationRequest: (NavigationRequest request) {
-            if (request.url.startsWith('https://www.baidu.com')) {
+            if (request.url.startsWith('https://www.youtube.com')) {
               debugPrint('blocking navigation to ${request.url}');
               return NavigationDecision.prevent;
             }
@@ -210,14 +210,16 @@ Page resource error:
     return Scaffold(
       backgroundColor: Colors.green,
       appBar: AppBar(
-        title: const Text('Flutter WebView example'),
+        title: const Text('WebView example', overflow: TextOverflow.ellipsis),
         // This drop down menu demonstrates that Flutter widgets can be shown over the web view.
-        actions: <Widget>[
+        actions: <Widget>[SampleMenu(webViewController: _controller)],
+      ),
+      body: Column(
+        children: <Widget>[
           NavigationControls(webViewController: _controller),
-          SampleMenu(webViewController: _controller),
+          Expanded(child: WebViewWidget(controller: _controller)),
         ],
       ),
-      body: WebViewWidget(controller: _controller),
       floatingActionButton: favoriteButton(),
     );
   }
@@ -240,54 +242,60 @@ Page resource error:
     final usernameTextController = TextEditingController();
     final passwordTextController = TextEditingController();
 
-    return showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('${httpRequest.host}: ${httpRequest.realm ?? '-'}'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                TextField(
-                  decoration: const InputDecoration(labelText: 'Username'),
-                  autofocus: true,
-                  controller: usernameTextController,
-                ),
-                TextField(
-                  decoration: const InputDecoration(labelText: 'Password'),
-                  controller: passwordTextController,
-                ),
-              ],
-            ),
-          ),
-          actions: <Widget>[
-            // Explicitly cancel the request on iOS as the OS does not emit new
-            // requests when a previous request is pending.
-            TextButton(
-              onPressed: () {
-                httpRequest.onCancel();
-                Navigator.of(context).pop();
-              },
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                httpRequest.onProceed(
-                  WebViewCredential(
-                    user: usernameTextController.text,
-                    password: passwordTextController.text,
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text('${httpRequest.host}: ${httpRequest.realm ?? '-'}'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  TextField(
+                    decoration: const InputDecoration(labelText: 'Username'),
+                    autofocus: true,
+                    controller: usernameTextController,
                   ),
-                );
-                Navigator.of(context).pop();
-              },
-              child: const Text('Authenticate'),
+                  TextField(
+                    decoration: const InputDecoration(labelText: 'Password'),
+                    obscureText: true,
+                    controller: passwordTextController,
+                  ),
+                ],
+              ),
             ),
-          ],
-        );
-      },
-    );
+            actions: <Widget>[
+              // Explicitly cancel the request on iOS as the OS does not emit new
+              // requests when a previous request is pending.
+              TextButton(
+                onPressed: () {
+                  httpRequest.onCancel();
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  httpRequest.onProceed(
+                    WebViewCredential(
+                      user: usernameTextController.text,
+                      password: passwordTextController.text,
+                    ),
+                  );
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Authenticate'),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      usernameTextController.dispose();
+      passwordTextController.dispose();
+    }
   }
 }
 
@@ -428,9 +436,10 @@ class SampleMenu extends StatelessWidget {
   }
 
   Future<void> _onListCookies(BuildContext context) async {
-    final cookies =
-        await webViewController.runJavaScriptReturningResult('document.cookie')
-            as String;
+    final Object result = await webViewController.runJavaScriptReturningResult(
+      'document.cookie',
+    );
+    final String cookies = result is String ? result : result.toString();
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -537,7 +546,7 @@ class SampleMenu extends StatelessWidget {
   }
 
   Widget _getCookieList(String cookies) {
-    if (cookies == '""') {
+    if (cookies.isEmpty || cookies == '""') {
       return Container();
     }
     final List<String> cookieList = cookies.split(';');
@@ -575,36 +584,40 @@ class SampleMenu extends StatelessWidget {
     return webViewController.loadHtmlString(kLogExamplePage);
   }
 
-  Future<void> _promptForUrl(BuildContext context) {
+  Future<void> _promptForUrl(BuildContext context) async {
     final urlTextController = TextEditingController();
 
-    return showDialog<String>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Input URL to visit'),
-          content: TextField(
-            decoration: const InputDecoration(labelText: 'URL'),
-            autofocus: true,
-            controller: urlTextController,
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () {
-                if (urlTextController.text.isNotEmpty) {
-                  final Uri? uri = Uri.tryParse(urlTextController.text);
-                  if (uri != null && uri.scheme.isNotEmpty) {
-                    webViewController.loadRequest(uri);
-                    Navigator.pop(context);
-                  }
-                }
-              },
-              child: const Text('Visit'),
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Input URL to visit'),
+            content: TextField(
+              decoration: const InputDecoration(labelText: 'URL'),
+              autofocus: true,
+              controller: urlTextController,
             ),
-          ],
-        );
-      },
-    );
+            actions: <Widget>[
+              TextButton(
+                onPressed: () {
+                  if (urlTextController.text.isNotEmpty) {
+                    final Uri? uri = Uri.tryParse(urlTextController.text);
+                    if (uri != null && uri.scheme.isNotEmpty) {
+                      webViewController.loadRequest(uri);
+                      Navigator.pop(context);
+                    }
+                  }
+                },
+                child: const Text('Visit'),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      urlTextController.dispose();
+    }
   }
 }
 
@@ -615,41 +628,61 @@ class NavigationControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: <Widget>[
-        IconButton(
-          icon: const Icon(Icons.arrow_back_ios),
-          onPressed: () async {
-            if (await webViewController.canGoBack()) {
-              await webViewController.goBack();
-            } else {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('No back history item')),
-                );
-              }
-            }
-          },
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      elevation: 1,
+      child: SafeArea(
+        top: false,
+        bottom: false,
+        child: SizedBox(
+          height: kToolbarHeight,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                IconButton(
+                  tooltip: 'Back',
+                  icon: const Icon(Icons.arrow_back_ios),
+                  onPressed: () async {
+                    if (await webViewController.canGoBack()) {
+                      await webViewController.goBack();
+                    } else {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('No back history item')),
+                        );
+                      }
+                    }
+                  },
+                ),
+                IconButton(
+                  tooltip: 'Forward',
+                  icon: const Icon(Icons.arrow_forward_ios),
+                  onPressed: () async {
+                    if (await webViewController.canGoForward()) {
+                      await webViewController.goForward();
+                    } else {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('No forward history item'),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+                IconButton(
+                  tooltip: 'Reload',
+                  icon: const Icon(Icons.replay),
+                  onPressed: () => webViewController.reload(),
+                ),
+              ],
+            ),
+          ),
         ),
-        IconButton(
-          icon: const Icon(Icons.arrow_forward_ios),
-          onPressed: () async {
-            if (await webViewController.canGoForward()) {
-              await webViewController.goForward();
-            } else {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('No forward history item')),
-                );
-              }
-            }
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.replay),
-          onPressed: () => webViewController.reload(),
-        ),
-      ],
+      ),
     );
   }
 }
