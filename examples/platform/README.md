@@ -1,17 +1,26 @@
 # platform_example
 
-A new Flutter project.
+Comprehensive example app for the local `webview_all` workspace packages.
 
-## Getting Started
+## Run
 
-This project is a starting point for a Flutter application.
+```sh
+flutter pub get
+flutter run -d macos
+flutter run -d linux
+flutter run -d windows
+flutter run -d chrome
+```
 
-A few resources to get you started if this is your first Flutter project:
+The app depends on the local platform packages through `dependency_overrides`
+in `pubspec.yaml`, so it exercises the code in this repository instead of the
+published packages.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## Linux
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Install the WebKitGTK 4.1 development/runtime package for your distribution
+before running the Linux target.
+
+The Linux runner wraps `FlView` in a `GtkOverlay`. Keep that structure if you
+copy this example into another app; the Linux implementation positions the
+native WebKitGTK view as an overlay above Flutter.
