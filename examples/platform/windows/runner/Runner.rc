@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "dev.flutter.packages" "\0"
-            VALUE "FileDescription", "webview_all_example" "\0"
+            VALUE "FileDescription", "platform_example" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "webview_all_example" "\0"
+            VALUE "InternalName", "platform_example" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 Flutter Authors. All rights reserved." "\0"
-            VALUE "OriginalFilename", "webview_all_example.exe" "\0"
-            VALUE "ProductName", "webview_all_example" "\0"
+            VALUE "OriginalFilename", "platform_example.exe" "\0"
+            VALUE "ProductName", "platform_example" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
