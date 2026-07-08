@@ -125,13 +125,13 @@ if (await controller.supportsSetScrollBarsEnabled()) {
 }
 ```
 
-In `webview_all 1.2.0`, Android, iOS, macOS, Windows, Linux, OHOS, and web all expose scrollbar APIs, but the actual rendering remains engine-specific. Web and Windows implement visibility with injected CSS.
+In `webview_all 1.2.1`, Android, iOS, macOS, Windows, Linux, OHOS, and web all expose scrollbar APIs, but the actual rendering remains engine-specific. Web and Windows implement visibility with injected CSS.
 
 ## Appearance and Interaction
 
 | Method | Behavior |
 | --- | --- |
-| `setBackgroundColor(Color color)` | Applies an engine background color where available. macOS has native limitations in the WK bridge. |
+| `setBackgroundColor(Color color)` | Applies an engine background color where available. Calls are ignored on macOS and logged to the terminal. |
 | `enableZoom(bool enabled)` | Toggles platform zoom behavior. |
 | `setUserAgent(String? userAgent)` | Overrides the user agent where the engine allows it. Web rejects non-null overrides. |
 | `getUserAgent()` | Returns the effective or platform-reported user agent when available. |

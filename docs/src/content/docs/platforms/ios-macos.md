@@ -96,10 +96,10 @@ The same Dart package targets iOS and macOS, but some underlying WebKit wrappers
 | Area | macOS limit |
 | --- | --- |
 | Scroll view access | Some scroll view methods are not implemented by the platform wrapper on macOS. |
-| Background color/opacity | Some UIKit properties such as background color and opaque may not be implemented on macOS. |
+| Background color/opacity | `setBackgroundColor` calls are ignored by the main wrapper on macOS and logged to the terminal. |
 | Link preview | Availability depends on platform support. |
 
-For cross-platform Apple code, keep these calls behind platform checks and treat `UnimplementedError` as a signal that the native property has no macOS bridge.
+For other platform-specific Apple calls, keep platform checks in place and treat `UnimplementedError` as a signal that the native property has no macOS bridge.
 
 ## Known Limits
 

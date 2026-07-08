@@ -64,7 +64,7 @@ macOS 与 iOS 共用 Dart 包，但部分 UIKit 风格属性在 macOS 没有 bri
 | 区域 | 限制 |
 | --- | --- |
 | scroll view | 部分 scroll view 方法未实现。 |
-| background/opaque | 部分 UIKit 属性在 macOS 不可用。 |
+| background/opaque | macOS 上 `setBackgroundColor` 会由主 wrapper 忽略，并在终端打印日志。 |
 | link preview | 取决于系统支持。 |
 
-跨 Apple 平台代码应做好平台判断和 `UnimplementedError` 处理。
+其他 Apple 平台专用调用仍应做好平台判断和 `UnimplementedError` 处理。

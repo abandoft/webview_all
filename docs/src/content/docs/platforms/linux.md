@@ -3,7 +3,7 @@ title: Linux
 description: WebKitGTK implementation, GtkOverlay setup, APIs, and limits.
 ---
 
-Linux is provided by `webview_all_linux 1.2.0` and uses WebKitGTK.
+Linux is provided by `webview_all_linux 1.2.1` and uses WebKitGTK.
 
 ## Engine
 

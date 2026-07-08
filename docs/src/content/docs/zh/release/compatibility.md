@@ -7,11 +7,11 @@ description: 版本基线、依赖基线和维护规则。
 
 | 包 | 版本 |
 | --- | --- |
-| `webview_all` | `1.2.0` |
-| `webview_all_windows` | `1.2.0` |
-| `webview_all_linux` | `1.2.0` |
-| `webview_all_ohos` | `1.2.0` |
-| `webview_all_web` | `1.2.0` |
+| `webview_all` | `1.2.1` |
+| `webview_all_windows` | `1.2.1` |
+| `webview_all_linux` | `1.2.1` |
+| `webview_all_ohos` | `1.2.1` |
+| `webview_all_web` | `1.2.1` |
 | `webview_flutter_platform_interface` | `^2.15.1` |
 | `webview_flutter_android` | `^4.12.0` |
 | `webview_flutter_wkwebview` | `^3.25.0` |

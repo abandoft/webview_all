@@ -24,11 +24,11 @@ flutter pub get
 
 ```yaml
 dependencies:
-  webview_all: ^1.2.0
-  webview_all_windows: ^1.2.0
-  webview_all_linux: ^1.2.0
-  webview_all_ohos: ^1.2.0
-  webview_all_web: ^1.2.0
+  webview_all: ^1.2.1
+  webview_all_windows: ^1.2.1
+  webview_all_linux: ^1.2.1
+  webview_all_ohos: ^1.2.1
+  webview_all_web: ^1.2.1
   webview_flutter_android: ^4.12.0
   webview_flutter_wkwebview: ^3.25.0
 ```

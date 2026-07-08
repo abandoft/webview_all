@@ -117,7 +117,7 @@ if (await controller.supportsSetScrollBarsEnabled()) {
 
 | 方法 | 作用 |
 | --- | --- |
-| `setBackgroundColor` | 设置背景色。 |
+| `setBackgroundColor` | 设置背景色；macOS 上会被忽略并在终端打印日志。 |
 | `enableZoom` | 控制缩放能力。 |
 | `setUserAgent` / `getUserAgent` | 设置和读取 UA；Web 不支持非空 UA override。 |
 | `setOverScrollMode` | 控制 overscroll；部分平台通过 CSS 注入实现。 |

@@ -7,7 +7,7 @@ Add the app-facing package:
 
 ```yaml
 dependencies:
-  webview_all: ^1.2.0
+  webview_all: ^1.2.1
 ```
 
 Run:
@@ -46,11 +46,11 @@ If you cast to a platform implementation, add that package explicitly so the imp
 
 ```yaml
 dependencies:
-  webview_all: ^1.2.0
-  webview_all_windows: ^1.2.0
-  webview_all_linux: ^1.2.0
-  webview_all_ohos: ^1.2.0
-  webview_all_web: ^1.2.0
+  webview_all: ^1.2.1
+  webview_all_windows: ^1.2.1
+  webview_all_linux: ^1.2.1
+  webview_all_ohos: ^1.2.1
+  webview_all_web: ^1.2.1
   webview_flutter_android: ^4.12.0
   webview_flutter_wkwebview: ^3.25.0
 ```
@@ -69,6 +69,6 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 ## Version Contract
 
-The `1.2.0` release is aligned across all `webview_all_*` platform packages. The wrapper depends on `webview_flutter_platform_interface ^2.15.1`, `webview_flutter_android ^4.12.0`, and `webview_flutter_wkwebview ^3.25.0`.
+The `1.2.1` release is aligned across all `webview_all_*` platform packages. The wrapper depends on `webview_flutter_platform_interface ^2.15.1`, `webview_flutter_android ^4.12.0`, and `webview_flutter_wkwebview ^3.25.0`.
 
 Keep the platform packages on the same minor line as the wrapper unless you are intentionally testing a platform package in isolation.
