@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.15)
 
 set(CMAKE_SYSTEM_VERSION 10.0.22000 CACHE STRING INTERNAL FORCE)
 
-project(webview_all_example LANGUAGES CXX)
+project(platform_example LANGUAGES CXX)
 
-set(BINARY_NAME "webview_all_example")
+set(BINARY_NAME "platform_example")
 
 cmake_policy(SET CMP0063 NEW)
 
