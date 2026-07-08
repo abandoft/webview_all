@@ -36,7 +36,7 @@ class _WebViewExampleState extends State<WebViewExample> {
           onHttpError: (HttpResponseError error) {},
           onWebResourceError: (WebResourceError error) {},
           onNavigationRequest: (NavigationRequest request) {
-            if (request.url.startsWith('https://www.baidu.com')) {
+            if (request.url.startsWith('https://www.youtube.com')) {
               return NavigationDecision.prevent;
             }
             return NavigationDecision.navigate;
