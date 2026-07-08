@@ -1,3 +1,8 @@
+## 1.2.1
+
+* 在 macOS 上忽略 `setBackgroundColor` 并打印日志，避免 WKWebView `opaque` / `backgroundColor` 未实现导致应用异常。
+* 完善 `examples/platform` 的Linux 平台，在创建 WebKitGTK 视图前先将 Flutter view 挂到 `GtkOverlay`。
+
 ## 1.2.0
 
 * 补齐各平台包对 `webview_flutter_platform_interface` 的覆盖。

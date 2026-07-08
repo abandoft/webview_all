@@ -1,5 +1,5 @@
 name: webview_all_windows
-version: 1.2.0
+version: 1.2.1
 description: A Flutter plugin that provides a WebView widget on Windows.
 repository: https://github.com/abandoft/webview_all
 homepage: https://github.com/abandoft/webview_all

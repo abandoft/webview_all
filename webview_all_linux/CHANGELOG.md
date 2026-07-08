@@ -1,3 +1,8 @@
+## 1.2.1
+
+* Ignore `setBackgroundColor` on macOS and log the skipped call, avoiding application exceptions caused by unimplemented WKWebView `opaque` / `backgroundColor`.
+* Improve the `examples/platform` Linux platform by attaching the Flutter view to a `GtkOverlay` before creating WebKitGTK views.
+
 ## 1.2.0
 
 * Complete `webview_flutter_platform_interface` coverage across the federated platform packages.

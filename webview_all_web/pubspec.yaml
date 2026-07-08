@@ -3,7 +3,7 @@ description: A Flutter plugin that provides a WebView widget on web.
 repository: https://github.com/abandoft/webview_all
 homepage: https://github.com/abandoft/webview_all
 issue_tracker: https://github.com/abandoft/webview_all/issues
-version: 1.2.0
+version: 1.2.1
 
 environment:
   sdk: ^3.9.0

@@ -243,35 +243,35 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "1.2.0"
+    version: "1.2.1"
   webview_all_linux:
     dependency: "direct overridden"
     description:
       path: "../../webview_all_linux"
       relative: true
     source: path
-    version: "1.2.0"
+    version: "1.2.1"
   webview_all_ohos:
     dependency: "direct overridden"
     description:
       path: "../../webview_all_ohos"
       relative: true
     source: path
-    version: "1.2.0"
+    version: "1.2.1"
   webview_all_web:
     dependency: "direct overridden"
     description:
       path: "../../webview_all_web"
       relative: true
     source: path
-    version: "1.2.0"
+    version: "1.2.1"
   webview_all_windows:
     dependency: "direct overridden"
     description:
       path: "../../webview_all_windows"
       relative: true
     source: path
-    version: "1.2.0"
+    version: "1.2.1"
   webview_flutter_android:
     dependency: transitive
     description:
