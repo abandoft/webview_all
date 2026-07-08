@@ -7,8 +7,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:webview_all/webview_all.dart';
@@ -189,10 +189,7 @@ Page resource error:
       )
       ..loadRequest(Uri.parse('https://bilibili.com'));
 
-    // setBackgroundColor is not currently supported on macOS.
-    if (kIsWeb || !Platform.isMacOS) {
-      controller.setBackgroundColor(const Color(0x80000000));
-    }
+    controller.setBackgroundColor(const Color(0x80000000));
 
     // #docregion platform_features
     if (controller.platform is AndroidWebViewController) {
