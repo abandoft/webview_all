@@ -21,6 +21,23 @@ void main() {
     await tester.pump();
     expect(find.byType(SnackBar), findsOneWidget);
   });
+
+  testWidgets('Scaffold controls fit narrow layouts', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(const MaterialApp(home: WebViewExample()));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(NavigationControls), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('ShowPopupMenu')), findsOneWidget);
+  });
 }
 
 class FakeWebViewPlatform extends WebViewPlatform {
