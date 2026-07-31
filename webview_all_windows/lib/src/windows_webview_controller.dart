@@ -8,10 +8,21 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:path/path.dart' as path;
-import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
+import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'windows_webview_types.dart' as native_types;
 import 'windows_webview_native.dart' as native_webview;
+
+Future<void> _disposeFinalizedWindowsWebView(
+  native_webview.WebviewController controller,
+) async {
+  try {
+    await controller.dispose();
+  } catch (_) {
+    // The Flutter engine can already be detached when a finalizer runs.
+    return;
+  }
+}
 
 /// Windows-specific policy for popup windows.
 enum WindowsPopupWindowPolicy {
@@ -104,8 +115,18 @@ class WindowsWebViewController extends PlatformWebViewController {
                 params,
               ),
       ) {
-    _initializationFuture = _initialize();
+    final WeakReference<WindowsWebViewController> weakThis =
+        WeakReference<WindowsWebViewController>(this);
+    _initializationFuture = _initialize(weakThis);
+    _finalizer.attach(this, _webviewController, detach: this);
   }
+
+  static final Finalizer<native_webview.WebviewController> _finalizer =
+      Finalizer<native_webview.WebviewController>((
+        native_webview.WebviewController controller,
+      ) {
+        unawaited(_disposeFinalizedWindowsWebView(controller));
+      });
 
   final native_webview.WebviewController _webviewController;
   final Map<String, JavaScriptChannelParams> _javaScriptChannelParams =
@@ -139,6 +160,8 @@ class WindowsWebViewController extends PlatformWebViewController {
   Future<String> Function(JavaScriptTextInputDialogRequest)?
   _onJavaScriptTextInputDialogCallback;
   void Function(ScrollPositionChange)? _onScrollPositionChangeCallback;
+  void Function(PlatformWebViewPermissionRequest)?
+  _onPlatformPermissionRequestCallback;
 
   WindowsWebViewControllerCreationParams get _windowsParams =>
       params as WindowsWebViewControllerCreationParams;
@@ -166,13 +189,35 @@ class WindowsWebViewController extends PlatformWebViewController {
     return native_webview.WebviewController.getWebViewVersion();
   }
 
-  Future<void> _initialize() async {
+  Future<void> _initialize(
+    WeakReference<WindowsWebViewController> weakThis,
+  ) async {
     await _webviewController.initialize();
-    _webviewController.setJavaScriptDialogRequestedDelegate(
-      _handleJavaScriptDialogRequested,
-    );
-    _webviewController.setHttpAuthRequestedDelegate(_handleHttpAuthRequested);
-    _webviewController.setSslAuthErrorRequestedDelegate(_handleSslAuthError);
+    _webviewController.setJavaScriptDialogRequestedDelegate((
+      String dialogType,
+      String url,
+      String message,
+      String? defaultText,
+    ) {
+      return weakThis.target?._handleJavaScriptDialogRequested(
+        dialogType,
+        url,
+        message,
+        defaultText,
+      );
+    });
+    _webviewController.setHttpAuthRequestedDelegate((
+      String url,
+      String challenge,
+    ) {
+      return weakThis.target?._handleHttpAuthRequested(url, challenge);
+    });
+    _webviewController.setSslAuthErrorRequestedDelegate((
+      String url,
+      int errorStatus,
+    ) {
+      return weakThis.target?._handleSslAuthError(url, errorStatus);
+    });
     await _webviewController.setPopupWindowPolicy(
       switch (_windowsParams.popupWindowPolicy) {
         WindowsPopupWindowPolicy.allow =>
@@ -185,20 +230,35 @@ class WindowsWebViewController extends PlatformWebViewController {
     );
 
     _subscriptions.addAll(<StreamSubscription<dynamic>>[
-      _webviewController.url.listen(_handleUrlChanged),
+      _webviewController.url.listen((String url) {
+        weakThis.target?._handleUrlChanged(url);
+      }),
       _webviewController.title.listen((String title) {
-        _title = title;
+        weakThis.target?._title = title;
       }),
       _webviewController.historyChanged.listen((
         native_webview.HistoryChanged value,
       ) {
-        _canGoBack = value.canGoBack;
-        _canGoForward = value.canGoForward;
+        final WindowsWebViewController? target = weakThis.target;
+        target?._canGoBack = value.canGoBack;
+        target?._canGoForward = value.canGoForward;
       }),
-      _webviewController.loadingState.listen(_handleLoadingStateChanged),
-      _webviewController.onLoadError.listen(_handleLoadError),
-      _webviewController.httpResponseError.listen(_handleHttpResponseError),
-      _webviewController.webMessage.listen(_handleWebMessage),
+      _webviewController.loadingState.listen((native_types.LoadingState state) {
+        weakThis.target?._handleLoadingStateChanged(state);
+      }),
+      _webviewController.onLoadError.listen((
+        native_types.WebErrorStatus status,
+      ) {
+        weakThis.target?._handleLoadError(status);
+      }),
+      _webviewController.httpResponseError.listen((
+        native_webview.WebviewHttpResponseError error,
+      ) {
+        weakThis.target?._handleHttpResponseError(error);
+      }),
+      _webviewController.webMessage.listen((dynamic message) {
+        weakThis.target?._handleWebMessage(message);
+      }),
     ]);
   }
 
@@ -759,19 +819,25 @@ class WindowsWebViewController extends PlatformWebViewController {
     void Function(PlatformWebViewPermissionRequest request) onPermissionRequest,
   ) async {
     await _ensureInitialized();
+    _onPlatformPermissionRequestCallback = onPermissionRequest;
+    final WeakReference<WindowsWebViewController> weakThis =
+        WeakReference<WindowsWebViewController>(this);
     _webviewController.setPermissionRequestedDelegate((
       String url,
       native_types.WebviewPermissionKind permissionKind,
       bool isUserInitiated,
     ) async {
-      final Set<WebViewPermissionResourceType> types = _toPermissionTypes(
-        permissionKind,
-      );
+      final WindowsWebViewController? target = weakThis.target;
+      if (target == null) {
+        return native_types.WebviewPermissionDecision.none;
+      }
+      final Set<WebViewPermissionResourceType> types = target
+          ._toPermissionTypes(permissionKind);
       if (types.isEmpty) {
         return native_types.WebviewPermissionDecision.none;
       }
       final request = _WindowsWebViewPermissionRequest(types: types);
-      onPermissionRequest(request);
+      target._onPlatformPermissionRequestCallback?.call(request);
       return request.decision.future;
     });
   }

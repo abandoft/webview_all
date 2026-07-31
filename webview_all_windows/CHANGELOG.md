@@ -1,3 +1,12 @@
+## 1.3.0
+
+* Use weak-reference callbacks and finalizer-based automatic cleanup so
+  built-in Windows, Linux, and Web controllers release platform resources after
+  becoming unreachable; OHOS continues to use its existing instance-manager
+  lifecycle.
+* The Linux plugin installs the GTK overlay automatically, so runner source
+  changes are no longer required.
+
 ## 1.2.1
 
 * Ignore `setBackgroundColor` on macOS and log the skipped call, avoiding application exceptions caused by unimplemented WKWebView `opaque` / `backgroundColor`.

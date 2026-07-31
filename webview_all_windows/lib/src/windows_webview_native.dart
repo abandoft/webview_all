@@ -470,12 +470,32 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   @override
   Future<void> dispose() async {
     await _creatingCompleter.future;
-    if (!_isDisposed) {
-      _isDisposed = true;
+    if (_isDisposed) {
+      return;
+    }
+    _isDisposed = true;
+
+    Object? disposalError;
+    StackTrace? disposalStackTrace;
+    try {
       await _eventStreamSubscription?.cancel();
+    } catch (error, stackTrace) {
+      disposalError = error;
+      disposalStackTrace = stackTrace;
+    }
+    try {
       await _hostApi.disposeWebView(_textureId);
+    } catch (error, stackTrace) {
+      disposalError ??= error;
+      disposalStackTrace ??= stackTrace;
     }
     super.dispose();
+    if (disposalError != null) {
+      Error.throwWithStackTrace(
+        disposalError,
+        disposalStackTrace ?? StackTrace.current,
+      );
+    }
   }
 
   /// Loads the given [url].

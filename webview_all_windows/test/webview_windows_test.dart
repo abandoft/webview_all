@@ -6,10 +6,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:webview_all_windows/src/windows_webview_api.g.dart';
 import 'package:webview_all_windows/src/windows_webview_constants.dart';
+import 'package:webview_all_windows/src/windows_webview_native.dart'
+    as native_webview;
 import 'package:webview_all_windows/src/windows_webview_types.dart'
     as native_types;
 import 'package:webview_all_windows/webview_all_windows.dart';
-import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
+import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -66,6 +68,23 @@ void main() {
       ),
       isA<WindowsWebViewCookieManager>(),
     );
+  });
+
+  test('native controller releases its WebView exactly once', () async {
+    var disposeCallCount = 0;
+    _mockWindowsWebViewCreation(
+      onDisposeWebView: () {
+        disposeCallCount++;
+      },
+    );
+    final native_webview.WebviewController controller =
+        native_webview.WebviewController();
+
+    await controller.initialize();
+    await controller.dispose();
+    await controller.dispose();
+
+    expect(disposeCallCount, 1);
   });
 
   test('rejects invalid generic cookies before native cookie calls', () async {
@@ -834,6 +853,7 @@ void _mockWindowsWebViewCreation({
   void Function()? onClearLocalStorage,
   void Function(bool enabled)? onSetJavaScriptEnabled,
   void Function(bool enabled)? onSetZoomControlEnabled,
+  void Function()? onDisposeWebView,
   void Function({
     required bool alert,
     required bool confirm,
@@ -952,6 +972,12 @@ void _mockWindowsWebViewCreation({
       return _encodePigeonSuccess();
     },
   );
+  messenger.setMockMessageHandler(_hostApiChannel('disposeWebView'), (
+    ByteData? message,
+  ) async {
+    onDisposeWebView?.call();
+    return _encodePigeonSuccess();
+  });
 
   messenger.setMockMethodCallHandler(
     const MethodChannel('$windowsWebViewChannelPrefix/1/events'),
@@ -997,6 +1023,7 @@ void _clearWindowsWebViewCreationMock() {
     _hostApiChannel('setJavaScriptDialogCallbacksEnabled'),
     null,
   );
+  messenger.setMockMessageHandler(_hostApiChannel('disposeWebView'), null);
   messenger.setMockMethodCallHandler(
     const MethodChannel('$windowsWebViewChannelPrefix/1/events'),
     null,
