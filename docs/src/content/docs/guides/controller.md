@@ -125,7 +125,7 @@ if (await controller.supportsSetScrollBarsEnabled()) {
 }
 ```
 
-In `webview_all 1.2.1`, Android, iOS, macOS, Windows, Linux, OHOS, and web all expose scrollbar APIs, but the actual rendering remains engine-specific. Web and Windows implement visibility with injected CSS.
+In `webview_all 1.3.0`, Android, iOS, macOS, Windows, Linux, OHOS, and web all expose scrollbar APIs, but the actual rendering remains engine-specific. Web and Windows implement visibility with injected CSS.
 
 ## Appearance and Interaction
 

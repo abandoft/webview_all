@@ -25,6 +25,10 @@ export default defineConfig({
         alt: 'WebView All',
       },
       customCss: ['./src/styles/custom.css'],
+      components: {
+        Header: './src/components/Header.astro',
+      },
+      routeMiddleware: './src/starlight-route-data.ts',
       editLink: {
         baseUrl: 'https://github.com/abandoft/webview_all/edit/main/docs/',
       },

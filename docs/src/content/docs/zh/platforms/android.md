@@ -3,11 +3,11 @@ title: Android
 description: Android WebView 实现、API 和限制。
 ---
 
-Android 由 `webview_flutter_android ^4.12.0` 提供，`webview_all` 将它注册为默认 Android 实现。
+Android 由 `webview_all_android ^1.3.0` 提供，`webview_all` 将它注册为默认 Android 实现。
 
 | 项 | 值 |
 | --- | --- |
-| 平台包 | `webview_flutter_android` |
+| 平台包 | `webview_all_android` |
 | Controller | `AndroidWebViewController` |
 | Widget | `AndroidWebViewWidget` |
 | Delegate | `AndroidNavigationDelegate` |

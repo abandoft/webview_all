@@ -3,7 +3,8 @@ title: Platform Setup
 description: Required platform setup for Android, Apple platforms, Windows, Linux, OHOS, and web.
 ---
 
-Most platforms work after adding `webview_all`. Some engines need app-level permissions, runtime components, or runner changes.
+Most platforms work after adding `webview_all`. Some engines need app-level
+permissions or runtime components.
 
 ## Android
 
@@ -44,7 +45,7 @@ Set the deployment target to macOS 10.15 or newer. For network access in a sandb
 <true/>
 ```
 
-macOS uses the same `webview_flutter_wkwebview` package as iOS, but not every UIKit-backed WebKit property has a macOS equivalent. See [iOS and macOS](/webview_all/platforms/ios-macos/) for the exact limits.
+macOS uses the same `webview_all_wkwebview` package as iOS, but not every UIKit-backed WebKit property has a macOS equivalent. See [iOS and macOS](/webview_all/platforms/ios-macos/) for the exact limits.
 
 ## Windows
 
@@ -74,32 +75,10 @@ Install WebKitGTK 4.1 development/runtime packages for your distribution. On Ubu
 sudo apt-get install libwebkit2gtk-4.1-dev
 ```
 
-The Linux implementation positions a native WebKitGTK widget above the Flutter view. The runner must use a `GtkOverlay` so Flutter and the native view can share the window.
-
-Add this callback near the top of `linux/runner/my_application.cc`:
-
-```cpp
-static void first_frame_cb(MyApplication* self, FlView* view) {
-  gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
-}
-```
-
-Replace the default view/window attachment with:
-
-```cpp
-FlView* view = fl_view_new(project);
-gtk_widget_show(GTK_WIDGET(view));
-
-GtkWidget* overlay = gtk_overlay_new();
-gtk_widget_show(overlay);
-gtk_container_add(GTK_CONTAINER(overlay), GTK_WIDGET(view));
-gtk_container_add(GTK_CONTAINER(window), overlay);
-
-g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb), self);
-gtk_widget_realize(GTK_WIDGET(view));
-
-fl_register_plugins(FL_PLUGIN_REGISTRY(view));
-```
+The Linux implementation positions a native WebKitGTK widget above the Flutter
+view. The plugin installs the required `GtkOverlay` before the standard Flutter
+runner realizes its `FlView`; applications do not need to modify
+`linux/runner/my_application.cc`.
 
 ## OHOS
 

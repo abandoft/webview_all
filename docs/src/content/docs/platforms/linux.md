@@ -1,9 +1,9 @@
 ---
 title: Linux
-description: WebKitGTK implementation, GtkOverlay setup, APIs, and limits.
+description: WebKitGTK implementation, automatic GtkOverlay integration, APIs, and limits.
 ---
 
-Linux is provided by `webview_all_linux 1.2.1` and uses WebKitGTK.
+Linux is provided by `webview_all_linux 1.3.0` and uses WebKitGTK.
 
 ## Engine
 
@@ -18,9 +18,11 @@ Linux is provided by `webview_all_linux 1.2.1` and uses WebKitGTK.
 | Engine | WebKitGTK |
 | Required system library | `webkit2gtk-4.1` |
 
-## Runner Setup
+## Runner Integration
 
-The Linux implementation uses a native WebKitGTK widget. Your runner must attach Flutter's `FlView` inside a `GtkOverlay`. See [Platform Setup](/webview_all/getting-started/platform-setup/#linux) for the full patch.
+The Linux implementation uses a native WebKitGTK widget. The plugin
+automatically installs the required `GtkOverlay` before the standard Flutter
+runner realizes `FlView`; applications do not need to modify their runner.
 
 ## Creation Params
 

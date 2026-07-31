@@ -7,14 +7,14 @@ description: Version alignment, dependency baseline, and maintenance rules.
 
 | Package | Version |
 | --- | --- |
-| `webview_all` | `1.2.1` |
-| `webview_all_windows` | `1.2.1` |
-| `webview_all_linux` | `1.2.1` |
-| `webview_all_ohos` | `1.2.1` |
-| `webview_all_web` | `1.2.1` |
-| `webview_flutter_platform_interface` | `^2.15.1` |
-| `webview_flutter_android` | `^4.12.0` |
-| `webview_flutter_wkwebview` | `^3.25.0` |
+| `webview_all` | `1.3.0` |
+| `webview_all_windows` | `1.3.0` |
+| `webview_all_linux` | `1.3.0` |
+| `webview_all_ohos` | `1.3.0` |
+| `webview_all_web` | `1.3.0` |
+| `webview_platform_interface` | `1.3.0` |
+| `webview_all_android` | `1.3.0` |
+| `webview_all_wkwebview` | `1.3.0` |
 | Flutter SDK | `>=3.35.0` |
 | Dart SDK | `^3.9.0` |
 
@@ -32,7 +32,7 @@ description: Version alignment, dependency baseline, and maintenance rules.
 
 ## Maintenance Rules
 
-When upgrading `webview_flutter_platform_interface`:
+When upgrading `webview_platform_interface`:
 
 1. Compare new methods on the controller, delegate, widget, cookie manager, and platform factory.
 2. Every platform package must implement them explicitly.
@@ -46,8 +46,11 @@ When upgrading `webview_flutter_platform_interface`:
 
 Publish child platform packages first, then publish the main package after pub.dev can resolve them:
 
-1. `webview_all_windows`
-2. `webview_all_linux`
-3. `webview_all_web`
-4. `webview_all_ohos`
-5. `webview_all`
+1. `webview_platform_interface`
+2. `webview_all_android`
+3. `webview_all_wkwebview`
+4. `webview_all_windows`
+5. `webview_all_linux`
+6. `webview_all_web`
+7. `webview_all_ohos`
+8. `webview_all`

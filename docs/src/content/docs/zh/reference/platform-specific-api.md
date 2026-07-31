@@ -15,7 +15,7 @@ if (controller.platform is WindowsWebViewController) {
 
 ## Android
 
-包：`webview_flutter_android`。
+包：`webview_all_android`。
 
 主要类型：`AndroidWebViewController`、`AndroidWebViewWidget`、`AndroidNavigationDelegate`、`AndroidWebViewCookieManager`、`AndroidLoadFileParams`、`AndroidJavaScriptChannelParams`、`AndroidWebViewPermissionRequest`、`AndroidWebViewPermissionResourceType`、`AndroidSslAuthError`、`AndroidWebResourceError`、`AndroidUrlChange`、`FileSelectorParams`。
 
@@ -23,7 +23,7 @@ if (controller.platform is WindowsWebViewController) {
 
 ## iOS/macOS
 
-包：`webview_flutter_wkwebview`。
+包：`webview_all_wkwebview`。
 
 主要类型：`WebKitWebViewController`、`WebKitWebViewWidget`、`WebKitNavigationDelegate`、`WebKitWebViewCookieManager`、`WebKitLoadFileParams`、`WebKitJavaScriptChannelParams`、`WebKitWebViewPermissionRequest`、`WebKitSslAuthError`、`WebKitWebResourceError`。
 

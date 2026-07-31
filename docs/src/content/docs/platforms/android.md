@@ -3,13 +3,13 @@ title: Android
 description: Android WebView implementation, APIs, and platform limits.
 ---
 
-Android is provided by `webview_flutter_android ^4.12.0`. `webview_all` registers it as the default Android implementation.
+Android is provided by `webview_all_android ^1.3.0`. `webview_all` registers it as the default Android implementation.
 
 ## Engine
 
 | Item | Value |
 | --- | --- |
-| Package | `webview_flutter_android` |
+| Package | `webview_all_android` |
 | Main platform class | `AndroidWebViewPlatform` |
 | Controller | `AndroidWebViewController` |
 | Widget | `AndroidWebViewWidget` |

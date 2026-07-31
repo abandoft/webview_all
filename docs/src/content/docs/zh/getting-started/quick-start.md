@@ -53,6 +53,9 @@ class _BrowserPageState extends State<BrowserPage> {
 }
 ```
 
+Windows、Linux、OHOS 和 Web 会在不再使用的 controller 变为不可达后自动释放
+平台资源，无需编写平台专用的生命周期代码。
+
 ## 导航控制
 
 ```dart

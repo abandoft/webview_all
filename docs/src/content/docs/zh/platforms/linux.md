@@ -1,9 +1,9 @@
 ---
 title: Linux
-description: WebKitGTK 实现、GtkOverlay 设置、API 和限制。
+description: WebKitGTK 实现、自动 GtkOverlay 集成、API 和限制。
 ---
 
-Linux 由 `webview_all_linux 1.2.1` 提供，底层使用 WebKitGTK。
+Linux 由 `webview_all_linux 1.3.0` 提供，底层使用 WebKitGTK。
 
 | 项 | 值 |
 | --- | --- |
@@ -14,9 +14,10 @@ Linux 由 `webview_all_linux 1.2.1` 提供，底层使用 WebKitGTK。
 | 引擎 | WebKitGTK |
 | 系统依赖 | `webkit2gtk-4.1` |
 
-## Runner 设置
+## Runner 集成
 
-Linux WebView 是 native GTK widget，需要 `GtkOverlay` 与 Flutter view 共享窗口。完整代码见[平台设置](/webview_all/zh/getting-started/platform-setup/#linux)。
+Linux WebView 是 native GTK widget。插件会在标准 Flutter runner realize
+`FlView` 前自动安装所需的 `GtkOverlay`，应用无需修改 runner。
 
 ## 创建参数
 

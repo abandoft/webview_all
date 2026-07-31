@@ -3,7 +3,12 @@ title: WebView All
 description: webview_all documentation for full-platform Flutter WebView.
 ---
 
-`webview_all` is a Flutter WebView package that supports Android, iOS, macOS, Windows, Linux, OpenHarmony, and Web, and follows the [webview_flutter platform interface](https://pub.dev/packages/webview_flutter_platform_interface).
+`webview_all` is a Flutter WebView package that supports Android, iOS, macOS,
+Windows, Linux, OpenHarmony, and Web. Its
+[`webview_platform_interface`](https://pub.dev/packages/webview_platform_interface)
+package is forked from Flutter's official platform interface.
+
+This unversioned route documents the latest `1.3.0` release.
 
 ## Platform Compatibility
 

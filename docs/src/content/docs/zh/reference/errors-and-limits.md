@@ -56,7 +56,7 @@ Web iframe 无法检查或脚本控制跨域内容，影响 JS 执行、channel�
 | 平台 | 限制 |
 | --- | --- |
 | Windows | 必须安装 WebView2 Runtime。 |
-| Linux | 必须安装 WebKitGTK 4.1，runner 需要 `GtkOverlay`。 |
+| Linux | 必须安装 WebKitGTK 4.1；标准 Flutter runner 的 `GtkOverlay` 由插件自动安装。 |
 | OHOS | 需要 OHOS Flutter SDK，ArkWeb 行为会随 API 版本变化。 |
 | Android | 能力取决于系统 WebView/Chrome 版本。 |
 | iOS/macOS | 能力取决于 OS 版本和应用 entitlement。 |

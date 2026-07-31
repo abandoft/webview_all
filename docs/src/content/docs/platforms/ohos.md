@@ -3,7 +3,7 @@ title: OHOS
 description: ArkWeb implementation, APIs, and HarmonyOS/OpenHarmony limits.
 ---
 
-OHOS is provided by `webview_all_ohos 1.2.1` and uses ArkWeb through the OHOS Flutter SDK.
+OHOS is provided by `webview_all_ohos 1.3.0` and uses ArkWeb through the OHOS Flutter SDK.
 
 ## Engine
 

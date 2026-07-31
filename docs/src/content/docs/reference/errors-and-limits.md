@@ -80,7 +80,7 @@ Use same-origin content, `loadHtmlString`, or fetch-backed requests when those f
 | Platform | Limit |
 | --- | --- |
 | Windows | WebView2 Runtime must be installed. |
-| Linux | WebKitGTK 4.1 must be installed and the runner must use `GtkOverlay`. |
+| Linux | WebKitGTK 4.1 must be installed. The plugin installs its `GtkOverlay` automatically for the standard Flutter runner. |
 | OHOS | Requires OHOS Flutter SDK and ArkWeb behavior can vary by API level. |
 | Android | WebView features depend on the installed Android System WebView/Chrome version. |
 | iOS/macOS | WebKit feature availability depends on OS version and app entitlements. |

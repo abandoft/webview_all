@@ -3,7 +3,7 @@ title: 平台设置
 description: Android、Apple、Windows、Linux、OHOS 和 Web 的必要配置。
 ---
 
-大多数平台添加 `webview_all` 后即可使用，但部分引擎需要运行时组件、权限或 runner 修改。
+大多数平台添加 `webview_all` 后即可使用，但部分引擎需要运行时组件或权限。
 
 ## Android
 
@@ -42,7 +42,7 @@ App-Bound Domains 需要宿主应用配置域名，并用 `WebKitWebViewControll
 <true/>
 ```
 
-macOS 与 iOS 共用 `webview_flutter_wkwebview`，但部分 UIKit 风格的属性在 macOS 上没有实现。详见[iOS 和 macOS](/webview_all/zh/platforms/ios-macos/)。
+macOS 与 iOS 共用 `webview_all_wkwebview`，但部分 UIKit 风格的属性在 macOS 上没有实现。详见[iOS 和 macOS](/webview_all/zh/platforms/ios-macos/)。
 
 ## Windows
 
@@ -71,54 +71,8 @@ await WindowsWebViewController.initializeEnvironment(
 sudo apt install libwebkit2gtk-4.1-dev
 ```
 
-Linux平台需要修改代码使得 `WebViewWidget` 能在 `GtkOverlay` 正确加载。
-
-编辑您项目里的 `linux/runner/my_application.cc` 即可：
-
-1. 在靠前的位置添加函数:
-
-```cpp
-static void first_frame_cb(MyApplication* self, FlView* view) {
-  gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
-}
-```
-
-2. 找到以下代码:
-
-```cpp
-  g_autoptr(FlDartProject) project = fl_dart_project_new();
-  fl_dart_project_set_dart_entrypoint_arguments(
-      project, self->dart_entrypoint_arguments);
-
-  gtk_widget_show(GTK_WIDGET(window));
-
-  FlView* view = fl_view_new(project);
-  gtk_widget_show(GTK_WIDGET(view));
-  gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
-
-  fl_register_plugins(FL_PLUGIN_REGISTRY(view));
-```
-
-替换为:
-
-```cpp
-  g_autoptr(FlDartProject) project = fl_dart_project_new();
-  fl_dart_project_set_dart_entrypoint_arguments(
-      project, self->dart_entrypoint_arguments);
-
-  FlView* view = fl_view_new(project);
-  gtk_widget_show(GTK_WIDGET(view));
-
-  GtkWidget* overlay = gtk_overlay_new();
-  gtk_widget_show(overlay);
-  gtk_container_add(GTK_CONTAINER(overlay), GTK_WIDGET(view));
-  gtk_container_add(GTK_CONTAINER(window), overlay);
-
-  g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb), self);
-  gtk_widget_realize(GTK_WIDGET(view));
-
-  fl_register_plugins(FL_PLUGIN_REGISTRY(view));
-```
+Linux 实现会在标准 Flutter runner realize `FlView` 之前自动安装所需的
+`GtkOverlay`，应用无需修改 `linux/runner/my_application.cc`。
 
 ## OHOS
 

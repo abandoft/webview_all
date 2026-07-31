@@ -15,7 +15,7 @@ if (controller.platform is WindowsWebViewController) {
 
 ## Android
 
-Package: `webview_flutter_android`.
+Package: `webview_all_android`.
 
 Main types: `AndroidWebViewController`, `AndroidWebViewWidget`, `AndroidNavigationDelegate`, `AndroidWebViewCookieManager`, `AndroidLoadFileParams`, `AndroidJavaScriptChannelParams`, `AndroidWebViewPermissionRequest`, `AndroidWebViewPermissionResourceType`, `AndroidSslAuthError`, `AndroidWebResourceError`, `AndroidUrlChange`, `FileSelectorParams`.
 
@@ -23,7 +23,7 @@ Important APIs: debugging, file/content access, media gesture, text zoom, wide v
 
 ## iOS/macOS
 
-Package: `webview_flutter_wkwebview`.
+Package: `webview_all_wkwebview`.
 
 Main types: `WebKitWebViewController`, `WebKitWebViewWidget`, `WebKitNavigationDelegate`, `WebKitWebViewCookieManager`, `WebKitLoadFileParams`, `WebKitJavaScriptChannelParams`, `WebKitWebViewPermissionRequest`, `WebKitSslAuthError`, `WebKitWebResourceError`.
 

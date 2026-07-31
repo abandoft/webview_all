@@ -3,11 +3,11 @@ title: iOS 和 macOS
 description: WKWebView 实现、WebKit API 和 Apple 平台差异。
 ---
 
-iOS 和 macOS 由 `webview_flutter_wkwebview ^3.25.0` 提供。
+iOS 和 macOS 由 `webview_all_wkwebview ^1.3.0` 提供。
 
 | 项 | 值 |
 | --- | --- |
-| 平台包 | `webview_flutter_wkwebview` |
+| 平台包 | `webview_all_wkwebview` |
 | Controller | `WebKitWebViewController` |
 | Widget | `WebKitWebViewWidget` |
 | Delegate | `WebKitNavigationDelegate` |

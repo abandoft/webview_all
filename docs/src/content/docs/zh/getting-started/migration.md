@@ -33,11 +33,13 @@ import 'package:webview_all/webview_all.dart';
 
 ## 平台 import
 
-Android/iOS/macOS 的平台包仍然是官方实现；已有平台特性代码可以继续使用：
+`1.3.0` 起，Android/iOS/macOS 改用仓库内的 fork 包。原先导入
+`webview_flutter_android` 或 `webview_flutter_wkwebview` 的平台特性代码，
+应改为：
 
 ```dart
-import 'package:webview_flutter_android/webview_flutter_android.dart';
-import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
+import 'package:webview_all_android/webview_all_android.dart';
+import 'package:webview_all_wkwebview/webview_all_wkwebview.dart';
 ```
 
 新增桌面、OHOS、Web 平台特性时：
@@ -48,6 +50,15 @@ import 'package:webview_all_linux/webview_all_linux.dart';
 import 'package:webview_all_ohos/webview_all_ohos.dart';
 import 'package:webview_all_web/webview_all_web.dart';
 ```
+
+## 1.3.0 更新内容
+
+- Windows、Linux、OHOS 和 Web controller 使用弱引用回调及自动 finalizer
+  清理。
+- Linux 插件会在标准 Flutter runner realize `FlView` 前自动安装所需的
+  `GtkOverlay`。现有应用可以把 `linux/runner/my_application.cc` 恢复为
+  Flutter 默认实现；已经手动用 `GtkOverlay` 包裹 `FlView` 的应用也可以保留
+  现有代码，插件会直接复用已有 Overlay，不会再嵌套一层。
 
 ## 1.2.0 更新内容
 
@@ -65,4 +76,4 @@ import 'package:webview_all_web/webview_all_web.dart';
 | Cookie | Web cookie 只来自宿主页 `document.cookie`。 |
 | TLS | Web 无法暴露可恢复证书错误决策。 |
 | macOS | 部分 UIKit 风格 WebKit 属性没有 macOS bridge。 |
-| Linux | runner 需要 `GtkOverlay`。 |
+| Linux | 需要 WebKitGTK 4.1；标准 Flutter runner 无需修改源码。 |

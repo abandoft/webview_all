@@ -7,7 +7,7 @@ Add the app-facing package:
 
 ```yaml
 dependencies:
-  webview_all: ^1.2.1
+  webview_all: ^1.3.0
 ```
 
 Run:
@@ -23,11 +23,11 @@ flutter:
   plugin:
     platforms:
       android:
-        default_package: webview_flutter_android
+        default_package: webview_all_android
       ios:
-        default_package: webview_flutter_wkwebview
+        default_package: webview_all_wkwebview
       macos:
-        default_package: webview_flutter_wkwebview
+        default_package: webview_all_wkwebview
       linux:
         default_package: webview_all_linux
       windows:
@@ -46,13 +46,13 @@ If you cast to a platform implementation, add that package explicitly so the imp
 
 ```yaml
 dependencies:
-  webview_all: ^1.2.1
-  webview_all_windows: ^1.2.1
-  webview_all_linux: ^1.2.1
-  webview_all_ohos: ^1.2.1
-  webview_all_web: ^1.2.1
-  webview_flutter_android: ^4.12.0
-  webview_flutter_wkwebview: ^3.25.0
+  webview_all: ^1.3.0
+  webview_all_windows: ^1.3.0
+  webview_all_linux: ^1.3.0
+  webview_all_ohos: ^1.3.0
+  webview_all_web: ^1.3.0
+  webview_all_android: ^1.3.0
+  webview_all_wkwebview: ^1.3.0
 ```
 
 Then import only the packages you need:
@@ -63,12 +63,15 @@ import 'package:webview_all_windows/webview_all_windows.dart';
 import 'package:webview_all_linux/webview_all_linux.dart';
 import 'package:webview_all_ohos/webview_all_ohos.dart';
 import 'package:webview_all_web/webview_all_web.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
-import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
+import 'package:webview_all_android/webview_all_android.dart';
+import 'package:webview_all_wkwebview/webview_all_wkwebview.dart';
 ```
 
 ## Version Contract
 
-The `1.2.1` release is aligned across all `webview_all_*` platform packages. The wrapper depends on `webview_flutter_platform_interface ^2.15.1`, `webview_flutter_android ^4.12.0`, and `webview_flutter_wkwebview ^3.25.0`.
+The `1.3.0` release is aligned across `webview_platform_interface` and all
+`webview_all_*` packages. The wrapper depends on
+`webview_platform_interface ^1.3.0`, `webview_all_android ^1.3.0`, and
+`webview_all_wkwebview ^1.3.0`.
 
 Keep the platform packages on the same minor line as the wrapper unless you are intentionally testing a platform package in isolation.

@@ -57,6 +57,10 @@ class _BrowserPageState extends State<BrowserPage> {
 }
 ```
 
+Windows, Linux, OHOS, and Web automatically release platform resources after
+an unused controller becomes unreachable; no platform-specific lifecycle code
+is required.
+
 ## Navigation Controls
 
 ```dart

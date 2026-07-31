@@ -33,7 +33,10 @@ Then check platform limits in the [Capability Matrix](/webview_all/platforms/cap
 
 ## Platform-Specific Imports
 
-If your old code imported `webview_flutter_android` or `webview_flutter_wkwebview`, keep those imports. The main package still uses those implementations for Android, iOS, and macOS.
+If your old code imported `webview_flutter_android` or
+`webview_flutter_wkwebview`, replace those imports with `webview_all_android`
+and `webview_all_wkwebview`. The `1.3.0` line uses the forked implementations
+for Android, iOS, and macOS.
 
 For new desktop, OHOS, or web-specific code, add the relevant package and import it:
 
@@ -43,6 +46,19 @@ import 'package:webview_all_linux/webview_all_linux.dart';
 import 'package:webview_all_ohos/webview_all_ohos.dart';
 import 'package:webview_all_web/webview_all_web.dart';
 ```
+
+## Version 1.3.0 Notes
+
+The `1.3.0` line adds lifecycle cleanup for the built-in platform
+implementations and removes the Linux runner patch:
+
+- Windows, Linux, OHOS, and Web controllers use weak callbacks and automatic
+  finalizer cleanup.
+- The Linux plugin installs its required `GtkOverlay` automatically before the
+  standard Flutter runner realizes `FlView`. Existing applications can restore
+  `linux/runner/my_application.cc` to the Flutter default. Applications that
+  already wrap `FlView` in a `GtkOverlay` can keep that code; the plugin detects
+  and reuses the existing overlay without adding another layer.
 
 ## Version 1.2.0 Notes
 
@@ -64,4 +80,4 @@ Audit these areas during migration:
 | Cookies | Web cookies are host-document cookies. Windows offers additional native metadata through `WindowsWebViewCookie`. |
 | TLS | Web cannot expose recoverable TLS decisions. Native engines can report SSL auth callbacks when their engine exposes them. |
 | macOS | Some UIKit-style WebKit properties have no macOS implementation. |
-| Linux | Runner must use `GtkOverlay` for correct native view placement. |
+| Linux | WebKitGTK 4.1 is required; the standard Flutter runner needs no source changes. |
