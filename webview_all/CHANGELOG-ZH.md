@@ -1,3 +1,9 @@
+## 1.3.0
+
+* 使用弱引用回调和 finalizer 自动清理，使内置 Windows、Linux 和 Web controller
+  变为不可达后释放平台资源；OHOS 继续使用已有的 instance manager 自动生命周期。
+* Linux 插件会自动安装 GTK overlay，无需再修改 runner 源码。
+
 ## 1.2.1
 
 * 在 macOS 上忽略 `setBackgroundColor` 并打印日志，避免 WKWebView `opaque` / `backgroundColor` 未实现导致应用异常。

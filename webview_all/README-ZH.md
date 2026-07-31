@@ -2,7 +2,7 @@
 
 [Documentation](https://abandoft.github.io/webview_all) | [中文文档](https://abandoft.github.io/webview_all/zh)
 
-支持所有 Flutter 平台的 WebView 组件，遵守 [webview_flutter 平台接口](https://pub.dev/packages/webview_flutter_platform_interface)。
+支持所有 Flutter 平台的 WebView 组件，兼容[webview_flutter](https://pub.dev/packages/webview_flutter)接口。
 
 |     系统     | **支持情况** | **技术实现** |
 |-------------|--------------|--------------|
