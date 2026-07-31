@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
-import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
+import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'linux_navigation_delegate.dart';
 import 'linux_webview_constants.dart';
@@ -12,6 +12,17 @@ import 'linux_webview_creation_params.dart';
 import 'linux_webview_requests.dart';
 
 part 'linux_webview_events.dart';
+
+Future<void> _disposeFinalizedLinuxWebView(
+  _LinuxWebViewDisposal disposal,
+) async {
+  try {
+    await disposal.dispose();
+  } catch (_) {
+    // The Flutter engine can already be detached when a finalizer runs.
+    return;
+  }
+}
 
 class LinuxWebViewController extends PlatformWebViewController {
   LinuxWebViewController(PlatformWebViewControllerCreationParams params)
@@ -22,8 +33,13 @@ class LinuxWebViewController extends PlatformWebViewController {
                 params,
               ),
       ) {
-    _readyFuture = _initialize();
+    _readyFuture = _initialize(WeakReference<LinuxWebViewController>(this));
   }
+
+  static final Finalizer<_LinuxWebViewDisposal> _finalizer =
+      Finalizer<_LinuxWebViewDisposal>((_LinuxWebViewDisposal disposal) {
+        unawaited(_disposeFinalizedLinuxWebView(disposal));
+      });
 
   static const MethodChannel rootChannel = MethodChannel(
     linuxWebViewChannelPrefix,
@@ -36,6 +52,7 @@ class LinuxWebViewController extends PlatformWebViewController {
   MethodChannel? _channel;
   EventChannel? _eventChannel;
   StreamSubscription<dynamic>? _eventSubscription;
+  _LinuxWebViewDisposal? _nativeDisposal;
 
   LinuxNavigationDelegate? _navigationDelegate;
   final Map<String, JavaScriptChannelParams> _javaScriptChannels =
@@ -47,6 +64,7 @@ class LinuxWebViewController extends PlatformWebViewController {
   bool _canGoBack = false;
   bool _canGoForward = false;
   bool _disposed = false;
+  Future<void>? _disposeFuture;
 
   void Function(JavaScriptConsoleMessage consoleMessage)? _onConsoleMessage;
   void Function(ScrollPositionChange scrollPositionChange)?
@@ -59,17 +77,32 @@ class LinuxWebViewController extends PlatformWebViewController {
   Future<String> Function(JavaScriptTextInputDialogRequest request)?
   _onJavaScriptTextInputDialog;
 
-  Future<void> _initialize() async {
+  Future<void> _initialize(
+    WeakReference<LinuxWebViewController> weakThis,
+  ) async {
     final int id =
         await rootChannel.invokeMethod<int>('createWebView') ??
         (throw StateError('Failed to create Linux WebView instance.'));
     _channel = MethodChannel('$linuxWebViewChannelPrefix/$id');
     _eventChannel = EventChannel('$linuxWebViewChannelPrefix/$id/events');
-    _eventSubscription = _eventChannel!.receiveBroadcastStream().listen(
-      _handleEvent,
-      onError: (_) {},
+    _eventSubscription = _eventChannel!.receiveBroadcastStream().listen((
+      dynamic event,
+    ) {
+      weakThis.target?._handleEvent(event);
+    }, onError: (_) {});
+    final _LinuxWebViewDisposal disposal = _LinuxWebViewDisposal(
+      channel: _channel!,
+      eventSubscription: _eventSubscription!,
     );
-    await _applyCreationParams();
+    _nativeDisposal = disposal;
+    _finalizer.attach(this, disposal, detach: this);
+    try {
+      await _applyCreationParams();
+    } catch (_) {
+      _finalizer.detach(this);
+      await disposal.dispose();
+      rethrow;
+    }
   }
 
   LinuxWebViewControllerCreationParams get _linuxParams =>
@@ -545,18 +578,36 @@ class LinuxWebViewController extends PlatformWebViewController {
     });
   }
 
-  Future<void> dispose() async {
-    if (_disposed) {
-      return;
-    }
+  Future<void> dispose() {
+    return _disposeFuture ??= _dispose();
+  }
+
+  Future<void> _dispose() async {
     _disposed = true;
-    await _eventSubscription?.cancel();
-    if (_channel != null) {
-      try {
-        await _channel!.invokeMethod<void>('dispose');
-      } catch (_) {
-        // Best effort during shutdown.
-      }
+    _finalizer.detach(this);
+    Object? initializationError;
+    StackTrace? initializationStackTrace;
+    try {
+      await _readyFuture;
+    } catch (error, stackTrace) {
+      initializationError = error;
+      initializationStackTrace = stackTrace;
+    }
+    await _nativeDisposal?.dispose();
+    _eventSubscription = null;
+    _javaScriptChannels.clear();
+    _navigationDelegate = null;
+    _onConsoleMessage = null;
+    _onScrollPositionChange = null;
+    _onPermissionRequest = null;
+    _onJavaScriptAlertDialog = null;
+    _onJavaScriptConfirmDialog = null;
+    _onJavaScriptTextInputDialog = null;
+    if (initializationError != null) {
+      Error.throwWithStackTrace(
+        initializationError,
+        initializationStackTrace ?? StackTrace.current,
+      );
     }
   }
 
@@ -567,5 +618,43 @@ class LinuxWebViewController extends PlatformWebViewController {
       'flutter_assets',
       ...key.split('/'),
     ]);
+  }
+}
+
+class _LinuxWebViewDisposal {
+  _LinuxWebViewDisposal({
+    required this.channel,
+    required this.eventSubscription,
+  });
+
+  final MethodChannel channel;
+  final StreamSubscription<dynamic> eventSubscription;
+  Future<void>? _disposeFuture;
+
+  Future<void> dispose() {
+    return _disposeFuture ??= _dispose();
+  }
+
+  Future<void> _dispose() async {
+    Object? disposalError;
+    StackTrace? disposalStackTrace;
+    try {
+      await eventSubscription.cancel();
+    } catch (error, stackTrace) {
+      disposalError = error;
+      disposalStackTrace = stackTrace;
+    }
+    try {
+      await channel.invokeMethod<void>('dispose');
+    } catch (error, stackTrace) {
+      disposalError ??= error;
+      disposalStackTrace ??= stackTrace;
+    }
+    if (disposalError != null) {
+      Error.throwWithStackTrace(
+        disposalError,
+        disposalStackTrace ?? StackTrace.current,
+      );
+    }
   }
 }

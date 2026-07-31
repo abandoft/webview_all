@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:webview_all_linux/src/linux_webview_constants.dart';
 import 'package:webview_all_linux/webview_all_linux.dart';
-import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
+import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -52,6 +52,24 @@ void main() {
       ),
       isA<LinuxWebViewCookieManager>(),
     );
+  });
+
+  test('dispose releases the native WebView exactly once', () async {
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+
+    await controller.currentUrl();
+    await controller.dispose();
+    await controller.dispose();
+
+    expect(
+      calls.where((MethodCall call) => call.method == 'dispose'),
+      hasLength(1),
+    );
+    await expectLater(controller.reload(), throwsStateError);
   });
 
   test('rejects invalid cookies before root channel setCookie', () async {

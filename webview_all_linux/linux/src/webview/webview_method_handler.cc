@@ -874,7 +874,10 @@ void instance_method_call_cb(FlMethodChannel *channel,
     gtk_widget_hide(GTK_WIDGET(webview->web_view));
     webview->visible = FALSE;
     update_flutter_view_input_region(webview->plugin);
+    WebviewAllLinuxPlugin *plugin = webview->plugin;
+    const gint identifier = webview->id;
     respond(method_call, success_response());
+    g_hash_table_remove(plugin->webviews, GINT_TO_POINTER(identifier));
     return;
   }
 

@@ -1,4 +1,4 @@
-import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
+import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'linux_navigation_delegate.dart';
 import 'linux_webview_controller.dart';
