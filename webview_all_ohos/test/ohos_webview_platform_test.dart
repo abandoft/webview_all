@@ -6,7 +6,7 @@ import 'package:webview_all_ohos/src/ohos_webview_native.dart';
 import 'package:webview_all_ohos/src/ohos_webview_native.dart' as ohos_webview;
 import 'package:webview_all_ohos/src/ohos_webview_proxy.dart';
 import 'package:webview_all_ohos/webview_all_ohos.dart';
-import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
+import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 // ignore: must_be_immutable
 class TestCookieManager extends CookieManager {
