@@ -12,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:web/web.dart' as web;
-import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
+import 'package:webview_platform_interface/webview_platform_interface.dart';
 import 'package:webview_all_web/webview_all_web.dart';
 
 import 'web_webview_controller_test.mocks.dart';

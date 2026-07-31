@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:flutter_web_plugins/flutter_web_plugins.dart';
-import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
+import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'web_navigation_delegate.dart';
 import 'web_webview_controller.dart';

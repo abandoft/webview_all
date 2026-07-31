@@ -10,11 +10,20 @@ import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/widgets.dart';
 import 'package:web/web.dart' as web;
-import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
+import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'content_type.dart';
 import 'http_request_factory.dart';
 import 'web_navigation_delegate.dart';
+
+Future<void> _disposeFinalizedWebWebView(_WebWebViewDisposal disposal) async {
+  try {
+    await disposal.dispose();
+  } catch (_) {
+    // The browser context can already be detached when a finalizer runs.
+    return;
+  }
+}
 
 @JS('JSON.stringify')
 external JSString? _jsonStringify(JSAny? value);
@@ -132,31 +141,54 @@ class WebWebViewController extends PlatformWebViewController {
                 params,
               ),
       ) {
+    final WeakReference<WebWebViewController> weakThis =
+        WeakReference<WebWebViewController>(this);
     _customSandbox = _webWebViewParams.iFrame.getAttribute('sandbox');
     _messageEventListener = ((web.Event event) {
-      _handleWindowMessage(event as web.MessageEvent);
+      weakThis.target?._handleWindowMessage(event as web.MessageEvent);
     }).toJS;
     web.window.addEventListener('message', _messageEventListener);
-    _webWebViewParams.iFrame.onLoad.listen((_) {
-      final String? resolvedUrl = _shouldPreserveLogicalUrl
-          ? _currentUrl
-          : _tryReadCurrentFrameUrl() ?? _currentUrl;
-      if (resolvedUrl != null) {
-        _currentUrl = resolvedUrl;
-        _navigationDelegate?.onUrlChange?.call(UrlChange(url: resolvedUrl));
-        _navigationDelegate?.onPageFinished?.call(resolvedUrl);
+    _loadEventSubscription = _webWebViewParams.iFrame.onLoad.listen((_) {
+      final WebWebViewController? target = weakThis.target;
+      if (target == null) {
+        return;
       }
-      _applyScrollBarStyle();
-      _installJavaScriptChannels();
-      _installConsoleMessageHook();
-      _installJavaScriptAlertDialogHook();
-      _installJavaScriptConfirmDialogHook();
-      _installJavaScriptTextInputDialogHook();
-      _installPlatformPermissionRequestHook();
-      _attachScrollListenerToCurrentWindow();
-      _navigationDelegate?.onProgress?.call(100);
+      final String? resolvedUrl = target._shouldPreserveLogicalUrl
+          ? target._currentUrl
+          : target._tryReadCurrentFrameUrl() ?? target._currentUrl;
+      if (resolvedUrl != null) {
+        target._currentUrl = resolvedUrl;
+        target._navigationDelegate?.onUrlChange?.call(
+          UrlChange(url: resolvedUrl),
+        );
+        target._navigationDelegate?.onPageFinished?.call(resolvedUrl);
+      }
+      target._applyScrollBarStyle();
+      target._installJavaScriptChannels();
+      target._installConsoleMessageHook();
+      target._installJavaScriptAlertDialogHook();
+      target._installJavaScriptConfirmDialogHook();
+      target._installJavaScriptTextInputDialogHook();
+      target._installPlatformPermissionRequestHook();
+      target._attachScrollListenerToCurrentWindow();
+      target._navigationDelegate?.onProgress?.call(100);
     });
+    final String iFrameId = _webWebViewParams.iFrame.id;
+    _nativeDisposal = _WebWebViewDisposal(
+      iFrame: _webWebViewParams.iFrame,
+      messageEventListener: _messageEventListener,
+      loadEventSubscription: _loadEventSubscription,
+      clearJavaScriptDialogBridge: () {
+        WebWebViewController._javaScriptDialogBridgeRoot[iFrameId] = null;
+      },
+    );
+    _finalizer.attach(this, _nativeDisposal, detach: this);
   }
+
+  static final Finalizer<_WebWebViewDisposal> _finalizer =
+      Finalizer<_WebWebViewDisposal>((_WebWebViewDisposal disposal) {
+        unawaited(_disposeFinalizedWebWebView(disposal));
+      });
 
   static const String _scrollBarStyleId = '__webview_all_scrollbars';
   static const String _channelMessageType = '__webview_all_type';
@@ -203,10 +235,10 @@ class WebWebViewController extends PlatformWebViewController {
   void Function(ScrollPositionChange scrollPositionChange)?
   _onScrollPositionChange;
   late final web.EventListener _messageEventListener;
+  late final StreamSubscription<web.Event> _loadEventSubscription;
+  late final _WebWebViewDisposal _nativeDisposal;
   JSExportedDartFunction? _javaScriptConfirmDialogBridge;
   JSExportedDartFunction? _javaScriptTextInputDialogBridge;
-  web.EventListener? _scrollEventListener;
-  web.Window? _scrollEventListenerWindow;
 
   @override
   Future<void> loadFile(String absoluteFilePath) {
@@ -434,14 +466,7 @@ class WebWebViewController extends PlatformWebViewController {
   }
 
   void _detachScrollListener() {
-    final web.Window? window = _scrollEventListenerWindow;
-    final web.EventListener? listener = _scrollEventListener;
-    if (window != null && listener != null) {
-      try {
-        window.removeEventListener('scroll', listener);
-      } catch (_) {}
-    }
-    _scrollEventListenerWindow = null;
+    _nativeDisposal.detachScrollListener();
   }
 
   void _attachScrollListenerToCurrentWindow() {
@@ -452,17 +477,19 @@ class WebWebViewController extends PlatformWebViewController {
     }
 
     final web.Window? window = _tryReadAccessibleContentWindow();
-    if (window == null || identical(window, _scrollEventListenerWindow)) {
+    if (window == null ||
+        identical(window, _nativeDisposal.scrollEventListenerWindow)) {
       return;
     }
 
     _detachScrollListener();
+    final WeakReference<WebWebViewController> weakThis =
+        WeakReference<WebWebViewController>(this);
     final web.EventListener listener = ((web.Event event) {
-      _emitScrollPositionChange();
+      weakThis.target?._emitScrollPositionChange();
     }).toJS;
     window.addEventListener('scroll', listener);
-    _scrollEventListener = listener;
-    _scrollEventListenerWindow = window;
+    _nativeDisposal.setScrollListener(window, listener);
   }
 
   void _setIframeScrollBarVisibility({
@@ -951,20 +978,33 @@ class WebWebViewController extends PlatformWebViewController {
     }
 
     final JSObject bridge = JSObject();
+    final WeakReference<WebWebViewController> weakThis =
+        WeakReference<WebWebViewController>(this);
     if (_onJavaScriptConfirmDialog != null) {
       _javaScriptConfirmDialogBridge ??= ((JSString message, JSString url) {
-        return _handleJavaScriptConfirmDialog(message.toDart, url.toDart).toJS;
+        final WebWebViewController? target = weakThis.target;
+        return (target?._handleJavaScriptConfirmDialog(
+                  message.toDart,
+                  url.toDart,
+                ) ??
+                false)
+            .toJS;
       }).toJS;
       bridge['confirm'] = _javaScriptConfirmDialogBridge;
     }
     if (_onJavaScriptTextInputDialog != null) {
       _javaScriptTextInputDialogBridge ??=
           ((JSString message, JSString url, JSString? defaultText) {
-            return _handleJavaScriptTextInputDialog(
-              message.toDart,
-              url.toDart,
-              defaultText?.toDart,
-            ).toJS;
+            final String? fallback = defaultText?.toDart;
+            final WebWebViewController? target = weakThis.target;
+            return (target?._handleJavaScriptTextInputDialog(
+                      message.toDart,
+                      url.toDart,
+                      fallback,
+                    ) ??
+                    fallback ??
+                    '')
+                .toJS;
           }).toJS;
       bridge['prompt'] = _javaScriptTextInputDialogBridge;
     }
@@ -1533,9 +1573,14 @@ class WebWebViewWidget extends PlatformWebViewWidget {
               ),
       ) {
     final controller = params.controller as WebWebViewController;
+    final WeakReference<_WebWebViewDisposal> weakDisposal =
+        WeakReference<_WebWebViewDisposal>(controller._nativeDisposal);
     ui_web.platformViewRegistry.registerViewFactory(
       controller._webWebViewParams.iFrame.id,
-      (int viewId) => controller._webWebViewParams.iFrame,
+      (int viewId) {
+        return weakDisposal.target?.iFrame ??
+            (throw StateError('The Web WebView controller was disposed.'));
+      },
     );
   }
 
@@ -1548,5 +1593,54 @@ class WebWebViewWidget extends PlatformWebViewWidget {
           .iFrame
           .id,
     );
+  }
+}
+
+class _WebWebViewDisposal {
+  _WebWebViewDisposal({
+    required this.iFrame,
+    required this.messageEventListener,
+    required this.loadEventSubscription,
+    required this.clearJavaScriptDialogBridge,
+  });
+
+  final web.HTMLIFrameElement iFrame;
+  final web.EventListener messageEventListener;
+  final StreamSubscription<web.Event> loadEventSubscription;
+  final void Function() clearJavaScriptDialogBridge;
+  web.EventListener? _scrollEventListener;
+  web.Window? scrollEventListenerWindow;
+  Future<void>? _disposeFuture;
+
+  void setScrollListener(web.Window window, web.EventListener listener) {
+    scrollEventListenerWindow = window;
+    _scrollEventListener = listener;
+  }
+
+  void detachScrollListener() {
+    final web.Window? window = scrollEventListenerWindow;
+    final web.EventListener? listener = _scrollEventListener;
+    if (window != null && listener != null) {
+      try {
+        window.removeEventListener('scroll', listener);
+      } catch (_) {}
+    }
+    scrollEventListenerWindow = null;
+    _scrollEventListener = null;
+  }
+
+  Future<void> dispose() {
+    return _disposeFuture ??= _dispose();
+  }
+
+  Future<void> _dispose() async {
+    web.window.removeEventListener('message', messageEventListener);
+    detachScrollListener();
+    try {
+      await loadEventSubscription.cancel();
+    } finally {
+      clearJavaScriptDialogBridge();
+      iFrame.remove();
+    }
   }
 }
