@@ -35,6 +35,9 @@ lib/generated_plugin_registrant.dart
 
 # Flutter package lock files. Example applications may keep their locks.
 /webview_all/pubspec.lock
+/webview_platform_interface/pubspec.lock
+/webview_all_android/pubspec.lock
+/webview_all_wkwebview/pubspec.lock
 /webview_all_linux/pubspec.lock
 /webview_all_ohos/pubspec.lock
 /webview_all_web/pubspec.lock
