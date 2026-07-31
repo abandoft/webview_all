@@ -68,12 +68,7 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_set_vexpand(GTK_WIDGET(view), TRUE);
   gtk_widget_show(GTK_WIDGET(view));
 
-  GtkWidget* overlay = gtk_overlay_new();
-  gtk_widget_set_hexpand(overlay, TRUE);
-  gtk_widget_set_vexpand(overlay, TRUE);
-  gtk_widget_show(overlay);
-  gtk_container_add(GTK_CONTAINER(overlay), GTK_WIDGET(view));
-  gtk_container_add(GTK_CONTAINER(window), overlay);
+  gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
   // Show the window when Flutter renders.
   // Requires the view to be realized so we can start rendering.

@@ -12,10 +12,18 @@ dependencies:
   path_provider: ^2.1.5
   webview_all:
     path: ../../webview_all
-  webview_flutter_android: ^4.12.0
-  webview_flutter_wkwebview: ^3.25.0
+  webview_all_android:
+    path: ../../webview_all_android
+  webview_all_wkwebview:
+    path: ../../webview_all_wkwebview
 
 dependency_overrides:
+  webview_all_android:
+    path: ../../webview_all_android
+  webview_all_wkwebview:
+    path: ../../webview_all_wkwebview
+  webview_platform_interface:
+    path: ../../webview_platform_interface
   webview_all_linux:
     path: ../../webview_all_linux
   webview_all_windows:
@@ -31,7 +39,8 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   integration_test:
     sdk: flutter
-  webview_flutter_platform_interface: ^2.15.1
+  webview_platform_interface:
+    path: ../../webview_platform_interface
 
 flutter:
   uses-material-design: true
