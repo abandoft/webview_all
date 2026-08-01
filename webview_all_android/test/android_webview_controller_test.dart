@@ -764,7 +764,6 @@ void main() {
       final requestParams = LoadRequestParams(
         uri: Uri.parse('https://flutter.dev'),
         method: LoadRequestMethod.post,
-        headers: const <String, String>{'X-Test': 'Testing'},
       );
 
       await controller.loadRequest(requestParams);
@@ -781,7 +780,6 @@ void main() {
       final requestParams = LoadRequestParams(
         uri: Uri.parse('https://flutter.dev'),
         method: LoadRequestMethod.post,
-        headers: const <String, String>{'X-Test': 'Testing'},
         body: Uint8List.fromList('{"message": "Hello World!"}'.codeUnits),
       );
 
@@ -793,6 +791,32 @@ void main() {
           Uint8List.fromList('{"message": "Hello World!"}'.codeUnits),
         ),
       );
+      verifyNever(mockWebView.loadUrl(any, any));
+    });
+
+    test('loadRequest rejects POST headers instead of dropping them', () async {
+      final mockWebView = MockWebView();
+      final AndroidWebViewController controller = createControllerWithMocks(
+        mockWebView: mockWebView,
+      );
+      final requestParams = LoadRequestParams(
+        uri: Uri.parse('https://flutter.dev'),
+        method: LoadRequestMethod.post,
+        headers: const <String, String>{'Authorization': 'secret'},
+      );
+
+      await expectLater(
+        () => controller.loadRequest(requestParams),
+        throwsA(
+          isA<UnsupportedError>().having(
+            (UnsupportedError error) => error.message,
+            'message',
+            contains('request was not sent'),
+          ),
+        ),
+      );
+
+      verifyNever(mockWebView.postUrl(any, any));
       verifyNever(mockWebView.loadUrl(any, any));
     });
 
@@ -991,7 +1015,7 @@ void main() {
             },
       );
 
-      late final FileSelectorParams fileSelectorParams;
+      FileSelectorParams? fileSelectorParams;
       await controller.setOnShowFileSelector((FileSelectorParams params) async {
         fileSelectorParams = params;
         return <String>[];
@@ -1012,10 +1036,22 @@ void main() {
         ),
       );
 
-      expect(fileSelectorParams.isCaptureEnabled, isFalse);
-      expect(fileSelectorParams.acceptTypes, <String>['png']);
-      expect(fileSelectorParams.filenameHint, 'filenameHint');
-      expect(fileSelectorParams.mode, FileSelectorMode.open);
+      expect(fileSelectorParams!.isCaptureEnabled, isFalse);
+      expect(fileSelectorParams!.acceptTypes, <String>['png']);
+      expect(fileSelectorParams!.filenameHint, 'filenameHint');
+      expect(fileSelectorParams!.mode, FileSelectorMode.open);
+
+      await onShowFileChooserCallback(
+        MockWebChromeClient(),
+        MockWebView(),
+        android_webview.FileChooserParams.pigeon_detached(
+          isCaptureEnabled: false,
+          acceptTypes: const <String>[],
+          mode: android_webview.FileChooserMode.unknown,
+        ),
+      );
+
+      expect(fileSelectorParams!.mode, FileSelectorMode.open);
     });
 
     test('setGeolocationPermissionsPromptCallbacks', () async {

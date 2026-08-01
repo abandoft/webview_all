@@ -528,6 +528,12 @@ class AndroidWebViewController extends PlatformWebViewController {
       case LoadRequestMethod.get:
         return _webView.loadUrl(params.uri.toString(), params.headers);
       case LoadRequestMethod.post:
+        if (params.headers.isNotEmpty) {
+          throw UnsupportedError(
+            'Custom request headers for POST requests are not supported by '
+            'the Android WebView postUrl API. The request was not sent.',
+          );
+        }
         return _webView.postUrl(
           params.uri.toString(),
           params.body ?? Uint8List(0),
@@ -1097,9 +1103,13 @@ class FileSelectorParams {
       case android_webview.FileChooserMode.save:
         mode = FileSelectorMode.save;
       case android_webview.FileChooserMode.unknown:
-        throw UnsupportedError(
-          'FileSelectorParams could not be instantiated because it received an unsupported mode.',
+        // A future Android WebView mode must not crash the file chooser flow.
+        // Single-file open is the most restrictive compatible fallback.
+        debugPrint(
+          'webview_all_android: received an unknown file chooser mode; '
+          'falling back to FileSelectorMode.open.',
         );
+        mode = FileSelectorMode.open;
     }
 
     return FileSelectorParams(
