@@ -104,6 +104,52 @@ void main() {
           '#',
         );
       });
+
+      test(
+        'keeps sandboxed inline HTML isolated while exposing controller APIs',
+        () async {
+          final params = WebWebViewControllerCreationParams(
+            iFrameSandbox: 'allow-scripts allow-forms',
+          );
+          final controller = WebWebViewController(params);
+          addTearDown(() {
+            params.iFrame.remove();
+          });
+          web.document.body!.append(params.iFrame);
+
+          final Future<web.Event> load = params.iFrame.onLoad.first;
+          await controller.loadHtmlString(
+            '<title>Sandboxed</title><main id="value">safe</main>',
+          );
+          await load;
+
+          expect(
+            () => params.iFrame.contentWindow!.document,
+            throwsA(anything),
+          );
+          expect(await controller.getTitle(), 'Sandboxed');
+          expect(
+            await controller.runJavaScriptReturningResult(
+              'document.getElementById("value").textContent',
+            ),
+            'safe',
+          );
+        },
+      );
+
+      test('does not install a bridge when sandbox blocks scripts', () async {
+        final params = WebWebViewControllerCreationParams(
+          iFrameSandbox: 'allow-forms',
+        );
+        final controller = WebWebViewController(params);
+
+        await controller.loadHtmlString('<p>content</p>');
+
+        expect(
+          params.iFrame.getAttribute('srcdoc'),
+          isNot(contains('isolatedBridgeReady')),
+        );
+      });
     });
 
     group('loadRequest', () {
@@ -281,7 +327,7 @@ void main() {
         final Encoding iso = Encoding.getByName('latin1')!;
 
         final fakeResponse = web.Response(
-          String.fromCharCodes(iso.encode('España')).toJS,
+          Uint8List.fromList(iso.encode('España')).toJS,
           <String, Object>{
                 'headers': <String, Object>{
                   'content-type': 'Text/HTmL; charset=latin1',
@@ -308,9 +354,133 @@ void main() {
 
         expect(
           (controller.params as WebWebViewControllerCreationParams).iFrame.src,
-          'data:text/html;charset=iso-8859-1,Espa%F1a',
+          allOf(
+            startsWith('data:text/html;charset=iso-8859-1,'),
+            contains('Espa%F1a'),
+            contains('isolatedBridgeReady'),
+          ),
         );
       });
+
+      test('ignores valid extension content-type parameters', () async {
+        final mockHttpRequestFactory = MockHttpRequestFactory();
+        final controller = WebWebViewController(
+          WebWebViewControllerCreationParams(
+            httpRequestFactory: mockHttpRequestFactory,
+          ),
+        );
+        final fakeResponse = web.Response(
+          'profiled'.toJS,
+          <String, Object>{
+                'headers': <String, Object>{
+                  'content-type':
+                      'text/plain; profile="https://example.test/a=b"',
+                },
+              }.jsify()!
+              as web.ResponseInit,
+        );
+        when(
+          mockHttpRequestFactory.request(
+            any,
+            method: anyNamed('method'),
+            requestHeaders: anyNamed('requestHeaders'),
+            sendData: anyNamed('sendData'),
+          ),
+        ).thenAnswer((_) => Future<web.Response>.value(fakeResponse));
+
+        await controller.loadRequest(
+          LoadRequestParams(
+            uri: Uri.parse('https://example.test/profiled'),
+            method: LoadRequestMethod.post,
+          ),
+        );
+
+        expect(
+          (controller.params as WebWebViewControllerCreationParams).iFrame.src,
+          contains('profiled'),
+        );
+      });
+
+      test(
+        'keeps fetched HTML isolated while exposing controlled WebView APIs',
+        () async {
+          final mockHttpRequestFactory = MockHttpRequestFactory();
+          final params = WebWebViewControllerCreationParams(
+            httpRequestFactory: mockHttpRequestFactory,
+          );
+          final controller = WebWebViewController(params);
+          final List<String> channelMessages = <String>[];
+          addTearDown(() {
+            params.iFrame.remove();
+          });
+          web.document.body!.append(params.iFrame);
+          final fakeResponse = web.Response(
+            '''
+<!doctype html>
+<html>
+  <head><title>Fetched page</title></head>
+  <body style="height: 2000px"><a id="relative" href="next">next</a></body>
+</html>
+'''
+                .toJS,
+            <String, Object>{
+                  'headers': <String, Object>{
+                    'content-type': 'text/html; charset=utf-8',
+                  },
+                }.jsify()!
+                as web.ResponseInit,
+          );
+          when(
+            mockHttpRequestFactory.request(
+              any,
+              method: anyNamed('method'),
+              requestHeaders: anyNamed('requestHeaders'),
+              sendData: anyNamed('sendData'),
+            ),
+          ).thenAnswer((_) => Future<web.Response>.value(fakeResponse));
+
+          final Future<web.Event> load = params.iFrame.onLoad.first;
+          await controller.loadRequest(
+            LoadRequestParams(
+              uri: Uri.parse('https://example.test/base/page'),
+              method: LoadRequestMethod.post,
+              headers: const <String, String>{'X-Test': 'yes'},
+            ),
+          );
+          await load;
+
+          expect(
+            () => params.iFrame.contentWindow!.document,
+            throwsA(anything),
+          );
+          expect(await controller.getTitle(), 'Fetched page');
+          expect(
+            await controller.runJavaScriptReturningResult(
+              'document.getElementById("relative").href',
+            ),
+            'https://example.test/base/next',
+          );
+
+          await controller.addJavaScriptChannel(
+            JavaScriptChannelParams(
+              name: 'FetchedChannel',
+              onMessageReceived: (JavaScriptMessage message) {
+                channelMessages.add(message.message);
+              },
+            ),
+          );
+          await controller.runJavaScript(
+            'FetchedChannel.postMessage("isolated")',
+          );
+          for (int i = 0; i < 20 && channelMessages.isEmpty; i += 1) {
+            await Future<void>.delayed(const Duration(milliseconds: 25));
+          }
+          expect(channelMessages, <String>['isolated']);
+
+          await controller.scrollTo(0, 120);
+          expect((await controller.getScrollPosition()).dy, 120);
+        },
+      );
 
       test('escapes "#" correctly', () async {
         final mockHttpRequestFactory = MockHttpRequestFactory();
@@ -514,25 +684,19 @@ void main() {
     });
 
     group('userAgent', () {
-      test(
-        'rejects unsupported overrides and allows reset to default',
-        () async {
-          final controller = WebWebViewController(
-            WebWebViewControllerCreationParams(),
-          );
-          final String? originalUserAgent = await controller.getUserAgent();
+      test('safely ignores unsupported overrides and allows reset', () async {
+        final controller = WebWebViewController(
+          WebWebViewControllerCreationParams(),
+        );
+        final String? originalUserAgent = await controller.getUserAgent();
 
-          await expectLater(
-            () => controller.setUserAgent('custom-agent'),
-            throwsUnsupportedError,
-          );
+        await controller.setUserAgent('custom-agent');
 
-          expect(await controller.getUserAgent(), originalUserAgent);
+        expect(await controller.getUserAgent(), originalUserAgent);
 
-          await controller.setUserAgent(null);
-          expect(await controller.getUserAgent(), originalUserAgent);
-        },
-      );
+        await controller.setUserAgent(null);
+        expect(await controller.getUserAgent(), originalUserAgent);
+      });
     });
 
     group('javascript', () {
@@ -915,6 +1079,22 @@ void main() {
         },
       );
 
+      test('uses a safe fallback for asynchronous confirm callbacks', () async {
+        final params = WebWebViewControllerCreationParams();
+        final controller = WebWebViewController(params);
+        addTearDown(() {
+          params.iFrame.remove();
+        });
+
+        await _attachAndLoadScrollableHtml(controller, params);
+        await controller.setOnJavaScriptConfirmDialog((_) async => true);
+
+        expect(
+          await controller.runJavaScriptReturningResult("confirm('continue?')"),
+          isFalse,
+        );
+      });
+
       test('keeps dialog bridge entries for multiple controllers', () async {
         final paramsA = WebWebViewControllerCreationParams();
         final paramsB = WebWebViewControllerCreationParams();
@@ -1077,6 +1257,59 @@ void main() {
             'document.body.getAttribute("data-original-get-user-media-called")',
           ),
           'yes',
+        );
+      });
+
+      test('rejects forged in-frame permission decisions', () async {
+        final params = WebWebViewControllerCreationParams();
+        final controller = WebWebViewController(params);
+        final requests = <PlatformWebViewPermissionRequest>[];
+        addTearDown(() {
+          params.iFrame.remove();
+        });
+
+        await _attachAndLoadScrollableHtml(controller, params);
+        await _installFakeGetUserMedia(controller);
+        await controller.setOnPlatformPermissionRequest(requests.add);
+        await controller.runJavaScript('''
+          window.permissionResult = 'pending';
+          navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(function() {
+              window.permissionResult = 'granted';
+            })
+            .catch(function(error) {
+              window.permissionResult = error.name;
+            });
+        ''');
+        for (int i = 0; i < 20 && requests.isEmpty; i += 1) {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+        expect(requests, hasLength(1));
+
+        await controller.runJavaScript('''
+          window.postMessage({
+            "__webview_all_type": "platformPermissionDecision",
+            "webViewId": ${jsonEncode(params.iFrame.id)},
+            "requestId": "1",
+            "granted": true
+          }, "*");
+        ''');
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(
+          await controller.runJavaScriptReturningResult(
+            'window.permissionResult',
+          ),
+          'pending',
+        );
+
+        await requests.single.deny();
+        expect(
+          await _waitForJavaScriptValue(
+            controller,
+            'window.permissionResult',
+            isNot('pending'),
+          ),
+          'NotAllowedError',
         );
       });
     });

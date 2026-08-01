@@ -9,27 +9,26 @@ class ContentType {
   /// See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
   /// See: https://httpwg.org/specs/rfc9110.html#media.type
   ContentType.parse(String header) {
-    final Iterable<String> chunks = header
-        .split(';')
-        .map((String e) => e.trim().toLowerCase());
+    final List<String> chunks = _splitParameters(header);
+    _mimeType = chunks.first.trim().toLowerCase();
 
-    for (final chunk in chunks) {
-      if (!chunk.contains('=')) {
-        _mimeType = chunk;
-      } else {
-        final List<String> bits = chunk
-            .split('=')
-            .map((String e) => e.trim())
-            .toList();
-        assert(bits.length == 2);
-        switch (bits[0]) {
-          case 'charset':
-            _charset = bits[1];
-          case 'boundary':
-            _boundary = bits[1];
-          default:
-            throw StateError('Unable to parse "$chunk" in content-type.');
-        }
+    for (final String chunk in chunks.skip(1)) {
+      final int separator = chunk.indexOf('=');
+      if (separator <= 0) {
+        // Unknown or malformed parameters do not make an otherwise usable
+        // response body unloadable.
+        continue;
+      }
+
+      final String name = chunk.substring(0, separator).trim().toLowerCase();
+      final String value = _unquote(chunk.substring(separator + 1).trim());
+      switch (name) {
+        case 'charset':
+          _charset = value;
+        case 'boundary':
+          _boundary = value;
+        default:
+        // Extension parameters are valid and are intentionally ignored.
       }
     }
   }
@@ -46,4 +45,63 @@ class ContentType {
 
   /// The separation boundary for multipart entities.
   String? get boundary => _boundary;
+
+  static List<String> _splitParameters(String header) {
+    final List<String> chunks = <String>[];
+    final StringBuffer chunk = StringBuffer();
+    bool inQuotedString = false;
+    bool escaped = false;
+
+    for (final int codePoint in header.runes) {
+      final String character = String.fromCharCode(codePoint);
+      if (escaped) {
+        chunk.write(character);
+        escaped = false;
+        continue;
+      }
+      if (inQuotedString && character == '\\') {
+        chunk.write(character);
+        escaped = true;
+        continue;
+      }
+      if (character == '"') {
+        inQuotedString = !inQuotedString;
+        chunk.write(character);
+        continue;
+      }
+      if (character == ';' && !inQuotedString) {
+        chunks.add(chunk.toString());
+        chunk.clear();
+        continue;
+      }
+      chunk.write(character);
+    }
+    chunks.add(chunk.toString());
+    return chunks;
+  }
+
+  static String _unquote(String value) {
+    if (value.length < 2 || !value.startsWith('"') || !value.endsWith('"')) {
+      return value;
+    }
+
+    final String quoted = value.substring(1, value.length - 1);
+    final StringBuffer unescaped = StringBuffer();
+    bool escaped = false;
+    for (final int codePoint in quoted.runes) {
+      final String character = String.fromCharCode(codePoint);
+      if (escaped) {
+        unescaped.write(character);
+        escaped = false;
+      } else if (character == '\\') {
+        escaped = true;
+      } else {
+        unescaped.write(character);
+      }
+    }
+    if (escaped) {
+      unescaped.write('\\');
+    }
+    return unescaped.toString();
+  }
 }

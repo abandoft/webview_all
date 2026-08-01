@@ -69,10 +69,39 @@ void main() {
       expect(contentType.charset, isNull);
     });
 
-    test('unknown parameter (throws)', () {
-      expect(() {
-        ContentType.parse('text/pLaIn; wrong=utf-8');
-      }, throwsStateError);
+    test('ignores extension parameters', () {
+      final contentType = ContentType.parse(
+        'text/pLaIn; profile="https://example.com/a=b"; charset=utf-8',
+      );
+
+      expect(contentType.mimeType, 'text/plain');
+      expect(contentType.charset, 'utf-8');
+    });
+
+    test('parses quoted values without lowercasing boundary data', () {
+      final contentType = ContentType.parse(
+        r'multipart/form-data; boundary="Case;Sensitive=Value"',
+      );
+
+      expect(contentType.mimeType, 'multipart/form-data');
+      expect(contentType.boundary, 'Case;Sensitive=Value');
+    });
+
+    test('unescapes quoted parameter values', () {
+      final contentType = ContentType.parse(
+        r'text/html; charset="utf\-8"; ignored',
+      );
+
+      expect(contentType.charset, 'utf-8');
+    });
+
+    test('ignores malformed parameters', () {
+      final contentType = ContentType.parse(
+        'text/html; invalid; =missing-name; charset=utf-8',
+      );
+
+      expect(contentType.mimeType, 'text/html');
+      expect(contentType.charset, 'utf-8');
     });
   });
 }

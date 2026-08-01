@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
+import 'dart:typed_data';
 import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/widgets.dart';
@@ -27,6 +28,9 @@ Future<void> _disposeFinalizedWebWebView(_WebWebViewDisposal disposal) async {
 
 @JS('JSON.stringify')
 external JSString? _jsonStringify(JSAny? value);
+
+@JS('Object.is')
+external bool _isSameJavaScriptObject(JSAny? first, JSAny? second);
 
 extension _WebWindowJavaScriptExtension on web.Window {
   @JS('eval')
@@ -203,6 +207,13 @@ class WebWebViewController extends PlatformWebViewController {
       'platformPermissionRequest';
   static const String _platformPermissionDecisionMessageType =
       'platformPermissionDecision';
+  static const String _isolatedBridgeReadyMessageType = 'isolatedBridgeReady';
+  static const String _isolatedBridgeRequestMessageType =
+      'isolatedBridgeRequest';
+  static const String _isolatedBridgeResponseMessageType =
+      'isolatedBridgeResponse';
+  static const String _isolatedBridgeScrollMessageType = 'isolatedBridgeScroll';
+  static const Duration _isolatedBridgeTimeout = Duration(seconds: 10);
   static const String _javaScriptDisabledSandbox =
       'allow-same-origin allow-forms allow-popups allow-downloads allow-modals';
 
@@ -239,6 +250,18 @@ class WebWebViewController extends PlatformWebViewController {
   late final _WebWebViewDisposal _nativeDisposal;
   JSExportedDartFunction? _javaScriptConfirmDialogBridge;
   JSExportedDartFunction? _javaScriptTextInputDialogBridge;
+  int _isolatedBridgeGeneration = 0;
+  int _nextIsolatedBridgeRequestId = 0;
+  Completer<void>? _isolatedBridgeReady;
+  final Map<int, Completer<Object?>> _pendingIsolatedBridgeRequests =
+      <int, Completer<Object?>>{};
+  final Set<String> _reportedLimitations = <String>{};
+
+  void _logLimitationOnce(String key, String message) {
+    if (_reportedLimitations.add(key)) {
+      debugPrint('webview_all_web: $message');
+    }
+  }
 
   @override
   Future<void> loadFile(String absoluteFilePath) {
@@ -269,7 +292,7 @@ class WebWebViewController extends PlatformWebViewController {
     _lastXhrRequestParams = null;
     _lastLoadedType = _NavigationLoadType.html;
     _markLogicalUrlHistoryEntry(_currentUrl!);
-    _webWebViewParams.iFrame.srcdoc = content.toJS;
+    _webWebViewParams.iFrame.srcdoc = _prepareInlineHtml(content).toJS;
   }
 
   @override
@@ -325,7 +348,9 @@ class WebWebViewController extends PlatformWebViewController {
   @override
   Future<void> reload() async {
     if (_lastLoadedType == _NavigationLoadType.html) {
-      _webWebViewParams.iFrame.srcdoc = (_lastHtmlStringContent ?? '').toJS;
+      _webWebViewParams.iFrame.srcdoc = _prepareInlineHtml(
+        _lastHtmlStringContent ?? '',
+      ).toJS;
       return;
     }
 
@@ -372,24 +397,61 @@ class WebWebViewController extends PlatformWebViewController {
 
   @override
   Future<Offset> getScrollPosition() async {
-    final web.Window window = _requireAccessibleContentWindow(
-      'Reading scroll position is only supported for same-origin iframe content.',
+    final web.Window? window = _tryReadAccessibleContentWindow();
+    if (window != null) {
+      return Offset(window.scrollX, window.scrollY);
+    }
+    if (_hasIsolatedBridge) {
+      final Object? result = await _invokeIsolatedBridge('getScrollPosition');
+      if (result case <String, Object?>{'x': final num x, 'y': final num y}) {
+        return Offset(x.toDouble(), y.toDouble());
+      }
+      throw StateError(
+        'The isolated frame returned an invalid scroll position.',
+      );
+    }
+    _requireAccessibleContentWindow(
+      'Reading scroll position is only supported for controllable iframe content.',
     );
-    return Offset(window.scrollX, window.scrollY);
+    throw StateError('Unreachable.');
   }
 
   @override
   Future<void> scrollTo(int x, int y) async {
+    final web.Window? window = _tryReadAccessibleContentWindow();
+    if (window != null) {
+      window.scrollTo(x.toJS, y);
+      return;
+    }
+    if (_hasIsolatedBridge) {
+      await _invokeIsolatedBridge(
+        'scrollTo',
+        payload: <String, Object?>{'x': x, 'y': y},
+      );
+      return;
+    }
     _requireAccessibleContentWindow(
-      'Scrolling iframe content is only supported for same-origin iframe content.',
-    ).scrollTo(x.toJS, y);
+      'Scrolling iframe content is only supported for controllable iframe content.',
+    );
   }
 
   @override
   Future<void> scrollBy(int x, int y) async {
+    final web.Window? window = _tryReadAccessibleContentWindow();
+    if (window != null) {
+      window.scrollBy(x.toJS, y);
+      return;
+    }
+    if (_hasIsolatedBridge) {
+      await _invokeIsolatedBridge(
+        'scrollBy',
+        payload: <String, Object?>{'x': x, 'y': y},
+      );
+      return;
+    }
     _requireAccessibleContentWindow(
-      'Scrolling iframe content is only supported for same-origin iframe content.',
-    ).scrollBy(x.toJS, y);
+      'Scrolling iframe content is only supported for controllable iframe content.',
+    );
   }
 
   web.Window _requireAccessibleContentWindow(String message) {
@@ -427,18 +489,189 @@ class WebWebViewController extends PlatformWebViewController {
     }
   }
 
-  void _applyScrollBarStyle() {
-    final web.Document? document = _tryReadContentDocument();
-    if (document == null) {
-      return;
+  void _resetIsolatedBridge() {
+    _isolatedBridgeGeneration += 1;
+    final Completer<void>? ready = _isolatedBridgeReady;
+    if (ready != null && !ready.isCompleted) {
+      // Wake waiters so they can observe the generation change immediately.
+      ready.complete();
+    }
+    _isolatedBridgeReady = null;
+
+    final StateError error = StateError(
+      'The WebView navigated before an isolated frame operation completed.',
+    );
+    for (final Completer<Object?> completer
+        in _pendingIsolatedBridgeRequests.values) {
+      if (!completer.isCompleted) {
+        completer.completeError(error);
+      }
+    }
+    _pendingIsolatedBridgeRequests.clear();
+  }
+
+  void _prepareIsolatedBridge() {
+    _resetIsolatedBridge();
+    _isolatedBridgeReady = Completer<void>();
+  }
+
+  bool get _hasIsolatedBridge => _isolatedBridgeReady != null;
+
+  Set<String>? get _currentSandboxTokens {
+    final String? sandbox = _webWebViewParams.iFrame.getAttribute('sandbox');
+    if (sandbox == null) {
+      return null;
+    }
+    return sandbox
+        .split(RegExp(r'\s+'))
+        .where((String token) => token.isNotEmpty)
+        .map((String token) => token.toLowerCase())
+        .toSet();
+  }
+
+  bool get _currentSandboxAllowsScripts {
+    final Set<String>? tokens = _currentSandboxTokens;
+    return tokens == null || tokens.contains('allow-scripts');
+  }
+
+  bool get _currentSandboxCreatesOpaqueOrigin {
+    final Set<String>? tokens = _currentSandboxTokens;
+    return tokens != null && !tokens.contains('allow-same-origin');
+  }
+
+  String _prepareInlineHtml(String html) {
+    if (_javaScriptMode == JavaScriptMode.unrestricted &&
+        _currentSandboxAllowsScripts &&
+        _currentSandboxCreatesOpaqueOrigin) {
+      _prepareIsolatedBridge();
+      return _injectIntoDocumentHead(
+        html,
+        _isolatedBridgeBootstrap(_isolatedBridgeGeneration),
+      );
+    }
+    _resetIsolatedBridge();
+    return html;
+  }
+
+  Future<Object?> _invokeIsolatedBridge(
+    String action, {
+    Map<String, Object?> payload = const <String, Object?>{},
+  }) async {
+    final int generation = _isolatedBridgeGeneration;
+    final Completer<void>? ready = _isolatedBridgeReady;
+    if (ready == null) {
+      throw UnsupportedError(
+        'The current iframe document does not provide the isolated WebView bridge.',
+      );
     }
 
+    await ready.future.timeout(
+      _isolatedBridgeTimeout,
+      onTimeout: () => throw TimeoutException(
+        'Timed out waiting for the isolated WebView bridge to initialize.',
+        _isolatedBridgeTimeout,
+      ),
+    );
+    if (generation != _isolatedBridgeGeneration ||
+        !identical(ready, _isolatedBridgeReady)) {
+      throw StateError('The WebView navigated before the operation started.');
+    }
+
+    final int requestId = _nextIsolatedBridgeRequestId++;
+    final Completer<Object?> completer = Completer<Object?>();
+    _pendingIsolatedBridgeRequests[requestId] = completer;
+
+    final web.Window? window = _webWebViewParams.iFrame.contentWindow;
+    if (window == null) {
+      _pendingIsolatedBridgeRequests.remove(requestId);
+      throw StateError('The iframe content window is unavailable.');
+    }
+    window.postMessage(
+      <String, Object?>{
+        _channelMessageType: _isolatedBridgeRequestMessageType,
+        'webViewId': _webWebViewParams.iFrame.id,
+        'generation': generation,
+        'requestId': requestId,
+        'action': action,
+        'payload': payload,
+      }.jsify(),
+      '*'.toJS,
+    );
+
+    return completer.future.timeout(
+      _isolatedBridgeTimeout,
+      onTimeout: () {
+        _pendingIsolatedBridgeRequests.remove(requestId);
+        throw TimeoutException(
+          'Timed out waiting for the isolated WebView operation "$action".',
+          _isolatedBridgeTimeout,
+        );
+      },
+    );
+  }
+
+  Future<bool> _evaluateScriptInCurrentDocument(String script) async {
+    final web.Window? window = _tryReadAccessibleContentWindow();
+    if (window != null) {
+      window.evaluateJavaScript(script);
+      return true;
+    }
+    if (_hasIsolatedBridge) {
+      await _invokeIsolatedBridge(
+        'evaluate',
+        payload: <String, Object?>{'script': script},
+      );
+      return true;
+    }
+    return false;
+  }
+
+  void _installScriptBestEffort(String feature, String script) {
+    unawaited(
+      _evaluateScriptInCurrentDocument(script).then<void>(
+        (_) {},
+        onError: (Object error, StackTrace stackTrace) {
+          debugPrint(
+            'webview_all_web: failed to install $feature in the current '
+            'document: $error',
+          );
+        },
+      ),
+    );
+  }
+
+  void _applyScrollBarStyle() {
+    final web.Document? document = _tryReadContentDocument();
     final StringBuffer css = StringBuffer();
     if (!_verticalScrollBarEnabled) {
       css.writeln('*::-webkit-scrollbar:vertical { width: 0 !important; }');
     }
     if (!_horizontalScrollBarEnabled) {
       css.writeln('*::-webkit-scrollbar:horizontal { height: 0 !important; }');
+    }
+
+    if (document == null) {
+      if (_hasIsolatedBridge) {
+        final String cssValue = jsonEncode(css.toString());
+        _installScriptBestEffort('scrollbar styling', '''
+          (function() {
+            const styleId = ${jsonEncode(_scrollBarStyleId)};
+            const css = $cssValue;
+            const existing = document.getElementById(styleId);
+            if (!css) {
+              if (existing) existing.remove();
+              return;
+            }
+            const style = existing || document.createElement('style');
+            style.id = styleId;
+            style.textContent = css;
+            if (!existing) {
+              (document.head || document.documentElement).appendChild(style);
+            }
+          })();
+        ''');
+      }
+      return;
     }
 
     final web.Element? existing = document.getElementById(_scrollBarStyleId);
@@ -595,8 +828,10 @@ class WebWebViewController extends PlatformWebViewController {
       return;
     }
 
-    throw UnsupportedError(
-      'Overriding the user agent is not supported by the web iframe implementation.',
+    _logLimitationOnce(
+      'setUserAgent',
+      'The browser does not allow an iframe to override its User-Agent. '
+          'The requested value was ignored.',
     );
   }
 
@@ -610,9 +845,21 @@ class WebWebViewController extends PlatformWebViewController {
     if (_javaScriptMode == JavaScriptMode.disabled) {
       throw StateError('JavaScript execution is disabled for this WebView.');
     }
+    final web.Window? window = _tryReadAccessibleContentWindow();
+    if (window != null) {
+      window.evaluateJavaScript(javaScript);
+      return;
+    }
+    if (_hasIsolatedBridge) {
+      await _invokeIsolatedBridge(
+        'evaluate',
+        payload: <String, Object?>{'script': javaScript},
+      );
+      return;
+    }
     _requireAccessibleContentWindow(
-      'Running JavaScript is only supported for same-origin iframe content.',
-    ).evaluateJavaScript(javaScript);
+      'Running JavaScript is only supported for controllable iframe content.',
+    );
   }
 
   @override
@@ -620,10 +867,27 @@ class WebWebViewController extends PlatformWebViewController {
     if (_javaScriptMode == JavaScriptMode.disabled) {
       throw StateError('JavaScript execution is disabled for this WebView.');
     }
-    final JSAny? result = _requireAccessibleContentWindow(
-      'Running JavaScript is only supported for same-origin iframe content.',
-    ).evaluateJavaScript(javaScript);
-    return _dartObjectFromJavaScriptResult(result);
+    final web.Window? window = _tryReadAccessibleContentWindow();
+    if (window != null) {
+      final JSAny? result = window.evaluateJavaScript(javaScript);
+      return _dartObjectFromJavaScriptResult(result);
+    }
+    if (_hasIsolatedBridge) {
+      final Object? result = await _invokeIsolatedBridge(
+        'evaluateReturningResult',
+        payload: <String, Object?>{'script': javaScript},
+      );
+      if (result == null) {
+        throw ArgumentError(
+          'The JavaScript returned `null` or `undefined`, which is unsupported.',
+        );
+      }
+      return result;
+    }
+    _requireAccessibleContentWindow(
+      'Running JavaScript is only supported for controllable iframe content.',
+    );
+    throw StateError('Unreachable.');
   }
 
   Object _dartObjectFromJavaScriptResult(JSAny? result) {
@@ -658,6 +922,12 @@ class WebWebViewController extends PlatformWebViewController {
   }
 
   void _handleWindowMessage(web.MessageEvent event) {
+    final web.Window? contentWindow = _webWebViewParams.iFrame.contentWindow;
+    if (contentWindow == null ||
+        !_isSameJavaScriptObject(event.source, contentWindow)) {
+      return;
+    }
+
     final JSString? jsonData = _jsonStringify(event.data);
     if (jsonData == null) {
       return;
@@ -676,6 +946,44 @@ class WebWebViewController extends PlatformWebViewController {
     }
 
     switch (decoded[_channelMessageType]) {
+      case _isolatedBridgeReadyMessageType:
+        if (decoded['generation'] != _isolatedBridgeGeneration) {
+          return;
+        }
+        final Completer<void>? ready = _isolatedBridgeReady;
+        if (ready != null && !ready.isCompleted) {
+          ready.complete();
+        }
+        return;
+      case _isolatedBridgeResponseMessageType:
+        if (decoded['generation'] != _isolatedBridgeGeneration) {
+          return;
+        }
+        final int? requestId = (decoded['requestId'] as num?)?.toInt();
+        final Completer<Object?>? completer = requestId == null
+            ? null
+            : _pendingIsolatedBridgeRequests.remove(requestId);
+        if (completer == null || completer.isCompleted) {
+          return;
+        }
+        if (decoded['ok'] == true) {
+          completer.complete(decoded['result']);
+        } else {
+          final String errorName = '${decoded['errorName'] ?? 'Error'}';
+          final String errorMessage =
+              '${decoded['errorMessage'] ?? 'The isolated frame operation failed.'}';
+          completer.completeError(StateError('$errorName: $errorMessage'));
+        }
+        return;
+      case _isolatedBridgeScrollMessageType:
+        final void Function(ScrollPositionChange scrollPositionChange)?
+        callback = _onScrollPositionChange;
+        final num? x = decoded['x'] as num?;
+        final num? y = decoded['y'] as num?;
+        if (callback != null && x != null && y != null) {
+          callback(ScrollPositionChange(x.toDouble(), y.toDouble()));
+        }
+        return;
       case _javaScriptChannelMessageType:
         final String? channelName = decoded['channelName'] as String?;
         final JavaScriptChannelParams? channel = channelName == null
@@ -784,13 +1092,11 @@ class WebWebViewController extends PlatformWebViewController {
       return;
     }
 
-    final web.Window? window = _tryReadAccessibleContentWindow();
-    if (window == null) {
-      return;
-    }
-
     for (final JavaScriptChannelParams channel in _javaScriptChannels.values) {
-      window.evaluateJavaScript(_javaScriptChannelScript(channel.name));
+      _installScriptBestEffort(
+        'JavaScript channel "${channel.name}"',
+        _javaScriptChannelScript(channel.name),
+      );
     }
   }
 
@@ -848,15 +1154,13 @@ class WebWebViewController extends PlatformWebViewController {
     if (_javaScriptMode == JavaScriptMode.disabled) {
       return;
     }
-    final web.Window? window = _tryReadAccessibleContentWindow();
-    window?.evaluateJavaScript(_javaScriptChannelScript(name));
+    await _evaluateScriptInCurrentDocument(_javaScriptChannelScript(name));
   }
 
   @override
   Future<void> removeJavaScriptChannel(String javaScriptChannelName) async {
     _javaScriptChannels.remove(javaScriptChannelName);
-    final web.Window? window = _tryReadAccessibleContentWindow();
-    window?.evaluateJavaScript(
+    await _evaluateScriptInCurrentDocument(
       _removeJavaScriptChannelScript(javaScriptChannelName),
     );
   }
@@ -869,8 +1173,7 @@ class WebWebViewController extends PlatformWebViewController {
       return;
     }
 
-    final web.Window? window = _tryReadAccessibleContentWindow();
-    window?.evaluateJavaScript('''
+    _installScriptBestEffort('console forwarding', '''
       (function() {
         if (window.__webviewAllConsoleHookInstalled) {
           return;
@@ -912,10 +1215,17 @@ class WebWebViewController extends PlatformWebViewController {
   @override
   Future<String?> getTitle() async {
     try {
-      return _webWebViewParams.iFrame.contentDocument?.title;
+      final web.Document? document = _webWebViewParams.iFrame.contentDocument;
+      if (document != null) {
+        return document.title;
+      }
     } catch (_) {
-      return null;
+      // Fall through to the isolated bridge.
     }
+    if (_hasIsolatedBridge) {
+      return (await _invokeIsolatedBridge('getTitle')) as String?;
+    }
+    return null;
   }
 
   @override
@@ -934,8 +1244,7 @@ class WebWebViewController extends PlatformWebViewController {
       return;
     }
 
-    final web.Window? window = _tryReadAccessibleContentWindow();
-    window?.evaluateJavaScript('''
+    _installScriptBestEffort('JavaScript alert forwarding', '''
       (function() {
         if (window.__webviewAllAlertDialogHookInstalled) {
           return;
@@ -1015,34 +1324,48 @@ class WebWebViewController extends PlatformWebViewController {
   T _completeJavaScriptDialogSynchronously<T>(
     Future<T> future,
     String dialogName,
+    T fallback,
   ) {
     bool completed = false;
+    bool returned = false;
     T? result;
     Object? error;
-    StackTrace? stackTrace;
 
     future.then(
       (T value) {
         completed = true;
         result = value;
+        if (returned) {
+          _logLimitationOnce(
+            'late-$dialogName-dialog-result',
+            'An asynchronous JavaScript $dialogName callback completed after '
+                'the browser required its result. The safe fallback was '
+                'already returned.',
+          );
+        }
       },
       onError: (Object exception, StackTrace stack) {
         completed = true;
         error = exception;
-        stackTrace = stack;
+        debugPrint(
+          'webview_all_web: JavaScript $dialogName callback failed: '
+          '$exception\n$stack',
+        );
       },
     );
 
     if (!completed) {
-      throw UnsupportedError(
-        'JavaScript $dialogName dialog callbacks on web must complete '
-        'synchronously because browser JavaScript dialogs require a '
-        'synchronous return value. Return a SynchronousFuture from the '
-        'callback.',
+      returned = true;
+      _logLimitationOnce(
+        'async-$dialogName-dialog',
+        'JavaScript $dialogName callbacks must complete synchronously in a '
+            'browser. The safe fallback was returned; use SynchronousFuture '
+            'when a custom decision is required.',
       );
+      return fallback;
     }
     if (error != null) {
-      Error.throwWithStackTrace(error!, stackTrace ?? StackTrace.current);
+      return fallback;
     }
     return result as T;
   }
@@ -1057,6 +1380,7 @@ class WebWebViewController extends PlatformWebViewController {
     return _completeJavaScriptDialogSynchronously<bool>(
       callback(JavaScriptConfirmDialogRequest(message: message, url: url)),
       'confirm',
+      false,
     );
   }
 
@@ -1080,6 +1404,7 @@ class WebWebViewController extends PlatformWebViewController {
         ),
       ),
       'prompt',
+      defaultText ?? '',
     );
   }
 
@@ -1093,7 +1418,17 @@ class WebWebViewController extends PlatformWebViewController {
 
     _updateJavaScriptDialogBridge();
     final web.Window? window = _tryReadAccessibleContentWindow();
-    window?.evaluateJavaScript('''
+    if (window == null) {
+      if (_hasIsolatedBridge) {
+        _logLimitationOnce(
+          'isolated-confirm-dialog',
+          'Custom confirm callbacks cannot synchronously cross an isolated '
+              'iframe boundary. The browser-native confirm dialog is kept.',
+        );
+      }
+      return;
+    }
+    window.evaluateJavaScript('''
       (function() {
         if (window.__webviewAllConfirmDialogHookInstalled) {
           return;
@@ -1124,7 +1459,17 @@ class WebWebViewController extends PlatformWebViewController {
 
     _updateJavaScriptDialogBridge();
     final web.Window? window = _tryReadAccessibleContentWindow();
-    window?.evaluateJavaScript('''
+    if (window == null) {
+      if (_hasIsolatedBridge) {
+        _logLimitationOnce(
+          'isolated-prompt-dialog',
+          'Custom prompt callbacks cannot synchronously cross an isolated '
+              'iframe boundary. The browser-native prompt dialog is kept.',
+        );
+      }
+      return;
+    }
+    window.evaluateJavaScript('''
       (function() {
         if (window.__webviewAllTextInputDialogHookInstalled) {
           return;
@@ -1158,8 +1503,7 @@ class WebWebViewController extends PlatformWebViewController {
       return;
     }
 
-    final web.Window? window = _tryReadAccessibleContentWindow();
-    window?.evaluateJavaScript('''
+    _installScriptBestEffort('platform permission forwarding', '''
       (function() {
         if (window.__webviewAllPermissionRequestHookInstalled) {
           return;
@@ -1176,6 +1520,9 @@ class WebWebViewController extends PlatformWebViewController {
         let nextRequestId = 0;
 
         window.addEventListener('message', function(event) {
+          if (event.source !== window.parent) {
+            return;
+          }
           const data = event.data;
           if (!data ||
               data["$_channelMessageType"] !== "$_platformPermissionDecisionMessageType" ||
@@ -1287,6 +1634,7 @@ class WebWebViewController extends PlatformWebViewController {
 
     _lastLoadedType = _NavigationLoadType.url;
     _lastXhrRequestParams = null;
+    _resetIsolatedBridge();
     _webWebViewParams.iFrame.src = url;
   }
 
@@ -1368,6 +1716,12 @@ class WebWebViewController extends PlatformWebViewController {
 
     final contentType = ContentType.parse(header);
     final Encoding encoding = Encoding.getByName(contentType.charset) ?? utf8;
+    final ByteBuffer responseBuffer =
+        (await response.arrayBuffer().toDart).toDart;
+    final String responseBody = _decodeResponseBody(
+      encoding,
+      responseBuffer.asUint8List(),
+    );
 
     if (updateHistory) {
       _markLogicalUrlHistoryEntry(params.uri.toString());
@@ -1375,9 +1729,29 @@ class WebWebViewController extends PlatformWebViewController {
 
     _lastXhrRequestParams = params;
     _lastLoadedType = _NavigationLoadType.xhrResponse;
+    final String mimeType = contentType.mimeType ?? 'text/html';
+    final String renderedBody;
+    if (_isHtmlMimeType(mimeType) &&
+        _javaScriptMode == JavaScriptMode.unrestricted &&
+        _currentSandboxAllowsScripts) {
+      _prepareIsolatedBridge();
+      renderedBody = _injectIntoDocumentHead(
+        responseBody,
+        '${_baseElement(params.uri.toString())}'
+        '${_isolatedBridgeBootstrap(_isolatedBridgeGeneration)}',
+      );
+    } else {
+      _resetIsolatedBridge();
+      renderedBody = _isHtmlMimeType(mimeType)
+          ? _injectIntoDocumentHead(
+              responseBody,
+              _baseElement(params.uri.toString()),
+            )
+          : responseBody;
+    }
     _webWebViewParams.iFrame.src = Uri.dataFromString(
-      (await response.text().toDart).toDart,
-      mimeType: contentType.mimeType,
+      renderedBody,
+      mimeType: mimeType,
       encoding: encoding,
     ).toString();
   }
@@ -1387,13 +1761,155 @@ class WebWebViewController extends PlatformWebViewController {
       return html;
     }
 
-    final String baseTag = '<base href="$baseUrl">';
+    return _injectIntoDocumentHead(html, _baseElement(baseUrl));
+  }
+
+  String _baseElement(String baseUrl) {
+    final String escaped = const HtmlEscape(
+      HtmlEscapeMode.attribute,
+    ).convert(baseUrl);
+    return '<base href="$escaped">';
+  }
+
+  String _decodeResponseBody(Encoding encoding, Uint8List bytes) {
+    try {
+      return encoding.decode(bytes);
+    } on FormatException catch (error) {
+      debugPrint(
+        'webview_all_web: response bytes were invalid for '
+        '${encoding.name}; decoding as malformed UTF-8 instead: $error',
+      );
+      return utf8.decode(bytes, allowMalformed: true);
+    }
+  }
+
+  String _injectIntoDocumentHead(String html, String content) {
     final RegExp headExp = RegExp(r'<head[^>]*>', caseSensitive: false);
     final Match? match = headExp.firstMatch(html);
     if (match != null) {
-      return html.replaceRange(match.end, match.end, baseTag);
+      return html.replaceRange(match.end, match.end, content);
     }
-    return '<head>$baseTag</head>$html';
+
+    final RegExp htmlExp = RegExp(r'<html[^>]*>', caseSensitive: false);
+    final Match? htmlMatch = htmlExp.firstMatch(html);
+    if (htmlMatch != null) {
+      return html.replaceRange(
+        htmlMatch.end,
+        htmlMatch.end,
+        '<head>$content</head>',
+      );
+    }
+
+    final RegExp doctypeExp = RegExp(
+      r'^\s*<!doctype[^>]*>',
+      caseSensitive: false,
+    );
+    final Match? doctypeMatch = doctypeExp.firstMatch(html);
+    if (doctypeMatch != null) {
+      return html.replaceRange(
+        doctypeMatch.end,
+        doctypeMatch.end,
+        '<head>$content</head>',
+      );
+    }
+    return '<head>$content</head>$html';
+  }
+
+  bool _isHtmlMimeType(String mimeType) {
+    return mimeType.trim().toLowerCase() == 'text/html';
+  }
+
+  String _isolatedBridgeBootstrap(int generation) {
+    return '''
+<script>
+(function() {
+  'use strict';
+  const messageTypeKey = ${jsonEncode(_channelMessageType)};
+  const requestType = ${jsonEncode(_isolatedBridgeRequestMessageType)};
+  const responseType = ${jsonEncode(_isolatedBridgeResponseMessageType)};
+  const readyType = ${jsonEncode(_isolatedBridgeReadyMessageType)};
+  const scrollType = ${jsonEncode(_isolatedBridgeScrollMessageType)};
+  const webViewId = ${jsonEncode(_webWebViewParams.iFrame.id)};
+  const generation = $generation;
+
+  function send(message) {
+    message[messageTypeKey] = message.type;
+    delete message.type;
+    message.webViewId = webViewId;
+    message.generation = generation;
+    window.parent.postMessage(message, '*');
+  }
+
+  function respond(requestId, result) {
+    send({type: responseType, requestId: requestId, ok: true, result: result});
+  }
+
+  function fail(requestId, error) {
+    send({
+      type: responseType,
+      requestId: requestId,
+      ok: false,
+      errorName: error && error.name ? String(error.name) : 'Error',
+      errorMessage: error && error.message ? String(error.message) : String(error)
+    });
+  }
+
+  window.addEventListener('message', function(event) {
+    if (event.source !== window.parent) {
+      return;
+    }
+    const data = event.data;
+    if (!data ||
+        data[messageTypeKey] !== requestType ||
+        data.webViewId !== webViewId ||
+        data.generation !== generation) {
+      return;
+    }
+
+    const requestId = data.requestId;
+    const payload = data.payload || {};
+    try {
+      switch (data.action) {
+        case 'evaluate':
+          (0, eval)(String(payload.script || ''));
+          respond(requestId, null);
+          return;
+        case 'evaluateReturningResult': {
+          const value = (0, eval)(String(payload.script || ''));
+          const encoded = JSON.stringify(value);
+          respond(requestId, encoded === undefined ? null : JSON.parse(encoded));
+          return;
+        }
+        case 'getScrollPosition':
+          respond(requestId, {x: window.scrollX, y: window.scrollY});
+          return;
+        case 'scrollTo':
+          window.scrollTo(Number(payload.x || 0), Number(payload.y || 0));
+          respond(requestId, null);
+          return;
+        case 'scrollBy':
+          window.scrollBy(Number(payload.x || 0), Number(payload.y || 0));
+          respond(requestId, null);
+          return;
+        case 'getTitle':
+          respond(requestId, document.title || null);
+          return;
+        default:
+          throw new Error('Unknown isolated WebView action: ' + data.action);
+      }
+    } catch (error) {
+      fail(requestId, error);
+    }
+  });
+
+  window.addEventListener('scroll', function() {
+    send({type: scrollType, x: window.scrollX, y: window.scrollY});
+  }, {passive: true});
+
+  send({type: readyType});
+})();
+</script>
+''';
   }
 
   String? _tryReadCurrentFrameUrl() {
