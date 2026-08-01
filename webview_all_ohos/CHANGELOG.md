@@ -1,11 +1,15 @@
+## 1.3.1
+
+* Make macOS capabilities version-aware: use native background color and magnification APIs where available, fall back to older JavaScript preferences, and log safe no-ops for WebKit features with no public macOS API.
+* Keep fetch-backed and strictly sandboxed Web HTML in opaque origins while restoring supported controller features through a source-validated, navigation-scoped message bridge; harden content-type decoding and synchronous dialog fallbacks.
+* Enforce Linux `enableZoom`, reject Android POST requests whose custom headers cannot be preserved, and safely handle future Android file chooser modes.
+* Serialize OHOS file-access setup before local loads and propagate native ArkWeb load failures instead of reporting false success.
+* Convert Windows WebView2 environment, texture, and capture initialization failures into diagnosable platform errors instead of native assertion crashes.
+
 ## 1.3.0
 
-* Use weak-reference callbacks and finalizer-based automatic cleanup so
-  built-in Windows, Linux, and Web controllers release platform resources after
-  becoming unreachable; OHOS continues to use its existing instance-manager
-  lifecycle.
-* The Linux plugin installs the GTK overlay automatically, so runner source
-  changes are no longer required.
+* Use weak-reference callbacks and finalizer-based automatic cleanup so built-in Windows, Linux, and Web controllers release platform resources after becoming unreachable; OHOS continues to use its existing instance-manager lifecycle.
+* The Linux plugin installs the GTK overlay automatically, so runner source changes are no longer required.
 
 ## 1.2.1
 

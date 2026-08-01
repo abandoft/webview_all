@@ -1,7 +1,14 @@
+## 1.3.1
+
+* macOS 能力改为按系统版本判断：可用时使用原生背景色和 magnification API，旧系统回退到兼容的 JavaScript preferences；没有公开 WebKit API 的能力打印说明并安全忽略。
+* Web 的 fetch-backed HTML 与严格 sandbox HTML 保持不透明 origin，通过校验消息来源且绑定导航生命周期的隔离 bridge 恢复受支持的控制器能力，并强化 Content-Type 解码和同步对话框降级。
+* Linux `enableZoom` 改为实际生效；Android 无法保留自定义 header 的 POST 会明确拒绝，未知的新文件选择模式安全降级。
+* OHOS 本地加载会先完成 file access 设置，ArkWeb 原生加载失败会向 Dart 传播，不再误报成功。
+* Windows WebView2 environment、纹理和帧捕获初始化失败会转为可诊断的平台错误，不再触发原生断言崩溃。
+
 ## 1.3.0
 
-* 使用弱引用回调和 finalizer 自动清理，使内置 Windows、Linux 和 Web controller
-  变为不可达后释放平台资源；OHOS 继续使用已有的 instance manager 自动生命周期。
+* 使用弱引用回调和 finalizer 自动清理，使内置 Windows、Linux 和 Web controller 变为不可达后释放平台资源；OHOS 继续使用已有的 instance manager 自动生命周期。
 * Linux 插件会自动安装 GTK overlay，无需再修改 runner 源码。
 
 ## 1.2.1
