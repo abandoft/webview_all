@@ -31,7 +31,7 @@ final value = await controller.runJavaScriptReturningResult('1 + 2');
 | Windows | 使用 WebView2 script execution。 |
 | Linux | 使用 WebKitGTK，并按需要解码 JSON。 |
 | OHOS | 使用 ArkWeb `evaluateJavascript`。 |
-| Web | 同源 iframe `eval`，结果需可 JSON 序列化。 |
+| Web | 同源内容直接 `eval`，插件管理的隔离 HTML 走来源校验消息桥；结果需可 JSON 序列化。 |
 
 ## JavaScript Channel
 
@@ -64,7 +64,8 @@ await controller.setOnConsoleMessage((JavaScriptConsoleMessage message) {
 });
 ```
 
-所有 native 平台都支持 console 回调；Web 需要同源内容才能安装 hook。
+所有 native 平台都支持 console 回调；Web 的同源内容和插件管理的隔离 HTML
+均可安装 hook。
 
 ## JavaScript 对话框
 
@@ -87,12 +88,16 @@ await controller.setOnJavaScriptTextInputDialog((request) async {
 | Windows | 支持 | 支持 | 支持 |
 | Linux | 支持 | 支持 | 支持 |
 | OHOS | 支持 | 支持 | 支持 |
-| Web | 同源支持 | 同源且同步返回 | 同源且同步返回 |
+| Web | 同源或插件管理的隔离 HTML | 同源回调；隔离 HTML 保留浏览器对话框 | 同源回调；隔离 HTML 保留浏览器对话框 |
 
-Web 的 `confirm` 和 `prompt` 是浏览器同步 API，回调应返回 `SynchronousFuture`：
+Web 的 `confirm` 和 `prompt` 是浏览器同步 API；同源内容如需确定结果，回调应
+返回 `SynchronousFuture`：
 
 ```dart
 await controller.setOnJavaScriptConfirmDialog((request) {
   return SynchronousFuture<bool>(true);
 });
 ```
+
+直接跨域 iframe URL 仍不可控制。隔离 HTML 无法通过异步跨 frame 通信返回同步
+对话框结果，因此保留浏览器原生 `confirm` 和 `prompt`。

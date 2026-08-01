@@ -92,7 +92,9 @@ await controller.addJavaScriptChannel(
 await controller.runJavaScript('AppBridge.postMessage("ready")');
 ```
 
-Web 平台上，JavaScript 执行和 channel 注入只能用于同源 iframe 内容，或由 `loadHtmlString` / fetch-backed `loadRequest` 加载的可访问内容。
+Web 平台上，同源内容使用直接访问；`loadHtmlString` 和 fetch-backed
+`loadRequest` 管理的隔离 HTML 使用消息桥实现 JavaScript 执行和 channel。
+直接跨域 iframe URL 仍受浏览器同源策略隔离。
 
 ## 使用平台实现
 

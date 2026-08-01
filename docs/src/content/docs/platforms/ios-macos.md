@@ -3,7 +3,7 @@ title: iOS and macOS
 description: WKWebView implementation, WebKit APIs, and Apple platform differences.
 ---
 
-iOS and macOS are provided by `webview_all_wkwebview ^1.3.0`. `webview_all` registers it as the default implementation for both Apple platforms.
+iOS and macOS are provided by `webview_all_wkwebview ^1.3.1`. `webview_all` registers it as the default implementation for both Apple platforms.
 
 ## Engine
 
@@ -36,7 +36,7 @@ final controller = WebViewController.fromPlatformCreationParams(params);
 | --- | --- |
 | `mediaTypesRequiringUserAction` | Set of `PlaybackMediaTypes.audio` and `PlaybackMediaTypes.video` that require user gesture. Empty set allows autoplay. |
 | `allowsInlineMediaPlayback` | Allows inline HTML5 video playback instead of fullscreen-only playback. |
-| `limitsNavigationsToAppBoundDomains` | Enables App-Bound Domains on supported iOS versions. |
+| `limitsNavigationsToAppBoundDomains` | Enables App-Bound Domains on iOS 14+ and macOS 11+. Earlier systems log the requirement and keep the native default. |
 | `javaScriptCanOpenWindowsAutomatically` | Controls JavaScript popup permission. `null` uses the native default. |
 
 ## Controller API
@@ -46,7 +46,7 @@ final controller = WebViewController.fromPlatformCreationParams(params);
 | `setAllowsBackForwardNavigationGestures(bool enabled)` | Enables swipe navigation gestures. |
 | `setAllowsLinkPreview(bool allow)` | Enables or disables link previews where supported. |
 | `setOnCanGoBackChange(callback)` | Receives `canGoBack` state changes. |
-| `setInspectable(bool inspectable)` | Enables WebKit inspection on OS versions that support it. |
+| `setInspectable(bool inspectable)` | Enables WebKit inspection on iOS 16.4+ and macOS 13.3+. Earlier systems log the requirement and safely ignore the call. |
 | `loadFileWithParams(WebKitLoadFileParams params)` | Loads a local file with an explicit read access scope. |
 
 ## Local Files
@@ -91,18 +91,24 @@ Your app still needs the corresponding `Info.plist` privacy description keys.
 
 ## macOS Differences
 
-The same Dart package targets iOS and macOS, but some underlying WebKit wrappers are UIKit-specific. Current macOS limitations include:
+The same Dart package targets iOS and macOS. macOS support uses public native
+WebKit APIs with runtime availability checks; it does not inject JavaScript to
+emulate missing view APIs.
 
 | Area | macOS limit |
 | --- | --- |
-| Scroll view access | Some scroll view methods are not implemented by the platform wrapper on macOS. |
-| Background color/opacity | `setBackgroundColor` calls are ignored by the main wrapper on macOS and logged to the terminal. |
+| Scroll position and callbacks | macOS `WKWebView` does not publicly expose its internal scroll view. Calls log the limitation and safely no-op; reads return `Offset.zero`. |
+| Scrollbar visibility and overscroll | No public macOS `WKWebView` API is available. Calls log the limitation and safely no-op. |
+| Background color | Uses native `underPageBackgroundColor` on macOS 12+. Earlier versions log the requirement and safely no-op. |
+| Zoom | Uses native `allowsMagnification`; no JavaScript fallback is used. |
+| Inspection | Requires macOS 13.3+. Earlier versions log the requirement and safely no-op. |
 | Link preview | Availability depends on platform support. |
 
-For other platform-specific Apple calls, keep platform checks in place and treat `UnimplementedError` as a signal that the native property has no macOS bridge.
+These compatibility decisions are handled by `webview_all_wkwebview`, not by
+the main `webview_all` controller.
 
 ## Known Limits
 
 - WebKit may reject JavaScript return values that cannot be bridged to Dart.
-- App-Bound Domains require host app configuration and supported iOS versions.
+- App-Bound Domains require host app configuration and iOS 14+ or macOS 11+.
 - Permission handling still depends on OS privacy entitlements and user decisions.

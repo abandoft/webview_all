@@ -51,6 +51,15 @@ import 'package:webview_all_ohos/webview_all_ohos.dart';
 import 'package:webview_all_web/webview_all_web.dart';
 ```
 
+## 1.3.1 更新内容
+
+`1.3.1` 在不改变公共 controller 接口的前提下强化运行时失败处理：
+
+- macOS 按系统版本使用原生 API，不可用能力打印说明并安全降级。
+- Web 保持受管理 HTML 的 origin 隔离，通过绑定导航生命周期的消息桥恢复受支持能力。
+- Linux 缩放禁用实际生效；OHOS 正确传播加载失败；Windows 初始化失败转为可诊断的平台错误。
+- Android 无法保留自定义 header 的 POST 会明确拒绝，不再静默发送语义不同的请求。
+
 ## 1.3.0 更新内容
 
 - Windows、Linux、OHOS 和 Web controller 使用弱引用回调及自动 finalizer
@@ -65,14 +74,14 @@ import 'package:webview_all_web/webview_all_web.dart';
 - Windows 扩展了 WebView2 环境、DevTools、popup 策略、暂停恢复、zoom、cache、HTTP/SSL auth、JS dialog、权限、console、scroll、完整 cookie 元数据。
 - Linux 扩展了 WebKitGTK 设置、Inspector、HTTP/SSL auth、权限、JS dialog、console、scroll。
 - OHOS 扩展了 ArkWeb 设置、文件选择、定位提示、全屏 custom view、权限、JS dialog、HTTP/SSL 错误、第三方 cookie。
-- Web 扩展了 iframe 属性、fetch-backed 请求、同源 JS channel、console/dialog hook 和媒体权限中介。
+- Web 扩展了 iframe 属性、fetch-backed 请求、直接同源控制、插件管理 HTML 的隔离 bridge 和媒体权限中介。
 
 ## 迁移时重点检查
 
 | 区域 | 需要确认 |
 | --- | --- |
 | `loadRequest` | Android/OHOS 不支持 POST + 自定义 headers。Web 受 CORS 限制。 |
-| JavaScript | Web 只能控制同源 iframe 内容。 |
+| JavaScript | Web 可直接控制同源内容，并通过消息桥控制插件管理的隔离 HTML；直接跨域 iframe URL 仍由浏览器隔离。 |
 | Cookie | Web cookie 只来自宿主页 `document.cookie`。 |
 | TLS | Web 无法暴露可恢复证书错误决策。 |
 | macOS | 部分 UIKit 风格 WebKit 属性没有 macOS bridge。 |

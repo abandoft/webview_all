@@ -3,7 +3,7 @@ title: Linux
 description: WebKitGTK 实现、自动 GtkOverlay 集成、API 和限制。
 ---
 
-Linux 由 `webview_all_linux 1.3.0` 提供，底层使用 WebKitGTK。
+Linux 由 `webview_all_linux 1.3.1` 提供，底层使用 WebKitGTK。
 
 | 项 | 值 |
 | --- | --- |
@@ -49,6 +49,9 @@ final params = const LinuxWebViewControllerCreationParams(
 | `setDefaultFontSize` / `setMinimumFontSize` | 字号设置。 |
 | `setZoomFactor` | 页面缩放。 |
 | `dispose` | 释放 native WebView。 |
+
+通用 `enableZoom(false)` 会禁用插件可控制的 WebKitGTK 缩放手势，包括
+Ctrl+鼠标滚轮和 Ctrl+`+`/`-`/`0`；普通滚动与键盘输入不受影响。
 
 ## 事件覆盖
 

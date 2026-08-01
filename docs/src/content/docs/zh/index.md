@@ -7,7 +7,7 @@ description: webview_all 文档，全平台的 Flutter WebView。
 Linux、OpenHarmony 和 Web 等平台，使用从 Flutter 官方接口 fork 的
 [`webview_platform_interface`](https://pub.dev/packages/webview_platform_interface)。
 
-当前无版本号路由对应 latest，文档版本为 `1.3.0`。
+当前无版本号路由对应 latest，文档版本为 `1.3.1`。
 
 ## 平台兼容性
 

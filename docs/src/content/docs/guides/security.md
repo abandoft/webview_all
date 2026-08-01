@@ -95,9 +95,14 @@ The web implementation benefits from browser sandboxing but also inherits browse
 
 ```dart
 final params = WebWebViewControllerCreationParams(
-  iFrameSandbox: 'allow-same-origin allow-scripts allow-forms',
+  iFrameSandbox: 'allow-scripts allow-forms',
   iFrameReferrerPolicy: 'no-referrer',
 );
 ```
+
+Avoid combining `allow-scripts` and `allow-same-origin` for untrusted
+same-origin or `srcdoc` content. That combination can let the document remove
+its own sandbox. Strictly sandboxed `loadHtmlString` content and fetch-backed
+HTML use the plugin's isolated message bridge for supported controller APIs.
 
 Do not add broad sandbox permissions such as `allow-top-navigation` unless the embedded content must control the top-level browser tab.

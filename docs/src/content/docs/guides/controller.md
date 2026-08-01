@@ -125,17 +125,20 @@ if (await controller.supportsSetScrollBarsEnabled()) {
 }
 ```
 
-In `webview_all 1.3.0`, Android, iOS, macOS, Windows, Linux, OHOS, and web all expose scrollbar APIs, but the actual rendering remains engine-specific. Web and Windows implement visibility with injected CSS.
+In `webview_all 1.3.1`, scrollbar rendering remains engine-specific. macOS
+reports this capability as unsupported because public `WKWebView` does not
+expose its internal scroll view. Web and Windows implement visibility with
+injected CSS.
 
 ## Appearance and Interaction
 
 | Method | Behavior |
 | --- | --- |
-| `setBackgroundColor(Color color)` | Applies an engine background color where available. Calls are ignored on macOS and logged to the terminal. |
-| `enableZoom(bool enabled)` | Toggles platform zoom behavior. |
-| `setUserAgent(String? userAgent)` | Overrides the user agent where the engine allows it. Web rejects non-null overrides. |
+| `setBackgroundColor(Color color)` | Applies an engine background color where available. macOS uses a native API on 12+ and logs/no-ops on earlier versions. |
+| `enableZoom(bool enabled)` | Toggles platform zoom behavior. macOS uses native magnification. |
+| `setUserAgent(String? userAgent)` | Overrides the user agent where the engine allows it. Web logs once and ignores non-null overrides. |
 | `getUserAgent()` | Returns the effective or platform-reported user agent when available. |
-| `setOverScrollMode(WebViewOverScrollMode mode)` | Maps to native overscroll where possible or CSS `overscroll-behavior` on CSS-backed implementations. |
+| `setOverScrollMode(WebViewOverScrollMode mode)` | Maps to native overscroll where possible or CSS `overscroll-behavior` on CSS-backed implementations. macOS logs/no-ops because no public API is available. |
 
 ## Platform Controller Access
 

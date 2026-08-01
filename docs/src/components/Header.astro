@@ -35,8 +35,8 @@ const versionLabel = isChinese ? '文档版本' : 'Documentation version';
     <label class="version-picker print:hidden">
       <span class="sr-only">{versionLabel}</span>
       <select aria-label={versionLabel} data-docs-version>
-        <option value={latestHref} selected={!isVersion12}>Latest (1.3.0)</option>
-        <option value={version12Href} selected={isVersion12}>1.2</option>
+        <option value={latestHref} selected={!isVersion12}>latest</option>
+        <option value={version12Href} selected={isVersion12}>1.2.1</option>
       </select>
     </label>
   </div>

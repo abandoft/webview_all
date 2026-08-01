@@ -92,7 +92,9 @@ await controller.addJavaScriptChannel(
 );
 ```
 
-`runJavaScriptReturningResult` 会拒绝 `null` 和 `undefined`。Web 平台要求同源 iframe 内容。
+`runJavaScriptReturningResult` 会拒绝 `null` 和 `undefined`。Web 平台可直接
+控制同源内容，并通过消息桥控制插件管理的隔离 HTML；直接跨域 iframe URL
+仍不可访问。
 
 ## 滚动和外观
 
@@ -117,10 +119,10 @@ if (await controller.supportsSetScrollBarsEnabled()) {
 
 | 方法 | 作用 |
 | --- | --- |
-| `setBackgroundColor` | 设置背景色；macOS 上会被忽略并在终端打印日志。 |
-| `enableZoom` | 控制缩放能力。 |
-| `setUserAgent` / `getUserAgent` | 设置和读取 UA；Web 不支持非空 UA override。 |
-| `setOverScrollMode` | 控制 overscroll；部分平台通过 CSS 注入实现。 |
+| `setBackgroundColor` | 设置背景色；macOS 12+ 使用原生 API，更早版本打印说明并安全忽略。 |
+| `enableZoom` | 控制缩放能力；macOS 使用原生 magnification。 |
+| `setUserAgent` / `getUserAgent` | 设置和读取 UA；Web 对非空 override 打印一次说明并忽略。 |
+| `setOverScrollMode` | 控制 overscroll；macOS 因没有公开 API 而打印说明并安全忽略，部分平台通过 CSS 注入实现。 |
 
 ## 访问平台实现
 

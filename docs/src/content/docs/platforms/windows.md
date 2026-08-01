@@ -3,7 +3,7 @@ title: Windows
 description: WebView2 implementation, runtime setup, APIs, and limits.
 ---
 
-Windows is provided by `webview_all_windows 1.3.0` and uses Microsoft Edge WebView2.
+Windows is provided by `webview_all_windows 1.3.1` and uses Microsoft Edge WebView2.
 
 ## Engine
 
@@ -126,3 +126,7 @@ Windows-specific response classes add request and response detail:
 - Scrollbars and overscroll are implemented with injected CSS because WebView2 does not expose stable direct APIs for every scrollbar behavior.
 - The app must ensure that the WebView2 Runtime is available on target machines.
 - Runtime initialization should happen once and before creating controllers.
+- WebView2 environment, composition texture, and frame-capture startup failures
+  are returned as `PlatformException`s instead of terminating the process
+  through native assertions. Applications can log the error and guide users to
+  install or repair the runtime.

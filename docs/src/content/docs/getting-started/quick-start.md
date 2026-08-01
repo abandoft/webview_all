@@ -106,7 +106,11 @@ await controller.addJavaScriptChannel(
 await controller.runJavaScript('AppBridge.postMessage("ready")');
 ```
 
-On the web platform, JavaScript execution and channel injection require same-origin iframe content or content loaded by `loadHtmlString`/fetch-backed `loadRequest`. Cross-origin browser iframes intentionally block direct DOM and JavaScript access.
+On the web platform, JavaScript execution and channel injection work through
+direct access for same-origin content and an isolated message bridge for
+plugin-managed HTML loaded by `loadHtmlString` or fetch-backed `loadRequest`.
+Cross-origin browser iframe URLs intentionally block direct DOM and JavaScript
+access.
 
 ## Accessing Platform Implementations
 

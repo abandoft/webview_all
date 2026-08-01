@@ -38,7 +38,7 @@ Return-value behavior:
 | Windows | Uses WebView2 script execution and decodes returned values. |
 | Linux | Uses WebKitGTK and decodes JSON-marked results where needed. |
 | OHOS | Uses ArkWeb `evaluateJavascript`; JSON is decoded when possible. |
-| Web | Uses iframe `eval` for same-origin content and JSON serialization. |
+| Web | Uses direct iframe `eval` for same-origin content and a source-validated message bridge for plugin-managed isolated HTML. Results must be JSON-serializable. |
 
 `null` and `undefined` are rejected by `runJavaScriptReturningResult`.
 
@@ -73,7 +73,8 @@ await controller.setOnConsoleMessage((JavaScriptConsoleMessage message) {
 });
 ```
 
-Android, iOS, macOS, Windows, Linux, OHOS, and same-origin web content support console message callbacks.
+Android, iOS, macOS, Windows, Linux, OHOS, and controllable Web content
+support console message callbacks.
 
 ## JavaScript Dialogs
 
@@ -100,9 +101,11 @@ Dialog support by platform:
 | Windows | Supported | Supported | Supported | WebView2 JavaScript dialog bridge. |
 | Linux | Supported | Supported | Supported | WebKitGTK dialog events. |
 | OHOS | Supported | Supported | Supported | ArkWeb WebChromeClient bridge. |
-| Web | Same-origin only | Same-origin only | Same-origin only | `confirm` and `prompt` callbacks must complete synchronously. |
+| Web | Same-origin or managed isolated HTML | Same-origin callback; isolated HTML keeps the browser dialog | Same-origin callback; isolated HTML keeps the browser dialog | Custom `confirm` and `prompt` callbacks must complete synchronously. |
 
-On web, `confirm` and `prompt` are browser-synchronous APIs. Return a `SynchronousFuture` from those callbacks if you need deterministic behavior:
+On web, `confirm` and `prompt` are browser-synchronous APIs. Return a
+`SynchronousFuture` from those callbacks if you need deterministic behavior
+for same-origin content:
 
 ```dart
 await controller.setOnJavaScriptConfirmDialog((request) {
@@ -121,4 +124,7 @@ Browser iframes block direct scripting of cross-origin pages. On web, these APIs
 - JavaScript dialog hooks
 - scroll position reads and writes
 
-Use `loadHtmlString`, same-origin URLs, or fetch-backed `loadRequest` when you need those features in Flutter Web.
+Use `loadHtmlString`, same-origin URLs, or fetch-backed `loadRequest` when you
+need those features in Flutter Web. Direct cross-origin iframe URLs remain
+inaccessible. Isolated HTML keeps browser-native `confirm` and `prompt`
+dialogs because synchronous callbacks cannot cross the frame boundary.

@@ -3,7 +3,7 @@ title: Windows
 description: WebView2 实现、运行时设置、API 和限制。
 ---
 
-Windows 由 `webview_all_windows 1.3.0` 提供，底层使用 Microsoft Edge WebView2。
+Windows 由 `webview_all_windows 1.3.1` 提供，底层使用 Microsoft Edge WebView2。
 
 | 项 | 值 |
 | --- | --- |
@@ -76,3 +76,6 @@ await manager.setWindowsCookie(
 - 目标机器必须有 WebView2 Runtime。
 - 滚动条和 overscroll 通过 CSS 注入实现。
 - 环境初始化应只做一次，并尽量早于 controller 创建。
+- WebView2 environment、composition texture 或帧捕获启动失败时会返回
+  `PlatformException`，不再因原生断言终止进程；应用可记录错误并提示用户安装或
+  修复 Runtime。

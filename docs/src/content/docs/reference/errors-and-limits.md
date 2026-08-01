@@ -23,10 +23,11 @@ This page lists important failures and platform limits that production code shou
 | Android | `loadRequest` with `POST` and custom headers | Throws because Android WebView `postUrl` cannot attach custom headers. |
 | OHOS | `loadRequest` with `POST` and custom headers | Throws `UnsupportedError` because ArkWeb `postUrl` cannot attach custom headers. |
 | Web | `loadFile` | Throws `UnsupportedError`; browsers cannot read arbitrary host files. |
-| Web | `setUserAgent(nonNull)` | Throws `UnsupportedError`; iframe user agent cannot be overridden by page JavaScript. |
+| Web | `setUserAgent(nonNull)` | Logs once and ignores the override; iframe network user agent cannot be changed by page JavaScript. |
 | Web | recoverable SSL decisions | `WebPlatformSslAuthError.proceed()` and `cancel()` throw `UnsupportedError`. |
 | Web | cross-origin JavaScript and scroll APIs | Throws `UnsupportedError` or silently cannot install hooks when browser policy blocks access. |
-| macOS | selected UIKit-backed WebKit properties | May throw `UnimplementedError` in the official WK package. |
+| macOS | scroll position, scroll callbacks, scrollbar visibility, and overscroll | The fork logs the missing public WKWebView API and safely no-ops; position reads return `Offset.zero`. |
+| macOS | version-gated WebKit properties | Background color requires macOS 12 and inspection requires macOS 13.3. Earlier versions log and safely no-op. |
 
 ## Request Loading Limits
 
@@ -51,7 +52,9 @@ Proceeding through a certificate error can expose users to interception. Keep `p
 
 ## JavaScript Dialog Limits
 
-On web, `confirm` and `prompt` callbacks must complete synchronously because browser JavaScript expects a synchronous return value:
+On web, custom `confirm` and `prompt` callbacks for same-origin content must
+complete synchronously because browser JavaScript expects a synchronous return
+value:
 
 ```dart
 await controller.setOnJavaScriptConfirmDialog((request) {
@@ -73,7 +76,10 @@ The web platform cannot inspect or script cross-origin iframe content. This affe
 - title reads
 - resource error detail
 
-Use same-origin content, `loadHtmlString`, or fetch-backed requests when those features are required.
+Use same-origin content, `loadHtmlString`, or fetch-backed requests when those
+features are required. Plugin-managed isolated HTML uses a controlled message
+bridge. Direct cross-origin iframe URLs remain inaccessible, and isolated HTML
+keeps browser-native `confirm` and `prompt` dialogs.
 
 ## Native Runtime Limits
 

@@ -1,6 +1,6 @@
 ---
 title: Capability Matrix
-description: Cross-platform feature support for webview_all 1.3.0.
+description: Cross-platform feature support for webview_all 1.3.1.
 ---
 
 Legend:
@@ -47,14 +47,14 @@ Legend:
 | Feature | Android | iOS | macOS | Windows | Linux | OHOS | Web |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | JavaScript enable/disable | Full | Full | Full | Full | Full | Full | Limited, iframe sandbox |
-| `runJavaScript` | Full | Full | Full | Full | Full | Full | Limited, same-origin only |
-| `runJavaScriptReturningResult` | Full | Full | Full | Full | Full | Full | Limited, same-origin and JSON-serializable |
-| JavaScript channels | Full | Full | Full | Full | Full | Full | Limited, same-origin only |
-| Console message callback | Full | Full | Full | Full | Full | Full | Limited, same-origin hook |
-| `alert` callback | Full | Full | Full | Full | Full | Full | Limited, same-origin hook |
-| `confirm` callback | Full | Full | Full | Full | Full | Full | Limited, sync return required |
-| `prompt` callback | Full | Full | Full | Full | Full | Full | Limited, sync return required |
-| Permission request callback | Full | Full | Full | Full | Full | Full | Limited, same-origin media hook plus browser prompt |
+| `runJavaScript` | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
+| `runJavaScriptReturningResult` | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML; JSON-serializable |
+| JavaScript channels | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
+| Console message callback | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
+| `alert` callback | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
+| `confirm` callback | Full | Full | Full | Full | Full | Full | Same-origin synchronous callback; isolated uses browser dialog |
+| `prompt` callback | Full | Full | Full | Full | Full | Full | Same-origin synchronous callback; isolated uses browser dialog |
+| Permission request callback | Full | Full | Full | Full | Full | Full | Controllable HTML media hook plus browser prompt |
 | File selector callback | Full | No common callback | No common callback | No common callback | No common callback | Full | Browser-owned |
 | Geolocation prompt callback | Full | No platform API | No platform API | Browser/engine-owned | Browser/engine-owned | Full | Browser-owned |
 | Fullscreen custom widget | Full | Engine-owned | Engine-owned | Engine-owned | Engine-owned | Full | Browser-owned |
@@ -63,15 +63,15 @@ Legend:
 
 | Feature | Android | iOS | macOS | Windows | Linux | OHOS | Web |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `getTitle` | Full | Full | Full | Full | Full | Full | Limited, same-origin document title |
-| Scroll position read | Full | Full | Full | Full | Full | Full | Limited, same-origin only |
-| Scroll position callback | Full | Full | Full | Full | Full | Full | Limited, same-origin only |
-| `scrollTo`/`scrollBy` | Full | Full | Full | Full | Full | Full | Limited, same-origin only |
-| Scrollbar visibility | Full | Full | Full | Full, CSS injection | Full | Full, CSS injection | Full, CSS injection |
-| Background color | Full | Full | Limited | Full | Full | Full | Full, iframe CSS |
+| `getTitle` | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
+| Scroll position read | Full | Full | No, logs and returns zero | Full | Full | Full | Same-origin or managed isolated HTML |
+| Scroll position callback | Full | Full | No, logs and no-op | Full | Full | Full | Same-origin or managed isolated HTML |
+| `scrollTo`/`scrollBy` | Full | Full | No, logs and no-op | Full | Full | Full | Same-origin or managed isolated HTML |
+| Scrollbar visibility | Full | Full | No, logs and no-op | Full, CSS injection | Full | Full, CSS injection | Full, CSS injection |
+| Background color | Full | Full | macOS 12+, logs and no-op earlier | Full | Full | Full | Full, iframe CSS |
 | Zoom enable/disable | Full | Full | Full | Full | Full | Full | Limited, iframe touch action |
-| User agent override | Full | Full | Full | Full | Full | Full | No for non-null override |
-| Overscroll mode | Full | Limited | Limited | Full, CSS injection | Full | Full, CSS injection | Full, iframe CSS |
+| User agent override | Full | Full | Full | Full | Full | Full | No; logs and ignores non-null override |
+| Overscroll mode | Full | Limited | No, logs and no-op | Full, CSS injection | Full | Full, CSS injection | Full, iframe CSS |
 
 ## Platform API Highlights
 
@@ -82,4 +82,4 @@ Legend:
 | Windows | WebView2 environment, runtime version, popup policy, DevTools, suspend/resume, zoom factor, cache disabled, virtual host mapping, extended cookies. |
 | Linux | WebKitGTK developer extras, inspector, media settings, page cache, file URL access, font sizes, zoom factor, JavaScript dialogs, HTTP/SSL auth, permission requests. |
 | OHOS | ArkWeb settings, debugging, file selector, geolocation prompts, custom fullscreen widget, third-party cookies, OHOS permission resource types. |
-| Web | iframe attributes, sandbox/referrer policy, fetch-backed requests, same-origin JS channels, media permission mediation. |
+| Web | iframe attributes, sandbox/referrer policy, fetch-backed requests, isolated managed-HTML bridge, media permission mediation. |

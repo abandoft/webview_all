@@ -3,7 +3,7 @@ title: Linux
 description: WebKitGTK implementation, automatic GtkOverlay integration, APIs, and limits.
 ---
 
-Linux is provided by `webview_all_linux 1.3.0` and uses WebKitGTK.
+Linux is provided by `webview_all_linux 1.3.1` and uses WebKitGTK.
 
 ## Engine
 
@@ -63,6 +63,10 @@ Each field is nullable. `null` leaves the WebKitGTK default unchanged.
 | `setMinimumFontSize(int fontSize)` | Sets minimum font size. |
 | `setZoomFactor(double zoomFactor)` | Sets page zoom. |
 | `dispose()` | Releases the native WebView and event subscription. |
+
+The common `enableZoom(false)` API disables plugin-controlled WebKitGTK zoom
+gestures, including Ctrl+mouse-wheel and Ctrl+`+`/`-`/`0`. Ordinary scrolling
+and keyboard input continue to work.
 
 ## Event Coverage
 

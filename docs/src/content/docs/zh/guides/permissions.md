@@ -92,4 +92,7 @@ await (controller.platform as OhosWebViewController)
 
 ## Web 权限
 
-Web 实现会在同源 iframe 中包装 `navigator.mediaDevices.getUserMedia`，并把 camera/microphone 请求转发给 `onPermissionRequest`。即使应用调用 `grant()`，浏览器仍可能继续显示自己的权限提示。
+Web 实现会在同源内容和插件管理的隔离 HTML 中包装
+`navigator.mediaDevices.getUserMedia`，并把 camera/microphone 请求转发给
+`onPermissionRequest`。即使应用调用 `grant()`，浏览器仍可能继续显示自己的
+权限提示。

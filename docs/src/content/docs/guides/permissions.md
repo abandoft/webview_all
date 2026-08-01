@@ -122,6 +122,8 @@ If a callback is not set, Android and OHOS widgets install a default fullscreen 
 
 ## Web Permissions
 
-The web implementation can mediate `navigator.mediaDevices.getUserMedia` for same-origin iframe content by wrapping the page API. It can report camera and microphone requests to `onPermissionRequest`.
+The web implementation can mediate `navigator.mediaDevices.getUserMedia` for
+same-origin content and plugin-managed isolated HTML by wrapping the page API.
+It can report camera and microphone requests to `onPermissionRequest`.
 
 The browser still owns the final permission prompt. `request.grant()` only allows the page call to continue to the browser permission layer.

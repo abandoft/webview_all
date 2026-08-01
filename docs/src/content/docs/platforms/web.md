@@ -3,7 +3,7 @@ title: Web
 description: Browser iframe implementation, iframe attributes, fetch-backed requests, and security limits.
 ---
 
-Web is provided by `webview_all_web 1.3.0` and renders an HTML `iframe`.
+Web is provided by `webview_all_web 1.3.1` and renders an HTML `iframe`.
 
 ## Engine
 
@@ -22,7 +22,7 @@ Web is provided by `webview_all_web 1.3.0` and renders an HTML `iframe`.
 ```dart
 final params = WebWebViewControllerCreationParams(
   iFrameAllow: 'camera; microphone; fullscreen',
-  iFrameSandbox: 'allow-same-origin allow-scripts allow-forms',
+  iFrameSandbox: 'allow-scripts allow-forms',
   iFrameReferrerPolicy: 'strict-origin-when-cross-origin',
   iFrameAttributes: const <String, String?>{
     'loading': 'lazy',
@@ -67,10 +67,15 @@ await controller.loadRequest(
 ```
 
 Fetch-backed loads require server CORS approval for cross-origin requests.
+HTML response bytes are decoded using the declared `Content-Type` charset,
+including quoted and extension parameters. A `<base>` element preserves
+relative URL resolution.
 
-## Same-Origin Features
+## Controllable Content
 
-These APIs require same-origin iframe access:
+The implementation supports these APIs through either direct same-origin
+access or a source-validated message bridge injected into isolated,
+plugin-managed HTML:
 
 - `runJavaScript`
 - `runJavaScriptReturningResult`
@@ -81,7 +86,14 @@ These APIs require same-origin iframe access:
 - scroll reads and writes
 - `getTitle`
 
-They work well with `loadHtmlString`, same-origin URLs, and fetch-backed loads whose response becomes same-origin `data:` content.
+This covers same-origin URLs, ordinary `loadHtmlString`, fetch-backed HTML, and
+`loadHtmlString` used with a strict sandbox that contains `allow-scripts` but
+not `allow-same-origin`. Fetch-backed HTML remains in an opaque `data:` origin;
+it is not granted the host application's origin.
+
+A simple URL loaded directly into a cross-origin iframe remains browser-owned
+and cannot be controlled by these APIs. Fetch-backed non-HTML responses are
+also rendered without injecting a JavaScript bridge.
 
 ## Cookies
 
@@ -105,11 +117,19 @@ It cannot read `HttpOnly` cookies or manage cookies for unrelated domains.
 | API | Behavior |
 | --- | --- |
 | `loadFile` | Throws `UnsupportedError`. |
-| `setUserAgent(nonNull)` | Throws `UnsupportedError`. Browsers do not let page JavaScript override iframe network user agent. |
+| `setUserAgent(nonNull)` | Logs once and ignores the value. Browsers do not let page JavaScript override iframe network user agent. |
 | SSL auth decisions | Not available. Browser TLS errors are controlled by the browser. |
 | HTTP auth callback | Not available as a WebView callback. |
 | Cross-origin JavaScript | Blocked by browser same-origin policy. |
 
 ## Permission Mediation
 
-For same-origin content, the implementation wraps `navigator.mediaDevices.getUserMedia` and reports camera/microphone requests to `onPermissionRequest`. The browser may still show its own permission prompt after your app grants the WebView request.
+For controllable HTML, the implementation wraps
+`navigator.mediaDevices.getUserMedia` and reports camera/microphone requests to
+`onPermissionRequest`. The browser may still show its own permission prompt
+after your app grants the WebView request.
+
+Custom `confirm` and `prompt` callbacks require synchronous same-origin access.
+For isolated HTML the native browser dialogs remain active because a
+synchronous browser API cannot safely wait for an asynchronous cross-frame
+decision.

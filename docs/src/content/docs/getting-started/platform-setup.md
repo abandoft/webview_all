@@ -95,4 +95,7 @@ The web implementation renders an HTML `iframe`. It cannot bypass browser securi
 - It cannot intercept browser TLS certificate decisions.
 - Cookies are scoped to `document.cookie` for the host origin.
 
-Use `loadHtmlString`, same-origin URLs, or a server endpoint that sets correct CORS headers when you need JavaScript control or fetch-backed custom requests.
+Use `loadHtmlString`, same-origin URLs, or a server endpoint that sets correct
+CORS headers when you need JavaScript control or fetch-backed custom requests.
+Fetch-backed HTML and strictly sandboxed `loadHtmlString` content use an
+isolated message bridge; direct cross-origin iframe URLs remain inaccessible.

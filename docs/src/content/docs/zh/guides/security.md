@@ -87,9 +87,14 @@ Web 平台应谨慎配置 iframe sandbox：
 
 ```dart
 final params = WebWebViewControllerCreationParams(
-  iFrameSandbox: 'allow-same-origin allow-scripts allow-forms',
+  iFrameSandbox: 'allow-scripts allow-forms',
   iFrameReferrerPolicy: 'no-referrer',
 );
 ```
+
+对不可信的同源或 `srcdoc` 内容，不要同时加入 `allow-scripts` 和
+`allow-same-origin`，否则页面可能移除自身 sandbox。严格 sandbox 下的
+`loadHtmlString` 与 fetch-backed HTML 会通过插件的隔离消息桥提供受支持的
+控制器能力。
 
 除非产品明确需要，不要随意添加 `allow-top-navigation` 等高权限 sandbox 能力。

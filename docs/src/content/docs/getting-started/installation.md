@@ -7,7 +7,7 @@ Add the app-facing package:
 
 ```yaml
 dependencies:
-  webview_all: ^1.3.0
+  webview_all: ^1.3.1
 ```
 
 Run:
@@ -46,13 +46,13 @@ If you cast to a platform implementation, add that package explicitly so the imp
 
 ```yaml
 dependencies:
-  webview_all: ^1.3.0
-  webview_all_windows: ^1.3.0
-  webview_all_linux: ^1.3.0
-  webview_all_ohos: ^1.3.0
-  webview_all_web: ^1.3.0
-  webview_all_android: ^1.3.0
-  webview_all_wkwebview: ^1.3.0
+  webview_all: ^1.3.1
+  webview_all_windows: ^1.3.1
+  webview_all_linux: ^1.3.1
+  webview_all_ohos: ^1.3.1
+  webview_all_web: ^1.3.1
+  webview_all_android: ^1.3.1
+  webview_all_wkwebview: ^1.3.1
 ```
 
 Then import only the packages you need:
@@ -69,9 +69,9 @@ import 'package:webview_all_wkwebview/webview_all_wkwebview.dart';
 
 ## Version Contract
 
-The `1.3.0` release is aligned across `webview_platform_interface` and all
+The `1.3.1` release is aligned across `webview_platform_interface` and all
 `webview_all_*` packages. The wrapper depends on
-`webview_platform_interface ^1.3.0`, `webview_all_android ^1.3.0`, and
-`webview_all_wkwebview ^1.3.0`.
+`webview_platform_interface ^1.3.1`, `webview_all_android ^1.3.1`, and
+`webview_all_wkwebview ^1.3.1`.
 
 Keep the platform packages on the same minor line as the wrapper unless you are intentionally testing a platform package in isolation.

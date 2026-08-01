@@ -3,7 +3,7 @@ title: iOS 和 macOS
 description: WKWebView 实现、WebKit API 和 Apple 平台差异。
 ---
 
-iOS 和 macOS 由 `webview_all_wkwebview ^1.3.0` 提供。
+iOS 和 macOS 由 `webview_all_wkwebview ^1.3.1` 提供。
 
 | 项 | 值 |
 | --- | --- |
@@ -31,7 +31,7 @@ final params = WebKitWebViewControllerCreationParams(
 | --- | --- |
 | `mediaTypesRequiringUserAction` | 哪些媒体类型需要用户手势。 |
 | `allowsInlineMediaPlayback` | 允许 HTML5 视频内联播放。 |
-| `limitsNavigationsToAppBoundDomains` | 启用 App-Bound Domains。 |
+| `limitsNavigationsToAppBoundDomains` | 在 iOS 14+、macOS 11+ 启用 App-Bound Domains；更早系统打印版本要求并保留默认值。 |
 | `javaScriptCanOpenWindowsAutomatically` | 控制 JS 自动打开窗口。 |
 
 ## 主要 API
@@ -41,7 +41,7 @@ final params = WebKitWebViewControllerCreationParams(
 | `setAllowsBackForwardNavigationGestures` | 启用滑动前进/后退。 |
 | `setAllowsLinkPreview` | 控制 link preview。 |
 | `setOnCanGoBackChange` | 监听 `canGoBack` 变化。 |
-| `setInspectable` | 启用 WebKit inspect。 |
+| `setInspectable` | 在 iOS 16.4+、macOS 13.3+ 启用 WebKit inspect；更早系统打印版本要求并安全忽略。 |
 | `loadFileWithParams(WebKitLoadFileParams)` | 加载本地文件并设置可读范围。 |
 
 ## 本地文件
@@ -59,12 +59,15 @@ await (controller.platform as WebKitWebViewController).loadFileWithParams(
 
 ## macOS 差异
 
-macOS 与 iOS 共用 Dart 包，但部分 UIKit 风格属性在 macOS 没有 bridge：
+macOS 与 iOS 共用 Dart 包。macOS 端只使用公开原生 WebKit API，并在运行时判断系统版本；不会通过注入 JavaScript 模拟缺失的视图 API。
 
 | 区域 | 限制 |
 | --- | --- |
-| scroll view | 部分 scroll view 方法未实现。 |
-| background/opaque | macOS 上 `setBackgroundColor` 会由主 wrapper 忽略，并在终端打印日志。 |
+| 滚动位置与回调 | macOS `WKWebView` 没有公开内部 scroll view；调用会打印说明并安全忽略，读取返回 `Offset.zero`。 |
+| 滚动条与 overscroll | macOS 没有对应公开 API；调用会打印说明并安全忽略。 |
+| 背景色 | macOS 12+ 使用原生 `underPageBackgroundColor`；更早系统打印版本要求并安全忽略。 |
+| 缩放 | 使用原生 `allowsMagnification`，不使用 JavaScript 兜底。 |
+| inspect | 需要 macOS 13.3+；更早系统打印版本要求并安全忽略。 |
 | link preview | 取决于系统支持。 |
 
-其他 Apple 平台专用调用仍应做好平台判断和 `UnimplementedError` 处理。
+这些兼容逻辑由 `webview_all_wkwebview` 子插件负责，主 `webview_all` Controller 不再包含 macOS 特判。
