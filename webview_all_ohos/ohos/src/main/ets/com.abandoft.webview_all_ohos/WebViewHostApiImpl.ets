@@ -81,6 +81,7 @@ export class WebViewHostApiImpl {
       webView.getController().loadData(data, mimeType, encoding, resolvedBaseUrl, resolvedHistoryUrl);
     } catch (err) {
       Log.e(TAG, 'loadDataWithBaseUrl failed: ' + err);
+      throw err;
     }
   }
 
@@ -98,6 +99,7 @@ export class WebViewHostApiImpl {
       webView.setUrl(webView.getController().getUrl());
     } catch (err) {
       Log.e(TAG, 'loadUrl failed: ' + err);
+      throw err;
     }
   }
 
@@ -108,6 +110,7 @@ export class WebViewHostApiImpl {
       webView.getController().postUrl(url, data.buffer);
     } catch (err) {
       Log.e(TAG, 'postUrl failed: ' + err);
+      throw err;
     }
   }
 

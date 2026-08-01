@@ -518,13 +518,16 @@ class OhosWebViewController extends PlatformWebViewController {
       ohos_webview.WebView.api.instanceManager.getIdentifier(_webView)!;
 
   @override
-  Future<void> loadFile(String absoluteFilePath) {
+  Future<void> loadFile(String absoluteFilePath) async {
     final String url = absoluteFilePath.startsWith('file://')
         ? absoluteFilePath
         : Uri.file(absoluteFilePath).toString();
 
-    _webView.settings.setAllowFileAccess(true);
-    return _webView.loadUrl(url, <String, String>{});
+    // File access must be enabled before navigation starts. Keeping the two
+    // channel calls ordered also ensures that a settings failure is surfaced
+    // instead of racing an apparently successful load.
+    await _webView.settings.setAllowFileAccess(true);
+    await _webView.loadUrl(url, <String, String>{});
   }
 
   @override

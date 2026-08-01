@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -53,10 +54,12 @@ class TestWebSettings extends ohos_webview.WebSettings {
   bool? useWideViewPort;
   int? textZoom;
   String? userAgentString;
+  Completer<void>? allowFileAccessCompleter;
 
   @override
   Future<void> setAllowFileAccess(bool enabled) async {
     allowFileAccess = enabled;
+    await allowFileAccessCompleter?.future;
   }
 
   @override
@@ -788,11 +791,19 @@ void main() {
       ),
     );
 
-    await controller.loadFileWithParams(
+    final Completer<void> allowFileAccessCompleter = Completer<void>();
+    testWebView.settings.allowFileAccessCompleter = allowFileAccessCompleter;
+    final Future<void> loadFuture = controller.loadFileWithParams(
       const LoadFileParams(absoluteFilePath: '/tmp/index.html'),
     );
+    await pumpEventQueue();
 
     expect(testWebView.settings.allowFileAccess, isTrue);
+    expect(testWebView.loadedUrl, isNull);
+
+    allowFileAccessCompleter.complete();
+    await loadFuture;
+
     expect(testWebView.loadedUrl, Uri.file('/tmp/index.html').toString());
     expect(testWebView.loadedHeaders, isEmpty);
     expect(testWebView.webChromeClient, isNotNull);
