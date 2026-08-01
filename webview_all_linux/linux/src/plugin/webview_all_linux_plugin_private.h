@@ -40,6 +40,7 @@ typedef struct {
   gboolean java_script_prompt_dialog_enabled;
   gboolean vertical_scrollbar_enabled;
   gboolean horizontal_scrollbar_enabled;
+  gboolean zoom_enabled;
   const gchar *over_scroll_behavior;
   gint frame_x;
   gint frame_y;

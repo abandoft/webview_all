@@ -567,6 +567,7 @@ void instance_method_call_cb(FlMethodChannel *channel,
   }
 
   if (strcmp(method, "enableZoom") == 0) {
+    webview->zoom_enabled = map_lookup_bool(args, "enabled", TRUE);
     respond(method_call, success_response());
     return;
   }

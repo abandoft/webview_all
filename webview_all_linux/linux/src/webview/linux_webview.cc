@@ -178,6 +178,34 @@ static gboolean load_failed_cb(WebKitWebView *widget,
   return FALSE;
 }
 
+static gboolean zoom_scroll_event_cb(GtkWidget *widget, GdkEventScroll *event,
+                                     gpointer user_data) {
+  LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
+  return !webview->zoom_enabled &&
+         (event->state & GDK_CONTROL_MASK) != 0;
+}
+
+static gboolean zoom_key_press_event_cb(GtkWidget *widget, GdkEventKey *event,
+                                        gpointer user_data) {
+  LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
+  if (webview->zoom_enabled || (event->state & GDK_CONTROL_MASK) == 0) {
+    return FALSE;
+  }
+
+  switch (event->keyval) {
+  case GDK_KEY_plus:
+  case GDK_KEY_equal:
+  case GDK_KEY_minus:
+  case GDK_KEY_0:
+  case GDK_KEY_KP_Add:
+  case GDK_KEY_KP_Subtract:
+  case GDK_KEY_KP_0:
+    return TRUE;
+  default:
+    return FALSE;
+  }
+}
+
 static void copy_response_header(const char *name, const char *value,
                                  gpointer user_data) {
   FlValue *headers = static_cast<FlValue *>(user_data);
@@ -550,6 +578,7 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
   webview->java_script_prompt_dialog_enabled = FALSE;
   webview->vertical_scrollbar_enabled = TRUE;
   webview->horizontal_scrollbar_enabled = TRUE;
+  webview->zoom_enabled = TRUE;
   webview->over_scroll_behavior = "";
 
   gchar *method_name =
@@ -606,6 +635,10 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
                    G_CALLBACK(script_dialog_cb), webview);
   g_signal_connect(webview->web_view, "load-failed-with-tls-errors",
                    G_CALLBACK(load_failed_with_tls_errors_cb), webview);
+  g_signal_connect(webview->web_view, "scroll-event",
+                   G_CALLBACK(zoom_scroll_event_cb), webview);
+  g_signal_connect(webview->web_view, "key-press-event",
+                   G_CALLBACK(zoom_key_press_event_cb), webview);
 
   gtk_widget_set_halign(GTK_WIDGET(webview->web_view), GTK_ALIGN_START);
   gtk_widget_set_valign(GTK_WIDGET(webview->web_view), GTK_ALIGN_START);
@@ -615,6 +648,7 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
   gtk_widget_set_sensitive(GTK_WIDGET(webview->web_view), TRUE);
   gtk_widget_add_events(GTK_WIDGET(webview->web_view),
                         GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
+                            GDK_KEY_PRESS_MASK |
                             GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK |
                             GDK_POINTER_MOTION_MASK);
   gtk_widget_set_size_request(GTK_WIDGET(webview->web_view), 1, 1);
