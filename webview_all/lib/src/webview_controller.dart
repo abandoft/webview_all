@@ -4,8 +4,6 @@
 
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart'
-    show TargetPlatform, debugPrint, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
@@ -338,13 +336,6 @@ class WebViewController {
 
   /// Sets the current background color of this view.
   Future<void> setBackgroundColor(Color color) {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS) {
-      debugPrint(
-        'webview_all: setBackgroundColor is not supported on '
-        'macOS WKWebView. Ignoring setBackgroundColor($color).',
-      );
-      return Future<void>.value();
-    }
     return platform.setBackgroundColor(color);
   }
 

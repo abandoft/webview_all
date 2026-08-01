@@ -1,11 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart'
-    show
-        DebugPrintCallback,
-        TargetPlatform,
-        debugDefaultTargetPlatformOverride,
-        debugPrint;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:webview_all/webview_all.dart';
@@ -186,31 +180,6 @@ void main() {
     expect(requests.single.platform, platformRequest);
     expect(platformRequest.granted, isTrue);
     expect(platformRequest.denied, isTrue);
-  });
-
-  test('WebViewController ignores macOS background colors', () async {
-    final _FakePlatformWebViewController platform =
-        _FakePlatformWebViewController();
-    final WebViewController controller = WebViewController.fromPlatform(
-      platform,
-    );
-    final DebugPrintCallback previousDebugPrint = debugPrint;
-    final List<String?> logs = <String?>[];
-    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
-    debugPrint = (String? message, {int? wrapWidth}) {
-      logs.add(message);
-    };
-    addTearDown(() {
-      debugDefaultTargetPlatformOverride = null;
-      debugPrint = previousDebugPrint;
-    });
-
-    await controller.setBackgroundColor(const Color(0x80000000));
-    await controller.setBackgroundColor(const Color(0xff112233));
-
-    expect(platform.backgroundColor, isNull);
-    expect(logs, hasLength(2));
-    expect(logs.first, contains('setBackgroundColor is not supported'));
   });
 
   test('NavigationDelegate registers and wraps platform callbacks', () async {
