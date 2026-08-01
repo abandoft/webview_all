@@ -100,12 +100,27 @@ class WebKitWebViewControllerCreationParams
       );
     }
     _configuration.setAllowsInlineMediaPlayback(allowsInlineMediaPlayback);
-    // `WKWebViewConfiguration.limitsNavigationsToAppBoundDomains` is only
-    // supported on iOS versions 14+. So this only calls it if the value is set
-    // to true.
+    // This property is version-gated, so only request it when the non-default
+    // value is needed and report unsupported systems without failing creation.
     if (limitsNavigationsToAppBoundDomains) {
-      _configuration.setLimitsNavigationsToAppBoundDomains(
-        limitsNavigationsToAppBoundDomains,
+      unawaited(
+        _configuration
+            .setLimitsNavigationsToAppBoundDomains(
+              limitsNavigationsToAppBoundDomains,
+            )
+            .then((bool supported) {
+              if (!supported) {
+                final String requirement =
+                    defaultTargetPlatform == TargetPlatform.macOS
+                    ? 'macOS 11.0'
+                    : 'iOS 14.0';
+                debugPrint(
+                  'webview_all_wkwebview: '
+                  'limitsNavigationsToAppBoundDomains requires $requirement '
+                  'or later. The setting was ignored.',
+                );
+              }
+            }),
       );
     }
   }
@@ -358,6 +373,28 @@ class WebKitWebViewController extends PlatformWebViewController {
   bool _zoomEnabled = true;
   WebKitNavigationDelegate? _currentNavigationDelegate;
 
+  static const Set<String> _unsupportedWebpagePreferencesErrorCodes = <String>{
+    // Returned by generated ProxyApi implementations when the operation is
+    // unavailable.
+    'PigeonUnsupportedOperationError',
+    // Returned by the native WebKit delegate on iOS < 14 and macOS < 11.
+    'FWFUnsupportedVersionError',
+  };
+
+  void _logUnsupportedMacOS(
+    String method, {
+    String? requirement,
+    String? fallback,
+  }) {
+    final String reason = requirement == null
+        ? 'is not available through public macOS WKWebView APIs'
+        : 'requires $requirement';
+    final String result = fallback == null
+        ? 'The call was ignored.'
+        : 'Returning $fallback.';
+    debugPrint('webview_all_wkwebview: $method $reason. $result');
+  }
+
   void Function(bool)? _onCanGoBackChangeCallback;
   void Function(JavaScriptConsoleMessage)? _onConsoleMessageCallback;
   void Function(PlatformWebViewPermissionRequest)? _onPermissionRequestCallback;
@@ -415,8 +452,22 @@ class WebKitWebViewController extends PlatformWebViewController {
   /// the default value is set to false.
   ///
   /// Defaults to true in previous versions.
-  Future<void> setInspectable(bool inspectable) {
-    return _webView.setInspectable(inspectable);
+  Future<void> setInspectable(bool inspectable) async {
+    final bool supported = await _webView.setInspectable(inspectable);
+    if (supported) {
+      return;
+    }
+    if (defaultTargetPlatform == TargetPlatform.macOS) {
+      _logUnsupportedMacOS(
+        'setInspectable',
+        requirement: 'macOS 13.3 or later',
+      );
+    } else {
+      debugPrint(
+        'webview_all_wkwebview: setInspectable requires iOS 16.4 or later. '
+        'The call was ignored.',
+      );
+    }
   }
 
   @override
@@ -591,30 +642,47 @@ class WebKitWebViewController extends PlatformWebViewController {
 
   @override
   Future<void> scrollTo(int x, int y) {
-    // TODO(stuartmorgan): Investigate doing this via on macOS with JS instead.
+    if (defaultTargetPlatform == TargetPlatform.macOS) {
+      _logUnsupportedMacOS('scrollTo');
+      return Future<void>.value();
+    }
     return _webView.scrollView.setContentOffset(x.toDouble(), y.toDouble());
   }
 
   @override
   Future<void> scrollBy(int x, int y) async {
-    // TODO(stuartmorgan): Investigate doing this via on macOS with JS instead.
+    if (defaultTargetPlatform == TargetPlatform.macOS) {
+      _logUnsupportedMacOS('scrollBy');
+      return;
+    }
     return _webView.scrollView.scrollBy(x.toDouble(), y.toDouble());
   }
 
   @override
   Future<Offset> getScrollPosition() async {
-    // TODO(stuartmorgan): Investigate doing this via on macOS with JS instead.
+    if (defaultTargetPlatform == TargetPlatform.macOS) {
+      _logUnsupportedMacOS('getScrollPosition', fallback: 'Offset.zero');
+      return Offset.zero;
+    }
     final List<double> position = await _webView.scrollView.getContentOffset();
     return Offset(position[0], position[1]);
   }
 
   @override
   Future<void> setVerticalScrollBarEnabled(bool enabled) {
+    if (defaultTargetPlatform == TargetPlatform.macOS) {
+      _logUnsupportedMacOS('setVerticalScrollBarEnabled');
+      return Future<void>.value();
+    }
     return _webView.scrollView.setShowsVerticalScrollIndicator(enabled);
   }
 
   @override
   Future<void> setHorizontalScrollBarEnabled(bool enabled) {
+    if (defaultTargetPlatform == TargetPlatform.macOS) {
+      _logUnsupportedMacOS('setHorizontalScrollBarEnabled');
+      return Future<void>.value();
+    }
     return _webView.scrollView.setShowsHorizontalScrollIndicator(enabled);
   }
 
@@ -633,9 +701,25 @@ class WebKitWebViewController extends PlatformWebViewController {
   }
 
   @override
-  Future<void> setBackgroundColor(Color color) {
+  Future<void> setBackgroundColor(Color color) async {
+    if (defaultTargetPlatform == TargetPlatform.macOS) {
+      final bool supported = await _webView.setUnderPageBackgroundColor(
+        color.r,
+        color.g,
+        color.b,
+        color.a,
+      );
+      if (!supported) {
+        _logUnsupportedMacOS(
+          'setBackgroundColor',
+          requirement: 'macOS 12.0 or later',
+        );
+      }
+      return;
+    }
+
     const Color transparent = Colors.transparent;
-    return Future.wait(<Future<void>>[
+    await Future.wait(<Future<void>>[
       _webView.setOpaque(false),
       _webView.setBackgroundColor(
         UIColor(
@@ -677,7 +761,7 @@ class WebKitWebViewController extends PlatformWebViewController {
       }
       return;
     } on PlatformException catch (exception) {
-      if (exception.code != 'PigeonUnsupportedOperationError') {
+      if (!_unsupportedWebpagePreferencesErrorCodes.contains(exception.code)) {
         rethrow;
       }
     } catch (exception) {
@@ -706,6 +790,11 @@ class WebKitWebViewController extends PlatformWebViewController {
     }
 
     _zoomEnabled = enabled;
+    if (defaultTargetPlatform == TargetPlatform.macOS) {
+      await _webView.setAllowsMagnification(enabled);
+      return;
+    }
+
     if (enabled) {
       await _resetUserScripts();
     } else {
@@ -779,6 +868,10 @@ class WebKitWebViewController extends PlatformWebViewController {
 
   @override
   Future<void> setOverScrollMode(WebViewOverScrollMode mode) {
+    if (defaultTargetPlatform == TargetPlatform.macOS) {
+      _logUnsupportedMacOS('setOverScrollMode');
+      return Future<void>.value();
+    }
     return switch (mode) {
       WebViewOverScrollMode.always => Future.wait<void>(<Future<void>>[
         _webView.scrollView.setBounces(true),
@@ -828,10 +921,8 @@ class WebKitWebViewController extends PlatformWebViewController {
         return _webView.scrollView.setDelegate(null);
       }
     } else {
-      // TODO(stuartmorgan): Investigate doing this via JS instead.
-      throw UnimplementedError(
-        'setOnScrollPositionChange is not implemented on macOS',
-      );
+      _logUnsupportedMacOS('setOnScrollPositionChange');
+      return Future<void>.value();
     }
   }
 

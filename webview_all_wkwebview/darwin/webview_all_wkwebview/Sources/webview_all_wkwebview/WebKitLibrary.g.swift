@@ -3449,8 +3449,8 @@ protocol PigeonApiDelegateWKWebViewConfiguration {
   /// A Boolean value that indicates whether the web view limits navigation to
   /// pages within the app’s domain.
   func setLimitsNavigationsToAppBoundDomains(
-    pigeonApi: PigeonApiWKWebViewConfiguration, pigeonInstance: WKWebViewConfiguration, limit: Bool)
-    throws
+    pigeonApi: PigeonApiWKWebViewConfiguration, pigeonInstance: WKWebViewConfiguration, limit: Bool
+  ) throws -> Bool
   /// The media types that require a user gesture to begin playing.
   func setMediaTypesRequiringUserActionForPlayback(
     pigeonApi: PigeonApiWKWebViewConfiguration, pigeonInstance: WKWebViewConfiguration,
@@ -3653,9 +3653,9 @@ final class PigeonApiWKWebViewConfiguration: PigeonApiProtocolWKWebViewConfigura
         let pigeonInstanceArg = args[0] as! WKWebViewConfiguration
         let limitArg = args[1] as! Bool
         do {
-          try api.pigeonDelegate.setLimitsNavigationsToAppBoundDomains(
+          let result = try api.pigeonDelegate.setLimitsNavigationsToAppBoundDomains(
             pigeonApi: api, pigeonInstance: pigeonInstanceArg, limit: limitArg)
-          reply(wrapResult(nil))
+          reply(wrapResult(result))
         } catch {
           reply(wrapError(error))
         }
@@ -4968,7 +4968,8 @@ protocol PigeonApiDelegateUIViewWKWebView {
     /// A Boolean value that indicates whether you can inspect the view with
     /// Safari Web Inspector.
     func setInspectable(
-      pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView, inspectable: Bool) throws
+      pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView, inspectable: Bool
+    ) throws -> Bool
   #endif
   #if !os(macOS)
     /// The custom user agent string.
@@ -5450,9 +5451,9 @@ final class PigeonApiUIViewWKWebView: PigeonApiProtocolUIViewWKWebView {
           let pigeonInstanceArg = args[0] as! WKWebView
           let inspectableArg = args[1] as! Bool
           do {
-            try api.pigeonDelegate.setInspectable(
+            let result = try api.pigeonDelegate.setInspectable(
               pigeonApi: api, pigeonInstance: pigeonInstanceArg, inspectable: inspectableArg)
-            reply(wrapResult(nil))
+            reply(wrapResult(result))
           } catch {
             reply(wrapError(error))
           }
@@ -5647,7 +5648,24 @@ protocol PigeonApiDelegateNSViewWKWebView {
     /// A Boolean value that indicates whether you can inspect the view with
     /// Safari Web Inspector.
     func setInspectable(
-      pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, inspectable: Bool) throws
+      pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, inspectable: Bool
+    ) throws -> Bool
+  #endif
+  #if !os(iOS)
+    /// Sets the color that WebKit displays behind the active page.
+    ///
+    /// Returns false when the installed macOS version does not support this
+    /// property.
+    func setUnderPageBackgroundColor(
+      pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, red: Double, green: Double,
+      blue: Double, alpha: Double
+    ) throws -> Bool
+  #endif
+  #if !os(iOS)
+    /// A Boolean value that indicates whether magnification gestures are
+    /// enabled.
+    func setAllowsMagnification(
+      pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, allow: Bool) throws
   #endif
   #if !os(iOS)
     /// The custom user agent string.
@@ -6107,15 +6125,62 @@ final class PigeonApiNSViewWKWebView: PigeonApiProtocolNSViewWKWebView {
           let pigeonInstanceArg = args[0] as! WKWebView
           let inspectableArg = args[1] as! Bool
           do {
-            try api.pigeonDelegate.setInspectable(
+            let result = try api.pigeonDelegate.setInspectable(
               pigeonApi: api, pigeonInstance: pigeonInstanceArg, inspectable: inspectableArg)
-            reply(wrapResult(nil))
+            reply(wrapResult(result))
           } catch {
             reply(wrapError(error))
           }
         }
       } else {
         setInspectableChannel.setMessageHandler(nil)
+      }
+    #endif
+    #if !os(iOS)
+      let setUnderPageBackgroundColorChannel = FlutterBasicMessageChannel(
+        name:
+          "dev.flutter.pigeon.webview_all_wkwebview.NSViewWKWebView.setUnderPageBackgroundColor",
+        binaryMessenger: binaryMessenger, codec: codec)
+      if let api = api {
+        setUnderPageBackgroundColorChannel.setMessageHandler { message, reply in
+          let args = message as! [Any?]
+          let pigeonInstanceArg = args[0] as! WKWebView
+          let redArg = args[1] as! Double
+          let greenArg = args[2] as! Double
+          let blueArg = args[3] as! Double
+          let alphaArg = args[4] as! Double
+          do {
+            let result = try api.pigeonDelegate.setUnderPageBackgroundColor(
+              pigeonApi: api, pigeonInstance: pigeonInstanceArg, red: redArg, green: greenArg,
+              blue: blueArg, alpha: alphaArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      } else {
+        setUnderPageBackgroundColorChannel.setMessageHandler(nil)
+      }
+    #endif
+    #if !os(iOS)
+      let setAllowsMagnificationChannel = FlutterBasicMessageChannel(
+        name: "dev.flutter.pigeon.webview_all_wkwebview.NSViewWKWebView.setAllowsMagnification",
+        binaryMessenger: binaryMessenger, codec: codec)
+      if let api = api {
+        setAllowsMagnificationChannel.setMessageHandler { message, reply in
+          let args = message as! [Any?]
+          let pigeonInstanceArg = args[0] as! WKWebView
+          let allowArg = args[1] as! Bool
+          do {
+            try api.pigeonDelegate.setAllowsMagnification(
+              pigeonApi: api, pigeonInstance: pigeonInstanceArg, allow: allowArg)
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      } else {
+        setAllowsMagnificationChannel.setMessageHandler(nil)
       }
     #endif
     #if !os(iOS)

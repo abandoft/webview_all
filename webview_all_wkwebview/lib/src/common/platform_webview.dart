@@ -352,13 +352,51 @@ class PlatformWebView {
 
   /// A Boolean value that indicates whether you can inspect the view with
   /// Safari Web Inspector.
-  Future<void> setInspectable(bool inspectable) {
+  Future<bool> setInspectable(bool inspectable) {
     final WKWebView webView = nativeWebView;
     switch (webView) {
       case UIViewWKWebView():
         return webView.setInspectable(inspectable);
       case NSViewWKWebView():
         return webView.setInspectable(inspectable);
+    }
+
+    throw UnimplementedError('${webView.runtimeType} is not supported.');
+  }
+
+  /// Sets the color displayed behind a page on macOS 12 and later.
+  ///
+  /// Returns false when the installed macOS version does not support the
+  /// native property.
+  Future<bool> setUnderPageBackgroundColor(
+    double red,
+    double green,
+    double blue,
+    double alpha,
+  ) {
+    final WKWebView webView = nativeWebView;
+    switch (webView) {
+      case NSViewWKWebView():
+        return webView.setUnderPageBackgroundColor(red, green, blue, alpha);
+      case UIViewWKWebView():
+        throw UnimplementedError(
+          'underPageBackgroundColor is only available on macOS',
+        );
+    }
+
+    throw UnimplementedError('${webView.runtimeType} is not supported.');
+  }
+
+  /// Enables or disables native magnification gestures on macOS.
+  Future<void> setAllowsMagnification(bool allow) {
+    final WKWebView webView = nativeWebView;
+    switch (webView) {
+      case NSViewWKWebView():
+        return webView.setAllowsMagnification(allow);
+      case UIViewWKWebView():
+        throw UnimplementedError(
+          'allowsMagnification is only available on macOS',
+        );
     }
 
     throw UnimplementedError('${webView.runtimeType} is not supported.');

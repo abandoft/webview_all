@@ -30,6 +30,7 @@ import 'webkit_webview_controller_test.mocks.dart';
   MockSpec<WKWebViewConfiguration>(),
   MockSpec<WKWebpagePreferences>(),
   MockSpec<UIViewWKWebView>(),
+  MockSpec<NSViewWKWebView>(),
   MockSpec<WKWebsiteDataStore>(),
 ])
 void main() {
@@ -63,6 +64,17 @@ void main() {
         observeValue,
       })?
       createMockWebView,
+      MockNSViewWKWebView Function(
+        WKWebViewConfiguration configuration, {
+        void Function(
+          NSObject,
+          String? keyPath,
+          NSObject? object,
+          Map<KeyValueChangeKey, Object?>? change,
+        )?
+        observeValue,
+      })?
+      createMockMacWebView,
       MockWKWebViewConfiguration? mockWebViewConfiguration,
       MockURLRequest Function({required String url, dynamic observeValue})?
       createURLRequest,
@@ -72,6 +84,7 @@ void main() {
       final MockWKWebViewConfiguration nonNullMockWebViewConfiguration =
           mockWebViewConfiguration ?? MockWKWebViewConfiguration();
       late final MockUIViewWKWebView nonNullMockWebView;
+      late final MockNSViewWKWebView nonNullMockMacWebView;
 
       PigeonOverrides.wKWebViewConfiguration_new =
           ({
@@ -103,6 +116,25 @@ void main() {
                     observeValue: observeValue,
                   );
             return nonNullMockWebView;
+          };
+      PigeonOverrides.nSViewWKWebView_new =
+          ({
+            required WKWebViewConfiguration initialConfiguration,
+            void Function(
+              NSObject,
+              String?,
+              NSObject?,
+              Map<KeyValueChangeKey, Object?>?,
+            )?
+            observeValue,
+          }) {
+            nonNullMockMacWebView = createMockMacWebView == null
+                ? MockNSViewWKWebView()
+                : createMockMacWebView(
+                    nonNullMockWebViewConfiguration,
+                    observeValue: observeValue,
+                  );
+            return nonNullMockMacWebView;
           };
       PigeonOverrides.wKUIDelegate_new =
           ({
@@ -198,12 +230,18 @@ void main() {
 
       final controller = WebKitWebViewController(controllerCreationParams);
 
-      when(
-        nonNullMockWebView.scrollView,
-      ).thenReturn(mockScrollView ?? MockUIScrollView());
-      when(
-        nonNullMockWebView.configuration,
-      ).thenReturn(nonNullMockWebViewConfiguration);
+      if (defaultTargetPlatform == TargetPlatform.macOS) {
+        when(
+          nonNullMockMacWebView.configuration,
+        ).thenReturn(nonNullMockWebViewConfiguration);
+      } else {
+        when(
+          nonNullMockWebView.scrollView,
+        ).thenReturn(mockScrollView ?? MockUIScrollView());
+        when(
+          nonNullMockWebView.configuration,
+        ).thenReturn(nonNullMockWebViewConfiguration);
+      }
 
       when(nonNullMockWebViewConfiguration.getPreferences()).thenAnswer(
         (_) => Future<MockWKPreferences>.value(
@@ -244,6 +282,9 @@ void main() {
 
       test('limitsNavigationsToAppBoundDomains', () {
         final mockConfiguration = MockWKWebViewConfiguration();
+        when(
+          mockConfiguration.setLimitsNavigationsToAppBoundDomains(true),
+        ).thenAnswer((_) async => true);
 
         PigeonOverrides.wKWebViewConfiguration_new = ({dynamic observeValue}) =>
             mockConfiguration;
@@ -253,6 +294,38 @@ void main() {
 
         verify(mockConfiguration.setLimitsNavigationsToAppBoundDomains(true));
       });
+
+      test(
+        'limitsNavigationsToAppBoundDomains logs on unsupported macOS',
+        () async {
+          debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+          final mockConfiguration = MockWKWebViewConfiguration();
+          when(
+            mockConfiguration.setLimitsNavigationsToAppBoundDomains(true),
+          ).thenAnswer((_) async => false);
+          PigeonOverrides.wKWebViewConfiguration_new =
+              ({dynamic observeValue}) => mockConfiguration;
+          final DebugPrintCallback previousDebugPrint = debugPrint;
+          final List<String?> logs = <String?>[];
+          debugPrint = (String? message, {int? wrapWidth}) {
+            logs.add(message);
+          };
+          addTearDown(() {
+            debugPrint = previousDebugPrint;
+          });
+
+          WebKitWebViewControllerCreationParams(
+            limitsNavigationsToAppBoundDomains: true,
+          );
+          await pumpEventQueue();
+
+          expect(
+            logs,
+            contains(contains('limitsNavigationsToAppBoundDomains')),
+          );
+          expect(logs, contains(contains('macOS 11.0 or later')));
+        },
+      );
 
       test(
         'limitsNavigationsToAppBoundDomains is not called if it uses default value (false)',
@@ -769,6 +842,46 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     });
 
+    test('unsupported macOS scrolling APIs log and safely return', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      final WebKitWebViewController controller = createControllerWithMocks();
+      final DebugPrintCallback previousDebugPrint = debugPrint;
+      final List<String> logs = <String>[];
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) {
+          logs.add(message);
+        }
+      };
+      addTearDown(() {
+        debugPrint = previousDebugPrint;
+      });
+
+      await controller.scrollTo(2, 4);
+      await controller.scrollBy(2, 4);
+      expect(await controller.getScrollPosition(), Offset.zero);
+      await controller.setVerticalScrollBarEnabled(true);
+      await controller.setHorizontalScrollBarEnabled(true);
+      await controller.setOverScrollMode(WebViewOverScrollMode.never);
+      await controller.setOnScrollPositionChange(null);
+
+      for (final String method in <String>[
+        'scrollTo',
+        'scrollBy',
+        'getScrollPosition',
+        'setVerticalScrollBarEnabled',
+        'setHorizontalScrollBarEnabled',
+        'setOverScrollMode',
+        'setOnScrollPositionChange',
+      ]) {
+        expect(logs, contains(contains(method)));
+      }
+      expect(
+        logs,
+        contains(contains('not available through public macOS WKWebView APIs')),
+      );
+      expect(logs, contains(contains('Returning Offset.zero')));
+    });
+
     test('disable zoom', () async {
       final mockUserContentController = MockWKUserContentController();
 
@@ -843,6 +956,59 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     });
 
+    test('macOS uses native background color and magnification APIs', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      final MockNSViewWKWebView mockWebView = MockNSViewWKWebView();
+      when(
+        mockWebView.setUnderPageBackgroundColor(
+          Colors.red.r,
+          Colors.red.g,
+          Colors.red.b,
+          Colors.red.a,
+        ),
+      ).thenAnswer((_) async => true);
+      final WebKitWebViewController controller = createControllerWithMocks(
+        createMockMacWebView: (_, {dynamic observeValue}) => mockWebView,
+      );
+
+      await controller.setBackgroundColor(Colors.red);
+      await controller.enableZoom(false);
+
+      verify(
+        mockWebView.setUnderPageBackgroundColor(
+          Colors.red.r,
+          Colors.red.g,
+          Colors.red.b,
+          Colors.red.a,
+        ),
+      );
+      verify(mockWebView.setAllowsMagnification(false));
+    });
+
+    test('macOS logs when background color needs a newer version', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      final MockNSViewWKWebView mockWebView = MockNSViewWKWebView();
+      when(
+        mockWebView.setUnderPageBackgroundColor(any, any, any, any),
+      ).thenAnswer((_) async => false);
+      final WebKitWebViewController controller = createControllerWithMocks(
+        createMockMacWebView: (_, {dynamic observeValue}) => mockWebView,
+      );
+      final DebugPrintCallback previousDebugPrint = debugPrint;
+      final List<String?> logs = <String?>[];
+      debugPrint = (String? message, {int? wrapWidth}) {
+        logs.add(message);
+      };
+      addTearDown(() {
+        debugPrint = previousDebugPrint;
+      });
+
+      await controller.setBackgroundColor(Colors.red);
+
+      expect(logs, contains(contains('setBackgroundColor')));
+      expect(logs, contains(contains('macOS 12.0 or later')));
+    });
+
     test('userAgent', () async {
       final mockWebView = MockUIViewWKWebView();
 
@@ -878,25 +1044,52 @@ void main() {
       verify(mockWebpagePreferences.setAllowsContentJavaScript(false));
     });
 
-    test(
-      'enable JavaScript calls WKPreferences.setJavaScriptEnabled for lower versions',
-      () async {
-        final mockPreferences = MockWKPreferences();
-        final mockWebpagePreferences = MockWKWebpagePreferences();
-        when(
-          mockWebpagePreferences.setAllowsContentJavaScript(any),
-        ).thenThrow(PlatformException(code: 'PigeonUnsupportedOperationError'));
+    for (final String errorCode in <String>[
+      'PigeonUnsupportedOperationError',
+      'FWFUnsupportedVersionError',
+    ]) {
+      test(
+        'enable JavaScript falls back to WKPreferences for $errorCode',
+        () async {
+          final mockPreferences = MockWKPreferences();
+          final mockWebpagePreferences = MockWKWebpagePreferences();
+          when(
+            mockWebpagePreferences.setAllowsContentJavaScript(any),
+          ).thenThrow(PlatformException(code: errorCode));
 
-        final WebKitWebViewController controller = createControllerWithMocks(
-          mockPreferences: mockPreferences,
-          mockWebpagePreferences: mockWebpagePreferences,
-        );
+          final WebKitWebViewController controller = createControllerWithMocks(
+            mockPreferences: mockPreferences,
+            mockWebpagePreferences: mockWebpagePreferences,
+          );
 
-        await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+          await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
 
-        verify(mockPreferences.setJavaScriptEnabled(true));
-      },
-    );
+          verify(mockPreferences.setJavaScriptEnabled(true));
+        },
+      );
+    }
+
+    test('setJavaScriptMode rethrows unrelated platform failures', () async {
+      final mockWebpagePreferences = MockWKWebpagePreferences();
+      when(
+        mockWebpagePreferences.setAllowsContentJavaScript(any),
+      ).thenThrow(PlatformException(code: 'WebKitFailure'));
+
+      final WebKitWebViewController controller = createControllerWithMocks(
+        mockWebpagePreferences: mockWebpagePreferences,
+      );
+
+      await expectLater(
+        controller.setJavaScriptMode(JavaScriptMode.unrestricted),
+        throwsA(
+          isA<PlatformException>().having(
+            (PlatformException exception) => exception.code,
+            'code',
+            'WebKitFailure',
+          ),
+        ),
+      );
+    });
 
     test(
       'setJavaScriptMode sets javaScriptCanOpenWindowsAutomatically from creation params',
@@ -1708,6 +1901,7 @@ void main() {
 
     test('inspectable', () async {
       final mockWebView = MockUIViewWKWebView();
+      when(mockWebView.setInspectable(true)).thenAnswer((_) async => true);
 
       final WebKitWebViewController controller = createControllerWithMocks(
         createMockWebView: (_, {dynamic observeValue}) => mockWebView,
@@ -1716,6 +1910,31 @@ void main() {
       await controller.setInspectable(true);
       verify(mockWebView.setInspectable(true));
     });
+
+    test(
+      'macOS logs instead of throwing when inspectable is unavailable',
+      () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+        final MockNSViewWKWebView mockWebView = MockNSViewWKWebView();
+        when(mockWebView.setInspectable(true)).thenAnswer((_) async => false);
+        final WebKitWebViewController controller = createControllerWithMocks(
+          createMockMacWebView: (_, {dynamic observeValue}) => mockWebView,
+        );
+        final DebugPrintCallback previousDebugPrint = debugPrint;
+        final List<String?> logs = <String?>[];
+        debugPrint = (String? message, {int? wrapWidth}) {
+          logs.add(message);
+        };
+        addTearDown(() {
+          debugPrint = previousDebugPrint;
+        });
+
+        await controller.setInspectable(true);
+
+        expect(logs, contains(contains('setInspectable')));
+        expect(logs, contains(contains('macOS 13.3 or later')));
+      },
+    );
 
     test('setAllowsLinkPreview', () async {
       final mockWebView = MockUIViewWKWebView();

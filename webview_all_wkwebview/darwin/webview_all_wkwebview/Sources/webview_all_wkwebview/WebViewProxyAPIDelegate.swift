@@ -4,6 +4,10 @@
 
 import WebKit
 
+#if os(macOS)
+  import AppKit
+#endif
+
 class WebViewImpl: WKWebView {
   let api: PigeonApiProtocolWKWebView
   unowned let registrar: ProxyAPIRegistrar
@@ -344,26 +348,46 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
 
   func setInspectable(
     pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView, inspectable: Bool
-  ) throws {
+  ) throws -> Bool {
     if #available(iOS 16.4, macOS 13.3, *) {
       pigeonInstance.isInspectable = inspectable
       if pigeonInstance.responds(to: Selector(("isInspectable:"))) {
         pigeonInstance.perform(Selector(("isInspectable:")), with: inspectable)
       }
+      return true
     } else {
-      throw (pigeonApi.pigeonRegistrar as! ProxyAPIRegistrar)
-        .createUnsupportedVersionError(
-          method: "WKWebView.inspectable",
-          versionRequirements: "iOS 16.4, macOS 13.3")
+      return false
     }
   }
 
   func setInspectable(
     pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, inspectable: Bool
-  ) throws {
-    try setInspectable(
+  ) throws -> Bool {
+    return try setInspectable(
       pigeonApi: getUIViewWKWebViewAPI(pigeonApi), pigeonInstance: pigeonInstance,
       inspectable: inspectable)
+  }
+
+  func setUnderPageBackgroundColor(
+    pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, red: Double, green: Double,
+    blue: Double, alpha: Double
+  ) throws -> Bool {
+    #if os(macOS)
+      if #available(macOS 12.0, *) {
+        pigeonInstance.underPageBackgroundColor = NSColor(
+          red: red, green: green, blue: blue, alpha: alpha)
+        return true
+      }
+    #endif
+    return false
+  }
+
+  func setAllowsMagnification(
+    pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, allow: Bool
+  ) throws {
+    #if os(macOS)
+      pigeonInstance.allowsMagnification = allow
+    #endif
   }
 
   func getCustomUserAgent(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView) throws

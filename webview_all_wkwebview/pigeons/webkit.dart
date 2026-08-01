@@ -704,7 +704,7 @@ abstract class WKWebViewConfiguration extends NSObject {
 
   /// A Boolean value that indicates whether the web view limits navigation to
   /// pages within the app’s domain.
-  void setLimitsNavigationsToAppBoundDomains(bool limit);
+  bool setLimitsNavigationsToAppBoundDomains(bool limit);
 
   /// The media types that require a user gesture to begin playing.
   void setMediaTypesRequiringUserActionForPlayback(AudiovisualMediaType type);
@@ -932,7 +932,7 @@ abstract class UIViewWKWebView extends UIView implements WKWebView {
 
   /// A Boolean value that indicates whether you can inspect the view with
   /// Safari Web Inspector.
-  void setInspectable(bool inspectable);
+  bool setInspectable(bool inspectable);
 
   /// The custom user agent string.
   String? getCustomUserAgent();
@@ -1021,7 +1021,22 @@ abstract class NSViewWKWebView extends NSObject implements WKWebView {
 
   /// A Boolean value that indicates whether you can inspect the view with
   /// Safari Web Inspector.
-  void setInspectable(bool inspectable);
+  bool setInspectable(bool inspectable);
+
+  /// Sets the color that WebKit displays behind the active page.
+  ///
+  /// Returns false when the installed macOS version does not support this
+  /// property.
+  bool setUnderPageBackgroundColor(
+    double red,
+    double green,
+    double blue,
+    double alpha,
+  );
+
+  /// A Boolean value that indicates whether magnification gestures are
+  /// enabled.
+  void setAllowsMagnification(bool allow);
 
   /// The custom user agent string.
   String? getCustomUserAgent();
