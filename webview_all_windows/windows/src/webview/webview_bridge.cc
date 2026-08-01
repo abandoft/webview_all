@@ -102,6 +102,9 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
     : webview_(std::move(webview)), texture_registrar_(texture_registrar) {
   texture_bridge_ =
       std::make_unique<TextureBridgeGpu>(graphics_context, webview_->surface());
+  if (!texture_bridge_->IsValid()) {
+    return;
+  }
 
   flutter_texture_ =
       std::make_unique<flutter::TextureVariant>(flutter::GpuSurfaceTexture(
@@ -113,6 +116,11 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
           }));
 
   texture_id_ = texture_registrar->RegisterTexture(flutter_texture_.get());
+  if (texture_id_ < 0) {
+    flutter_texture_.reset();
+    texture_bridge_.reset();
+    return;
+  }
   texture_bridge_->SetOnFrameAvailable(
       [this]() { texture_registrar_->MarkTextureFrameAvailable(texture_id_); });
   // texture_bridge_->SetOnSurfaceSizeChanged([this](Size size) {
@@ -151,7 +159,9 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
 }
 
 WebviewBridge::~WebviewBridge() {
-  texture_registrar_->UnregisterTexture(texture_id_);
+  if (texture_id_ >= 0) {
+    texture_registrar_->UnregisterTexture(texture_id_);
+  }
 }
 
 void WebviewBridge::RegisterEventHandlers() {
@@ -522,11 +532,11 @@ void WebviewBridge::SetPointerButtonState(int64_t button, bool is_down) {
                                   is_down);
 }
 
-void WebviewBridge::SetSize(double width, double height, double scale_factor) {
+bool WebviewBridge::SetSize(double width, double height, double scale_factor) {
   webview_->SetSurfaceSize(static_cast<size_t>(width),
                            static_cast<size_t>(height),
                            static_cast<float>(scale_factor));
-  texture_bridge_->Start();
+  return texture_bridge_->Start();
 }
 
 void WebviewBridge::LoadUrl(const std::string &url) { webview_->LoadUrl(url); }
@@ -555,9 +565,9 @@ void WebviewBridge::Suspend() {
   webview_->Suspend();
 }
 
-void WebviewBridge::Resume() {
+bool WebviewBridge::Resume() {
   webview_->Resume();
-  texture_bridge_->Start();
+  return texture_bridge_->Start();
 }
 
 void WebviewBridge::SetVirtualHostNameMapping(const std::string &host_name,

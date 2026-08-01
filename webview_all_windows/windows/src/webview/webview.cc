@@ -200,9 +200,12 @@ Webview::Webview(
     return;
   }
 
-  webview_controller_->put_BoundsMode(COREWEBVIEW2_BOUNDS_MODE_USE_RAW_PIXELS);
-  webview_controller_->put_ShouldDetectMonitorScaleChanges(FALSE);
-  webview_controller_->put_RasterizationScale(1.0);
+  if (FAILED(webview_controller_->put_BoundsMode(
+          COREWEBVIEW2_BOUNDS_MODE_USE_RAW_PIXELS)) ||
+      FAILED(webview_controller_->put_ShouldDetectMonitorScaleChanges(FALSE)) ||
+      FAILED(webview_controller_->put_RasterizationScale(1.0))) {
+    return;
+  }
 
   wil::com_ptr<ICoreWebView2Settings> settings;
   if (SUCCEEDED(webview_->get_Settings(settings.put()))) {
@@ -235,17 +238,25 @@ Webview::~Webview() {
 bool Webview::CreateSurface(
     winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor,
     HWND hwnd, bool offscreen_only) {
+  if (!compositor || !composition_controller_ || !webview_controller_) {
+    return false;
+  }
+
   winrt::com_ptr<ABI::Windows::UI::Composition::IContainerVisual> root;
-  if (FAILED(compositor->CreateContainerVisual(root.put()))) {
+  if (FAILED(compositor->CreateContainerVisual(root.put())) || !root) {
     return false;
   }
 
   surface_ = root.try_as<ABI::Windows::UI::Composition::IVisual>();
-  assert(surface_);
+  if (!surface_) {
+    return false;
+  }
 
   // initial size. doesn't matter as we resize the surface anyway.
-  surface_->put_Size({1280, 720});
-  surface_->put_IsVisible(true);
+  if (FAILED(surface_->put_Size({1280, 720})) ||
+      FAILED(surface_->put_IsVisible(true))) {
+    return false;
+  }
 
   // Create on-screen window for debugging purposes
   if (!offscreen_only) {
@@ -253,28 +264,35 @@ bool Webview::CreateSurface(
     auto composition_target =
         window_target_
             .try_as<ABI::Windows::UI::Composition::ICompositionTarget>();
-    if (composition_target) {
-      composition_target->put_Root(surface_.get());
+    if (!composition_target ||
+        FAILED(composition_target->put_Root(surface_.get()))) {
+      return false;
     }
   }
 
   winrt::com_ptr<ABI::Windows::UI::Composition::IVisual> webview_visual;
-  compositor->CreateContainerVisual(
-      reinterpret_cast<ABI::Windows::UI::Composition::IContainerVisual **>(
-          webview_visual.put()));
+  if (FAILED(compositor->CreateContainerVisual(
+          reinterpret_cast<ABI::Windows::UI::Composition::IContainerVisual **>(
+              webview_visual.put()))) ||
+      !webview_visual) {
+    return false;
+  }
 
   auto webview_visual2 =
       webview_visual.try_as<ABI::Windows::UI::Composition::IVisual2>();
-  if (webview_visual2) {
-    webview_visual2->put_RelativeSizeAdjustment({1.0f, 1.0f});
+  if (!webview_visual2 ||
+      FAILED(webview_visual2->put_RelativeSizeAdjustment({1.0f, 1.0f}))) {
+    return false;
   }
 
   winrt::com_ptr<ABI::Windows::UI::Composition::IVisualCollection> children;
-  root->get_Children(children.put());
-  children->InsertAtTop(webview_visual.get());
-  composition_controller_->put_RootVisualTarget(webview_visual2.get());
-
-  webview_controller_->put_IsVisible(true);
+  if (FAILED(root->get_Children(children.put())) || !children ||
+      FAILED(children->InsertAtTop(webview_visual.get())) ||
+      FAILED(
+          composition_controller_->put_RootVisualTarget(webview_visual2.get())) ||
+      FAILED(webview_controller_->put_IsVisible(true))) {
+    return false;
+  }
 
   return true;
 }

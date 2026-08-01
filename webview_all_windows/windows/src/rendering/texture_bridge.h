@@ -30,6 +30,7 @@ public:
 
   bool Start();
   void Stop();
+  bool IsValid() const { return capture_item_ != nullptr; }
 
   void SetOnFrameAvailable(FrameAvailableCallback callback) {
     frame_available_ = std::move(callback);
@@ -65,6 +66,8 @@ protected:
 
   EventRegistrationToken on_closed_token_ = {};
   EventRegistrationToken on_frame_arrived_token_ = {};
+  bool closed_handler_registered_ = false;
+  bool frame_arrived_handler_registered_ = false;
 
   virtual void StopInternal();
   void OnFrameArrived();

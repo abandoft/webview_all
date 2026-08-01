@@ -69,6 +69,14 @@ void WebviewHost::CreateWebview(HWND hwnd, bool offscreen_only,
         if (controller) {
           std::unique_ptr<Webview> webview(new Webview(
               std::move(controller), self, hwnd, owns_window, offscreen_only));
+          if (!webview->IsValid()) {
+            callback(
+                nullptr,
+                WebviewCreationError::create(
+                    E_FAIL,
+                    "The WebView composition surface could not be created."));
+            return;
+          }
           callback(std::move(webview), nullptr);
         } else {
           callback(nullptr, std::move(error));

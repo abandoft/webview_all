@@ -149,6 +149,11 @@ void WindowsHostApi::CreateWebView(
         auto bridge = std::make_unique<WebviewBridge>(
             messenger_, textures_, platform_->graphics_context(),
             std::move(webview));
+        if (!bridge->IsValid()) {
+          return result(webview_all_windows::FlutterError(
+              kErrorCodeWebviewCreationFailed,
+              "Creating the WebView graphics capture texture failed."));
+        }
         auto texture_id = bridge->texture_id();
         instances_[texture_id] = std::move(bridge);
 
@@ -631,7 +636,10 @@ WindowsHostApi::Resume(int64_t texture_id) {
   if (!bridge) {
     return InvalidIdError();
   }
-  bridge->Resume();
+  if (!bridge->Resume()) {
+    return webview_all_windows::FlutterError(
+        kErrorMethodFailed, "Resuming WebView graphics capture failed.");
+  }
   return std::nullopt;
 }
 
@@ -723,7 +731,10 @@ WindowsHostApi::SetSize(int64_t texture_id,
   if (!bridge) {
     return InvalidIdError();
   }
-  bridge->SetSize(size.width(), size.height(), size.scale_factor());
+  if (!bridge->SetSize(size.width(), size.height(), size.scale_factor())) {
+    return webview_all_windows::FlutterError(
+        kErrorMethodFailed, "Starting WebView graphics capture failed.");
+  }
   return std::nullopt;
 }
 

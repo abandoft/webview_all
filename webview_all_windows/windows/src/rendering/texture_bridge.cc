@@ -19,9 +19,12 @@ TextureBridge::TextureBridge(GraphicsContext *graphics_context,
     : graphics_context_(graphics_context) {
   capture_item_ =
       graphics_context_->CreateGraphicsCaptureItemFromVisual(visual);
-  assert(capture_item_);
+  if (!capture_item_) {
+    util::LogWarning("Creating graphics capture item failed.");
+    return;
+  }
 
-  capture_item_->add_Closed(
+  const HRESULT hr = capture_item_->add_Closed(
       Microsoft::WRL::Callback<ABI::Windows::Foundation::ITypedEventHandler<
           ABI::Windows::Graphics::Capture::GraphicsCaptureItem *,
           IInspectable *>>(
@@ -32,33 +35,48 @@ TextureBridge::TextureBridge(GraphicsContext *graphics_context,
           })
           .Get(),
       &on_closed_token_);
+  if (SUCCEEDED(hr)) {
+    closed_handler_registered_ = true;
+  } else {
+    util::LogWarning("Registering graphics capture close handler failed.");
+  }
 }
 
 TextureBridge::~TextureBridge() {
   const std::lock_guard<std::mutex> lock(mutex_);
   StopInternal();
-  if (capture_item_) {
+  if (capture_item_ && closed_handler_registered_) {
     capture_item_->remove_Closed(on_closed_token_);
   }
 }
 
 bool TextureBridge::Start() {
   const std::lock_guard<std::mutex> lock(mutex_);
-  if (is_running_ || !capture_item_) {
+  if (is_running_) {
+    return true;
+  }
+  if (!capture_item_) {
     return false;
   }
 
   ABI::Windows::Graphics::SizeInt32 size;
-  capture_item_->get_Size(&size);
+  if (FAILED(capture_item_->get_Size(&size)) || size.Width <= 0 ||
+      size.Height <= 0) {
+    util::LogWarning("Reading graphics capture size failed.");
+    return false;
+  }
 
   frame_pool_ = graphics_context_->CreateCaptureFramePool(
       graphics_context_->device(),
       static_cast<ABI::Windows::Graphics::DirectX::DirectXPixelFormat>(
           kPixelFormat),
       kNumBuffers, size);
-  assert(frame_pool_);
+  if (!frame_pool_) {
+    util::LogWarning("Creating graphics capture frame pool failed.");
+    return false;
+  }
 
-  frame_pool_->add_FrameArrived(
+  const HRESULT frame_handler_hr = frame_pool_->add_FrameArrived(
       Microsoft::WRL::Callback<ABI::Windows::Foundation::ITypedEventHandler<
           ABI::Windows::Graphics::Capture::Direct3D11CaptureFramePool *,
           IInspectable *>>(
@@ -70,10 +88,19 @@ bool TextureBridge::Start() {
           })
           .Get(),
       &on_frame_arrived_token_);
+  if (FAILED(frame_handler_hr)) {
+    util::LogWarning("Registering graphics frame handler failed.");
+    frame_pool_ = nullptr;
+    return false;
+  }
+  frame_arrived_handler_registered_ = true;
 
   if (FAILED(frame_pool_->CreateCaptureSession(capture_item_.get(),
                                                capture_session_.put()))) {
     util::LogWarning("Creating capture session failed.");
+    frame_pool_->remove_FrameArrived(on_frame_arrived_token_);
+    frame_arrived_handler_registered_ = false;
+    frame_pool_ = nullptr;
     return false;
   }
 
@@ -82,6 +109,10 @@ bool TextureBridge::Start() {
     return true;
   }
 
+  capture_session_ = nullptr;
+  frame_pool_->remove_FrameArrived(on_frame_arrived_token_);
+  frame_arrived_handler_registered_ = false;
+  frame_pool_ = nullptr;
   return false;
 }
 
@@ -93,12 +124,17 @@ void TextureBridge::Stop() {
 void TextureBridge::StopInternal() {
   if (is_running_) {
     is_running_ = false;
-    frame_pool_->remove_FrameArrived(on_frame_arrived_token_);
+    if (frame_pool_ && frame_arrived_handler_registered_) {
+      frame_pool_->remove_FrameArrived(on_frame_arrived_token_);
+      frame_arrived_handler_registered_ = false;
+    }
     auto closable =
         capture_session_.try_as<ABI::Windows::Foundation::IClosable>();
-    assert(closable);
-    closable->Close();
+    if (closable) {
+      closable->Close();
+    }
     capture_session_ = nullptr;
+    frame_pool_ = nullptr;
   }
 }
 

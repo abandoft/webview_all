@@ -28,13 +28,14 @@ public:
   TextureBridge *texture_bridge() const { return texture_bridge_.get(); }
 
   int64_t texture_id() const { return texture_id_; }
+  bool IsValid() const { return texture_id_ >= 0; }
 
   void SetCursorPos(double x, double y);
   void SetPointerUpdate(int64_t pointer, int64_t event, double x, double y,
                         double size, double pressure);
   void SetScrollDelta(double dx, double dy);
   void SetPointerButtonState(int64_t button, bool is_down);
-  void SetSize(double width, double height, double scale_factor);
+  bool SetSize(double width, double height, double scale_factor);
 
   void LoadUrl(const std::string &url);
   bool LoadRequest(const std::string &url, const std::string &method,
@@ -46,7 +47,7 @@ public:
   bool GoBack();
   bool GoForward();
   void Suspend();
-  void Resume();
+  bool Resume();
 
   void SetVirtualHostNameMapping(const std::string &host_name,
                                  const std::string &path, int64_t access_kind);
@@ -99,7 +100,7 @@ private:
       method_channel_;
 
   flutter::TextureRegistrar *texture_registrar_;
-  int64_t texture_id_;
+  int64_t texture_id_ = -1;
 
   void RegisterEventHandlers();
 

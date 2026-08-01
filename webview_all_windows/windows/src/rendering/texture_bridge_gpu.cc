@@ -14,23 +14,33 @@ TextureBridgeGpu::TextureBridgeGpu(
       kFlutterDesktopPixelFormatNone; // no format required for DXGI surfaces
 }
 
-void TextureBridgeGpu::ProcessFrame(
+bool TextureBridgeGpu::ProcessFrame(
     winrt::com_ptr<ID3D11Texture2D> src_texture) {
+  if (!src_texture) {
+    return false;
+  }
   D3D11_TEXTURE2D_DESC desc;
   src_texture->GetDesc(&desc);
 
   const auto width = desc.Width;
   const auto height = desc.Height;
 
-  EnsureSurface(width, height);
+  if (!EnsureSurface(width, height)) {
+    return false;
+  }
 
   auto device_context = graphics_context_->d3d_device_context();
+  if (!device_context) {
+    util::LogWarning("The Direct3D device context is unavailable.");
+    return false;
+  }
 
   device_context->CopyResource(surface_.get(), src_texture.get());
   device_context->Flush();
+  return true;
 }
 
-void TextureBridgeGpu::EnsureSurface(uint32_t width, uint32_t height) {
+bool TextureBridgeGpu::EnsureSurface(uint32_t width, uint32_t height) {
   if (!surface_ || surface_size_.width != width ||
       surface_size_.height != height) {
     D3D11_TEXTURE2D_DESC dstDesc = {};
@@ -50,13 +60,23 @@ void TextureBridgeGpu::EnsureSurface(uint32_t width, uint32_t height) {
     if (!SUCCEEDED(graphics_context_->d3d_device()->CreateTexture2D(
             &dstDesc, nullptr, surface_.put()))) {
       util::LogWarning("Creating intermediate texture failed.");
-      return;
+      return false;
     }
 
-    HANDLE shared_handle;
-    surface_.try_as(dxgi_surface_);
-    assert(dxgi_surface_);
-    dxgi_surface_->GetSharedHandle(&shared_handle);
+    dxgi_surface_ = surface_.try_as<IDXGIResource>();
+    if (!dxgi_surface_) {
+      util::LogWarning("Querying the shared texture interface failed.");
+      surface_ = nullptr;
+      return false;
+    }
+    HANDLE shared_handle = nullptr;
+    if (FAILED(dxgi_surface_->GetSharedHandle(&shared_handle)) ||
+        shared_handle == nullptr) {
+      util::LogWarning("Creating the shared texture handle failed.");
+      dxgi_surface_ = nullptr;
+      surface_ = nullptr;
+      return false;
+    }
 
     surface_descriptor_.handle = shared_handle;
     surface_descriptor_.width = surface_descriptor_.visible_width = width;
@@ -69,6 +89,7 @@ void TextureBridgeGpu::EnsureSurface(uint32_t width, uint32_t height) {
 
     surface_size_ = {width, height};
   }
+  return true;
 }
 
 const FlutterDesktopGpuSurfaceDescriptor *
@@ -79,15 +100,16 @@ TextureBridgeGpu::GetSurfaceDescriptor(size_t width, size_t height) {
     return nullptr;
   }
 
-  if (last_frame_) {
-    ProcessFrame(last_frame_);
+  if (last_frame_ && !ProcessFrame(last_frame_)) {
+    return nullptr;
   }
 
-  if (surface_) {
-    // Gets released in the SurfaceDescriptor's release callback.
-    surface_->AddRef();
+  if (!surface_) {
+    return nullptr;
   }
 
+  // Gets released in the SurfaceDescriptor's release callback.
+  surface_->AddRef();
   return &surface_descriptor_;
 }
 
