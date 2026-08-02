@@ -1423,7 +1423,9 @@ class AndroidWebResourceError extends WebResourceError {
     required super.description,
     super.isForMainFrame,
     super.url,
-  }) : failingUrl = url,
+  }) : // This deprecated alias is kept for source compatibility.
+       // ignore: deprecated_member_use_from_same_package
+       failingUrl = url,
        super(errorType: _errorCodeToErrorType(errorCode));
 
   /// Gets the URL for which the failing resource request was made.
