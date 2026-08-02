@@ -96,17 +96,30 @@ class AndroidWebViewCookieManager extends PlatformWebViewCookieManager {
     }
 
     final webViewCookies = <WebViewCookie>[];
-    for (final String cookie in cookies.split('; ')) {
-      final List<String> cookieValue = cookie.split('=');
+    for (final String rawCookie in cookies.split(';')) {
+      final String cookie = rawCookie.trim();
+      final int separatorIndex = cookie.indexOf('=');
+      if (separatorIndex <= 0) {
+        continue;
+      }
       webViewCookies.add(
         WebViewCookie(
-          name: cookieValue.first,
-          value: cookieValue.last,
-          domain: url.toString(),
+          name: _decodeCookieComponent(cookie.substring(0, separatorIndex)),
+          value: _decodeCookieComponent(cookie.substring(separatorIndex + 1)),
+          domain: url.host,
+          path: '/',
         ),
       );
     }
 
     return webViewCookies;
+  }
+
+  String _decodeCookieComponent(String value) {
+    try {
+      return Uri.decodeComponent(value);
+    } on ArgumentError {
+      return value;
+    }
   }
 }

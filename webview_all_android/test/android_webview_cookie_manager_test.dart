@@ -135,11 +135,13 @@ void main() {
 
     expect(cookies[0].name, 'foo');
     expect(cookies[0].value, 'bar');
-    expect(cookies[0].domain, 'https://flutter.dev');
+    expect(cookies[0].domain, 'flutter.dev');
+    expect(cookies[0].path, '/');
 
     expect(cookies[1].name, 'hello');
     expect(cookies[1].value, 'world');
-    expect(cookies[1].domain, 'https://flutter.dev');
+    expect(cookies[1].domain, 'flutter.dev');
+    expect(cookies[1].path, '/');
 
     verify(mockCookieManager.getCookies('https://flutter.dev')).called(1);
   });
@@ -193,8 +195,34 @@ void main() {
     expect(cookies.length, 1);
     expect(cookies[0].name, 'sessionId');
     expect(cookies[0].value, 'abc123');
-    expect(cookies[0].domain, 'https://flutter.dev');
+    expect(cookies[0].domain, 'flutter.dev');
 
     verify(mockCookieManager.getCookies('https://flutter.dev')).called(1);
+  });
+
+  test('getCookies preserves equals signs and decodes components', () async {
+    final MockCookieManager mockCookieManager = MockCookieManager();
+    when(mockCookieManager.getCookies('https://flutter.dev')).thenAnswer(
+      (_) => Future<String>.value(
+        'token=abc=def; encoded%26name=a%20b%3Dc%3Bd; malformed=%E0%A4%A',
+      ),
+    );
+    final AndroidWebViewCookieManager
+    cookieManager = AndroidWebViewCookieManager(
+      AndroidWebViewCookieManagerCreationParams.fromPlatformWebViewCookieManagerCreationParams(
+        const PlatformWebViewCookieManagerCreationParams(),
+      ),
+      cookieManager: mockCookieManager,
+    );
+
+    final List<WebViewCookie> cookies = await cookieManager.getCookies(
+      Uri.parse('https://flutter.dev'),
+    );
+
+    expect(cookies, hasLength(3));
+    expect(cookies[0].value, 'abc=def');
+    expect(cookies[1].name, 'encoded&name');
+    expect(cookies[1].value, 'a b=c;d');
+    expect(cookies[2].value, '%E0%A4%A');
   });
 }

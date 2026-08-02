@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
 
 group = "com.abandoft.webview_all_android"
 version = "1.0-SNAPSHOT"
@@ -25,10 +26,15 @@ allprojects {
 
 plugins {
     id("com.android.library")
-    id("kotlin-android")
 }
 
-kotlin {
+val agpMajor = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.substringBefore('.').toInt()
+
+if (agpMajor < 9) {
+    apply(plugin = "org.jetbrains.kotlin.android")
+}
+
+project.extensions.configure(KotlinAndroidProjectExtension::class.java) {
     compilerOptions {
         jvmTarget = JvmTarget.fromTarget(JavaVersion.VERSION_17.toString())
     }
@@ -56,7 +62,7 @@ android {
     }
 
     dependencies {
-        implementation("androidx.annotation:annotation:1.9.1")
+        implementation("androidx.annotation:annotation:1.10.0")
         implementation("androidx.webkit:webkit:1.15.0")
         testImplementation("junit:junit:4.13.2")
         testImplementation("org.mockito:mockito-core:5.23.0")

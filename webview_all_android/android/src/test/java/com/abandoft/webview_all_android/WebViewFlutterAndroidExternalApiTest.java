@@ -6,6 +6,7 @@ package com.abandoft.webview_all_android;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -33,8 +34,9 @@ public class WebViewFlutterAndroidExternalApiTest {
 
   @Mock FlutterPlugin.FlutterPluginBinding mockPluginBinding;
 
+  @SuppressWarnings("deprecation")
   @Test
-  public void getWebView() {
+  public void getWebViewFromEngineAndBinding() {
     final WebViewFlutterPlugin webViewFlutterPlugin = new WebViewFlutterPlugin();
 
     when(mockPluginBinding.getApplicationContext()).thenReturn(mockContext);
@@ -55,8 +57,11 @@ public class WebViewFlutterAndroidExternalApiTest {
 
     final FlutterEngine mockFlutterEngine = mock(FlutterEngine.class);
     when(mockFlutterEngine.getPlugins()).thenReturn(mockPluginRegistry);
+    when(mockPluginBinding.getFlutterEngine()).thenReturn(mockFlutterEngine);
 
     assertEquals(WebViewFlutterAndroidExternalApi.getWebView(mockFlutterEngine, 0), mockWebView);
+    assertEquals(WebViewFlutterAndroidExternalApi.getWebView(mockPluginBinding, 0), mockWebView);
+    assertNull(WebViewFlutterAndroidExternalApi.getWebView(mockPluginBinding, 1));
 
     webViewFlutterPlugin.onDetachedFromEngine(mockPluginBinding);
   }
