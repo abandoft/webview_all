@@ -3,7 +3,7 @@ title: Web
 description: 浏览器 iframe 实现、iframe 属性、fetch 请求和安全限制。
 ---
 
-Web 由 `webview_all_web 1.3.1` 提供，底层是 HTML `iframe`。
+Web 由 `webview_all_web 1.3.2` 提供，底层是 HTML `iframe`。
 
 | 项 | 值 |
 | --- | --- |
@@ -25,6 +25,9 @@ final params = WebWebViewControllerCreationParams(
   },
 );
 ```
+
+iframe 属性名会在写入 DOM 前校验。空名称、非法名称以及由控制器管理的
+`id`、`src`、`srcdoc` 都会被拒绝，避免破坏实例标识和加载状态。
 
 ## 主要 API
 
@@ -56,6 +59,18 @@ await controller.loadRequest(
 响应会按 `Content-Type` 声明的 charset 解码，支持带引号和扩展参数的
 header；实现还会注入 `<base>` 来保持相对 URL 的解析语义。
 
+## History
+
+控制器最多保存 100 条带类型的 history，分别记录直接 URL、inline HTML 和
+fetch 响应。前进/后退会按原始类型恢复内容，并清除过期的 `src` 或 `srcdoc`。
+
+POST 或带自定义 header 的 fetch 加载会保存响应快照；前进/后退不会重放请求，
+显式 `reload()` 才会重新发起请求并替换当前快照。并发 fetch 使用代际校验，
+较早返回的响应不会覆盖较新的导航。
+
+该 history 只覆盖通过 controller 发起的加载。浏览器同源策略不允许插件可靠
+追踪跨域 iframe 内部自行发生的导航。
+
 ## 可控制内容
 
 以下能力可通过直接同源访问或插件注入到隔离 HTML 中的消息桥实现：
@@ -75,6 +90,18 @@ sandbox（包含 `allow-scripts`、不包含 `allow-same-origin`）的
 
 直接加载的跨域 URL 仍由浏览器接管，控制器不能绕过同源策略。fetch-backed
 非 HTML 内容也不会注入 JavaScript bridge。
+
+## Cookie
+
+Web Cookie 来自宿主页面的 `document.cookie`，因此：
+
+- `getCookies` 只在请求的 scheme、host、path 与当前宿主文档完全一致时返回
+  可见 Cookie；其他 URL 返回空列表并只打印一次限制说明。
+- `setCookie` 会拒绝当前宿主文档不可见的 domain。
+- `clearCookies` 会对当前可见 Cookie 尝试所有匹配的父 domain/path 组合，并在
+  至少移除一个可见 Cookie 时返回 `true`。
+- `HttpOnly` 和其他 origin 的 Cookie 不可访问；浏览器读取时不返回原始
+  domain/path，因此结果使用当前 host 和 `/`。
 
 ## 不支持或受限
 

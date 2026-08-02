@@ -3,7 +3,7 @@ title: iOS 和 macOS
 description: WKWebView 实现、WebKit API 和 Apple 平台差异。
 ---
 
-iOS 和 macOS 由 `webview_all_wkwebview ^1.3.1` 提供。
+iOS 和 macOS 由 `webview_all_wkwebview ^1.3.2` 提供。
 
 | 项 | 值 |
 | --- | --- |
@@ -71,3 +71,15 @@ macOS 与 iOS 共用 Dart 包。macOS 端只使用公开原生 WebKit API，并�
 | link preview | 取决于系统支持。 |
 
 这些兼容逻辑由 `webview_all_wkwebview` 子插件负责，主 `webview_all` Controller 不再包含 macOS 特判。
+
+## Engine 关闭
+
+子插件会在 iOS application termination、受支持的 scene disconnect 或 Flutter
+engine detach 时进行幂等清理：停止向 Dart 发消息，并移除 Pigeon handler 和
+instance；生命周期回调重复到达也不会出错。macOS 继续使用 Flutter 的 engine
+detach 回调。
+
+当 Flutter engine 提供公开 scene 协议时，插件会自动注册 scene 生命周期。
+iOS 原生 `WKWebView` 访问入口也支持传入 `FlutterPluginRegistrar`：可用时使用
+Flutter 官方 registrar 查询，较早的受支持 Flutter 版本使用按 engine 隔离的兼容
+查询，无需修改宿主应用。

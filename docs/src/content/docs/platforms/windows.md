@@ -3,7 +3,7 @@ title: Windows
 description: WebView2 implementation, runtime setup, APIs, and limits.
 ---
 
-Windows is provided by `webview_all_windows 1.3.1` and uses Microsoft Edge WebView2.
+Windows is provided by `webview_all_windows 1.3.2` and uses Microsoft Edge WebView2.
 
 ## Engine
 
@@ -35,6 +35,14 @@ Check runtime version:
 ```dart
 final version = await WindowsWebViewController.getWebViewVersion();
 ```
+
+If controller initialization fails, the widget displays the error in its
+center with two actions:
+
+- **Install Webview2** opens Microsoft's official WebView2 download page in the
+  default browser.
+- **Refresh** retries initialization on the same controller after partial
+  native state and subscriptions have been cleaned up.
 
 ## Creation Params
 
@@ -128,5 +136,10 @@ Windows-specific response classes add request and response detail:
 - Runtime initialization should happen once and before creating controllers.
 - WebView2 environment, composition texture, and frame-capture startup failures
   are returned as `PlatformException`s instead of terminating the process
-  through native assertions. Applications can log the error and guide users to
-  install or repair the runtime.
+  through native assertions.
+- Initialization is retryable and idempotent. Native channels, event
+  subscriptions, streams, and delegates are released exactly once when the
+  internal controller is finalized; no public common `dispose()` API is added.
+- Surface resize updates are generation-checked after asynchronous
+  initialization, so stale or post-disposal size work cannot overwrite the
+  current texture size.

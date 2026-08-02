@@ -3,7 +3,7 @@ title: OHOS
 description: ArkWeb 实现、API 和 HarmonyOS/OpenHarmony 限制。
 ---
 
-OHOS 由 `webview_all_ohos 1.3.1` 提供，底层使用 ArkWeb。
+OHOS 由 `webview_all_ohos 1.3.2` 提供，底层使用 ArkWeb。
 
 | 项 | 值 |
 | --- | --- |
@@ -73,3 +73,20 @@ await (WebViewCookieManager().platform as OhosWebViewCookieManager)
 
 - WebView 权限批准不等于系统权限，宿主应用仍需声明并获取权限。
 - ArkWeb 行为可能随 HarmonyOS/OpenHarmony 版本变化，尤其是媒体、文件选择和权限。
+
+## Toolchain 隔离
+
+不要在同一个 package 目录交替运行 stock Flutter 和 OHOS Flutter SDK：两者都会
+写 `.dart_tool/package_config.json`，但 SDK package 集合不兼容。仓库脚本会
+把包含未提交改动的当前代码复制到临时目录后再运行 OHOS 命令：
+
+```sh
+OHOS_FLUTTER=/absolute/path/to/ohos/flutter \
+  ./tool/run_ohos_flutter.sh -- analyze
+
+OHOS_FLUTTER=/absolute/path/to/ohos/flutter \
+  ./tool/run_ohos_flutter.sh --workdir webview_all/example -- build hap
+```
+
+脚本要求显式的绝对 SDK 路径，复制时排除 cache/generated 目录，结束后始终删除
+临时工作区，因此真实仓库的 `.dart_tool` 不会被污染。

@@ -47,18 +47,34 @@ import 'package:webview_all_ohos/webview_all_ohos.dart';
 import 'package:webview_all_web/webview_all_web.dart';
 ```
 
-## Version 1.3.1 Notes
+## Version 1.3.2 Notes
 
-The `1.3.1` line hardens runtime failure behavior without changing the public
-controller surface:
+The `1.3.2` line hardens resource ownership, failure recovery, and test
+coverage without adding a common `WebViewController.dispose()` API or raising
+the Flutter 3.35 / Dart 3.9 minimum:
 
-- macOS uses version-gated native APIs and safely logs unavailable features.
-- Web keeps managed HTML isolated while restoring supported APIs through a
-  navigation-scoped message bridge.
-- Linux zoom disabling is enforced, OHOS load failures propagate correctly,
-  and Windows initialization failures become diagnosable platform errors.
-- Android rejects POST requests when custom headers cannot be preserved rather
-  than silently sending a different request.
+- Windows initialization is idempotent and retryable. Its centered failure
+  view offers **Install Webview2** and **Refresh**, while stale resize work and
+  partial native resources are cleaned up safely.
+- Web iframe attributes reject reserved or malformed names. Its bounded typed
+  history restores cached request results without replaying POST requests,
+  explicit reload still refetches, and stale concurrent navigations cannot
+  overwrite newer content.
+- Web cookie reads require the requested URL to match the current host
+  document's exact scheme, host, and path. Foreign-domain writes are rejected,
+  and clearing checks whether browser-visible cookies were actually removed.
+- Linux decision callbacks fail closed and native requests have a 30-second
+  deadline, preventing navigation, auth, TLS, permission, and dialog handlers
+  from blocking the engine indefinitely.
+- Android cookie parsing preserves values containing `=`, tolerates malformed
+  percent encoding, and adopts the upstream native binding access compatible
+  with the existing minimum Flutter version.
+- The WKWebView plugin performs idempotent application-termination teardown.
+  Newer scene and registrar APIs that require a higher Flutter minimum remain
+  intentionally excluded.
+- Non-OHOS packages now have minimum/current Flutter CI plus browser tests and
+  host-native builds. OHOS commands can run through the isolated toolchain
+  helper without replacing the stock Flutter package configuration.
 
 ## Version 1.3.0 Notes
 
@@ -90,7 +106,7 @@ Audit these areas during migration:
 | --- | --- |
 | `loadRequest` | POST plus custom headers is not available on Android and OHOS. Web uses `fetch` for non-simple requests and is subject to CORS. |
 | JavaScript | Web controls same-origin content directly and plugin-managed isolated HTML through a message bridge. Direct cross-origin iframe URLs remain browser-isolated. |
-| Cookies | Web cookies are host-document cookies. Windows offers additional native metadata through `WindowsWebViewCookie`. |
+| Cookies | Web cookie reads require the exact current host-document URL; writes cannot target a foreign domain. Windows offers additional native metadata through `WindowsWebViewCookie`. |
 | TLS | Web cannot expose recoverable TLS decisions. Native engines can report SSL auth callbacks when their engine exposes them. |
 | macOS | Some UIKit-style WebKit properties have no macOS implementation. |
 | Linux | WebKitGTK 4.1 is required; the standard Flutter runner needs no source changes. |

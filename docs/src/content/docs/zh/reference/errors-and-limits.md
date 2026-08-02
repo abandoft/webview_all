@@ -24,6 +24,7 @@ description: 异常、不可用能力和平台边界。
 | Web | `setUserAgent(nonNull)` | 打印一次说明并忽略，不抛异常。 |
 | Web | SSL auth 决策 | 浏览器不暴露。 |
 | Web | 跨域 JS/scroll | 浏览器同源策略阻止。 |
+| Web | 查询其他 origin 的 Cookie | 返回空列表并打印一次说明；浏览器 JavaScript 无法检查对应 cookie jar。 |
 | macOS | 滚动位置、滚动回调、滚动条和 overscroll | fork 会打印缺少公开 WKWebView API 的说明并安全忽略；位置读取返回 `Offset.zero`。 |
 | macOS | 受系统版本限制的 WebKit 属性 | 背景色需要 macOS 12，inspect 需要 macOS 13.3；更早系统打印说明并安全忽略。 |
 
@@ -53,6 +54,20 @@ onSslAuthError: (SslAuthError error) async {
 Web 可直接控制同源内容，并通过来源校验消息桥控制插件管理的隔离 HTML。
 直接跨域 iframe URL 仍无法检查或脚本控制。隔离 HTML 的 `confirm` 和
 `prompt` 保留浏览器原生对话框，因为同步 API 无法等待异步跨 frame 回调。
+
+Web 的 fetch-backed 导航最多保留 100 条类型化历史记录。前进、后退直接恢复
+已保存的响应快照，不会重放修改型请求；只有显式调用 `reload()` 才重新请求。
+导航代理拒绝跳转时不会改变当前历史位置。
+
+## 回调失败安全
+
+Linux 的导航、HTTP 认证、TLS、权限和 JavaScript 对话框回调抛错时会采用安全的
+拒绝或取消结果；native 待决请求也会在 30 秒后超时。错误以单行日志记录，既能
+定位应用回调问题，又不会永久阻塞 WebKitGTK。
+
+Windows 初始化失败会显示在组件内，可用 **Refresh** 重试；**Install
+Webview2** 会打开 Microsoft runtime 下载页。重试前会释放未完成初始化留下的
+资源。
 
 ## 运行时限制
 

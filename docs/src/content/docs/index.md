@@ -8,7 +8,7 @@ Windows, Linux, OpenHarmony, and Web. Its
 [`webview_platform_interface`](https://pub.dev/packages/webview_platform_interface)
 package is forked from Flutter's official platform interface.
 
-This unversioned route documents the latest `1.3.1` release.
+This unversioned route documents the latest `1.3.2` release.
 
 ## Platform Compatibility
 

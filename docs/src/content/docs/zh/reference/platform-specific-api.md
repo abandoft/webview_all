@@ -43,7 +43,7 @@ if (controller.platform is WindowsWebViewController) {
 
 主要类型：`LinuxWebViewController`、`LinuxWebViewWidget`、`LinuxNavigationDelegate`、`LinuxWebViewCookieManager`、`LinuxWebResourceRequest`、`LinuxWebResourceResponse`、`LinuxWebResourceError`、`LinuxPlatformWebViewPermissionRequest`、`LinuxPlatformSslAuthError`。
 
-重要 API：WebKitGTK developer extras、Inspector、JS popup、media settings、page cache、file URL access、font size、zoom factor、dispose。
+重要 API：WebKitGTK developer extras、Inspector、JS popup、media settings、page cache、file URL access、font size、zoom factor，以及可选提前释放资源的既有 Linux 专属 `dispose()`。正常生命周期由 finalizer 自动清理，没有给公共 controller 增加生命周期 API。
 
 ## OHOS
 

@@ -3,7 +3,7 @@ title: Linux
 description: WebKitGTK implementation, automatic GtkOverlay integration, APIs, and limits.
 ---
 
-Linux is provided by `webview_all_linux 1.3.1` and uses WebKitGTK.
+Linux is provided by `webview_all_linux 1.3.2` and uses WebKitGTK.
 
 ## Engine
 
@@ -62,7 +62,12 @@ Each field is nullable. `null` leaves the WebKitGTK default unchanged.
 | `setDefaultMonospaceFontSize(int fontSize)` | Sets monospace font size. |
 | `setMinimumFontSize(int fontSize)` | Sets minimum font size. |
 | `setZoomFactor(double zoomFactor)` | Sets page zoom. |
-| `dispose()` | Releases the native WebView and event subscription. |
+| `dispose()` | Optional Linux-specific early release of the native WebView and event subscription. |
+
+Normal cleanup is also automatic: the Linux controller owns a finalizer that
+releases its native WebView if the controller becomes unreachable. The common
+`WebViewController` API does not add `dispose()`, and removing a widget does not
+invalidate a controller that may be reused elsewhere.
 
 The common `enableZoom(false)` API disables plugin-controlled WebKitGTK zoom
 gestures, including Ctrl+mouse-wheel and Ctrl+`+`/`-`/`0`. Ordinary scrolling
@@ -88,6 +93,13 @@ Linux reports these native events through an event channel:
 - permission requests for camera and microphone
 - JavaScript `alert`, `confirm`, `beforeunload`, and `prompt`
 
+Native requests that wait for a Dart decision have a 30-second deadline.
+Navigation is denied, authentication/dialog/TLS requests are canceled, and
+permissions are denied if the application never completes a request or the
+event channel closes. Exceptions from application decision callbacks are
+logged on one line and use the same safe defaults instead of leaving WebKitGTK
+blocked.
+
 ## Request Detail
 
 | Type | Extra fields |
@@ -103,3 +115,5 @@ Linux reports these native events through an event channel:
 - The WebView is a native GTK widget, not a Flutter texture. Layering and clipping follow GTK overlay behavior.
 - File URL universal access is powerful and should stay disabled for untrusted local content.
 - Distribution WebKitGTK versions differ; test media, permissions, and dialog flows on your target Linux distribution.
+- Frame updates are asynchronous and failure-isolated; stale widget teardown
+  work cannot surface as an unhandled exception.

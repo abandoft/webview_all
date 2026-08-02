@@ -7,14 +7,14 @@ description: Version alignment, dependency baseline, and maintenance rules.
 
 | Package | Version |
 | --- | --- |
-| `webview_all` | `1.3.1` |
-| `webview_all_windows` | `1.3.1` |
-| `webview_all_linux` | `1.3.1` |
-| `webview_all_ohos` | `1.3.1` |
-| `webview_all_web` | `1.3.1` |
-| `webview_platform_interface` | `1.3.1` |
-| `webview_all_android` | `1.3.1` |
-| `webview_all_wkwebview` | `1.3.1` |
+| `webview_all` | `1.3.2` |
+| `webview_all_windows` | `1.3.2` |
+| `webview_all_linux` | `1.3.2` |
+| `webview_all_ohos` | `1.3.2` |
+| `webview_all_web` | `1.3.2` |
+| `webview_platform_interface` | `1.3.2` |
+| `webview_all_android` | `1.3.2` |
+| `webview_all_wkwebview` | `1.3.2` |
 | Flutter SDK | `>=3.35.0` |
 | Dart SDK | `^3.9.0` |
 

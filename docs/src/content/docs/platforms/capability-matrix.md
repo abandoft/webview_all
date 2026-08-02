@@ -1,6 +1,6 @@
 ---
 title: Capability Matrix
-description: Cross-platform feature support for webview_all 1.3.1.
+description: Cross-platform feature support for webview_all 1.3.2.
 ---
 
 Legend:

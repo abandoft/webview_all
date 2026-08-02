@@ -43,7 +43,7 @@ Package: `webview_all_linux`.
 
 Main types: `LinuxWebViewController`, `LinuxWebViewWidget`, `LinuxNavigationDelegate`, `LinuxWebViewCookieManager`, `LinuxWebResourceRequest`, `LinuxWebResourceResponse`, `LinuxWebResourceError`, `LinuxPlatformWebViewPermissionRequest`, `LinuxPlatformSslAuthError`.
 
-Important APIs: WebKitGTK developer extras, Inspector, JS popup, media settings, page cache, file URL access, font size, zoom factor, dispose.
+Important APIs: WebKitGTK developer extras, Inspector, JS popup, media settings, page cache, file URL access, font size, zoom factor, and the pre-existing Linux-specific `dispose()` for optional early release. Normal cleanup is automatic through its finalizer; no common controller lifecycle API is added.
 
 ## OHOS
 

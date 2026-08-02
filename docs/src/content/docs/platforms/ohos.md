@@ -3,7 +3,7 @@ title: OHOS
 description: ArkWeb implementation, APIs, and HarmonyOS/OpenHarmony limits.
 ---
 
-OHOS is provided by `webview_all_ohos 1.3.1` and uses ArkWeb through the OHOS Flutter SDK.
+OHOS is provided by `webview_all_ohos 1.3.2` and uses ArkWeb through the OHOS Flutter SDK.
 
 ## Engine
 
@@ -116,3 +116,22 @@ OHOS-specific types add native request and response detail:
 - POST with custom headers is not available through current ArkWeb `postUrl` APIs.
 - Web content permission approval still requires the host app to hold the matching OHOS permission.
 - ArkWeb behavior can vary across HarmonyOS/OpenHarmony versions, especially for media, file picker, and permission surfaces. Test on the target API level.
+
+## Isolated Toolchain
+
+Do not run stock Flutter and the OHOS Flutter SDK in the same package
+directory: both write `.dart_tool/package_config.json`, but their SDK package
+sets are incompatible. Use the repository helper to run OHOS commands in a
+temporary copy that also includes current uncommitted changes:
+
+```sh
+OHOS_FLUTTER=/absolute/path/to/ohos/flutter \
+  ./tool/run_ohos_flutter.sh -- analyze
+
+OHOS_FLUTTER=/absolute/path/to/ohos/flutter \
+  ./tool/run_ohos_flutter.sh --workdir webview_all/example -- build hap
+```
+
+The helper requires an explicit absolute SDK path, excludes generated/cache
+directories while copying, and always removes the temporary workspace. The
+real repository's `.dart_tool` directories are untouched.

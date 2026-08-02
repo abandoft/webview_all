@@ -35,7 +35,7 @@ Cookie validation rejects empty names, browser-rejected characters, and invalid 
 
 | Platform | Storage | Notes |
 | --- | --- | --- |
-| Android | Android WebView `CookieManager`. | Supports third-party cookie policy through platform API. |
+| Android | Android WebView `CookieManager`. | Preserves encoded names/values and values containing `=`; supports third-party cookie policy. |
 | iOS/macOS | `WKWebsiteDataStore.defaultDataStore`. | Filters `getCookies` by RFC-style domain matching. |
 | Windows | WebView2 cookie manager. | Exposes extended cookie metadata through `WindowsWebViewCookie`. |
 | Linux | WebKitGTK cookie manager bridge. | Common cookie fields are supported. |
@@ -100,4 +100,9 @@ The web implementation uses `document.cookie`, so it follows browser JavaScript 
 - It cannot read `HttpOnly` cookies.
 - It cannot clear cookies for unrelated domains.
 - It cannot bypass `SameSite`, `Secure`, partitioning, or browser privacy rules.
-- `getCookies` returns cookies visible to the host document, using the provided URL host as the returned cookie domain.
+- `getCookies` returns data only for the exact current document scheme, host,
+  and path; other URL contexts return an empty list.
+- Returned cookies use the current document host and `/` because
+  `document.cookie` does not expose their original domain/path attributes.
+- `clearCookies` is best effort across visible parent domain/path candidates
+  and returns true only when at least one visible cookie disappears.

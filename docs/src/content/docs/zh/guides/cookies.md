@@ -37,7 +37,7 @@ cookie 名称、domain 和 path 会做基本校验。非空 path 必须以 `/` �
 
 | 平台 | 存储 | 说明 |
 | --- | --- | --- |
-| Android | Android WebView `CookieManager` | 支持第三方 cookie 策略。 |
+| Android | Android WebView `CookieManager` | 保留编码 name/value 和值中的 `=`，支持第三方 cookie 策略。 |
 | iOS/macOS | `WKWebsiteDataStore.defaultDataStore` | 按 domain matching 过滤。 |
 | Windows | WebView2 cookie manager | 提供扩展元数据。 |
 | Linux | WebKitGTK cookie bridge | 支持通用字段。 |
@@ -94,3 +94,8 @@ Web 实现使用 `document.cookie`：
 - 不能读取 `HttpOnly` cookie。
 - 不能管理无关域名 cookie。
 - 不能绕过 `SameSite`、`Secure`、分区和浏览器隐私策略。
+- `getCookies` 只接受与当前文档 scheme、host、path 完全一致的 URL；其他
+  context 返回空列表。
+- `document.cookie` 不提供原始 domain/path，因此返回项使用当前 host 和 `/`。
+- `clearCookies` 会对可见父 domain/path 做尽力清理，只有至少一个可见 Cookie
+  消失时才返回 `true`。

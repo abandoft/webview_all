@@ -3,7 +3,7 @@ title: Android
 description: Android WebView implementation, APIs, and platform limits.
 ---
 
-Android is provided by `webview_all_android ^1.3.1`. `webview_all` registers it as the default Android implementation.
+Android is provided by `webview_all_android ^1.3.2`. `webview_all` registers it as the default Android implementation.
 
 ## Engine
 
@@ -109,8 +109,24 @@ await (controller.platform as AndroidWebViewController)
 
 `FileSelectorMode` values are `open`, `openMultiple`, and `save`.
 
+## Cookies and Native Access
+
+`getCookies` splits Android's cookie header at semicolons and each entry at its
+first equals sign, so encoded values and values containing `=` are preserved.
+Malformed percent escapes are returned literally instead of failing the whole
+query. Returned entries use the requested host and `/`.
+
+Native Android clients can retrieve a plugin-owned `WebView` from either a
+`FlutterPluginBinding` or the deprecated `FlutterEngine` overload of
+`WebViewFlutterAndroidExternalApi`. The binding overload remains compatible
+with Flutter 3.35 by using its engine plugin registry.
+
 ## Known Limits
 
 - `loadRequest` cannot send custom headers with a POST body because Android WebView's `postUrl` API does not expose headers.
 - WebView permission approval does not replace Android runtime permissions. Your app must request system permissions separately.
 - Payment Request depends on AndroidX WebKit feature support and the installed WebView version.
+- The Android plugin selects its Kotlin integration from the host project's
+  Android Gradle Plugin: AGP 8 and earlier use the Kotlin Gradle Plugin, while
+  AGP 9 and later use Built-in Kotlin. This keeps older Flutter projects
+  compatible without conflicting with newer Android builds.

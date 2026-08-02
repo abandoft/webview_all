@@ -1,6 +1,6 @@
 ---
 title: 能力矩阵
-description: webview_all 1.3.1 的跨平台能力覆盖。
+description: webview_all 1.3.2 的跨平台能力覆盖。
 ---
 
 标记说明：

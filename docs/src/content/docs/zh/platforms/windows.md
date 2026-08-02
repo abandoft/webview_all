@@ -3,7 +3,7 @@ title: Windows
 description: WebView2 实现、运行时设置、API 和限制。
 ---
 
-Windows 由 `webview_all_windows 1.3.1` 提供，底层使用 Microsoft Edge WebView2。
+Windows 由 `webview_all_windows 1.3.2` 提供，底层使用 Microsoft Edge WebView2。
 
 | 项 | 值 |
 | --- | --- |
@@ -25,6 +25,12 @@ final version = await WindowsWebViewController.getWebViewVersion();
 ```
 
 需要自定义用户数据目录、浏览器路径或启动参数时，应在创建 controller 前调用。
+
+controller 初始化失败时，组件中心会显示错误和两个操作：
+
+- **Install Webview2**：用默认浏览器打开 Microsoft 官方 WebView2 下载页。
+- **Refresh**：清理失败过程中创建的 native 状态和订阅后，使用同一个
+  controller 重试初始化。
 
 ## Popup 策略
 
@@ -77,5 +83,9 @@ await manager.setWindowsCookie(
 - 滚动条和 overscroll 通过 CSS 注入实现。
 - 环境初始化应只做一次，并尽量早于 controller 创建。
 - WebView2 environment、composition texture 或帧捕获启动失败时会返回
-  `PlatformException`，不再因原生断言终止进程；应用可记录错误并提示用户安装或
-  修复 Runtime。
+  `PlatformException`，不再因原生断言终止进程。
+- 初始化支持幂等重试；内部 controller 最终释放时，native channel、event
+  subscription、stream 和 delegate 都只清理一次，不增加公共 controller
+  `dispose()` API。
+- 异步初始化后的 surface resize 使用代际校验，旧尺寸和组件销毁后的任务不会
+  覆盖当前 texture 尺寸。

@@ -26,6 +26,7 @@ This page lists important failures and platform limits that production code shou
 | Web | `setUserAgent(nonNull)` | Logs once and ignores the override; iframe network user agent cannot be changed by page JavaScript. |
 | Web | recoverable SSL decisions | `WebPlatformSslAuthError.proceed()` and `cancel()` throw `UnsupportedError`. |
 | Web | cross-origin JavaScript and scroll APIs | Throws `UnsupportedError` or silently cannot install hooks when browser policy blocks access. |
+| Web | cookie request for another origin | Returns an empty list and logs once; browser JavaScript cannot inspect that cookie jar. |
 | macOS | scroll position, scroll callbacks, scrollbar visibility, and overscroll | The fork logs the missing public WKWebView API and safely no-ops; position reads return `Offset.zero`. |
 | macOS | version-gated WebKit properties | Background color requires macOS 12 and inspection requires macOS 13.3. Earlier versions log and safely no-op. |
 
@@ -80,6 +81,23 @@ Use same-origin content, `loadHtmlString`, or fetch-backed requests when those
 features are required. Plugin-managed isolated HTML uses a controlled message
 bridge. Direct cross-origin iframe URLs remain inaccessible, and isolated HTML
 keeps browser-native `confirm` and `prompt` dialogs.
+
+Web fetch-backed navigation keeps at most 100 typed history entries. Back and
+forward restore the stored response snapshot and never replay a mutating
+request; `reload()` is the explicit operation that refetches it. A navigation
+delegate denial leaves the current history index unchanged.
+
+## Callback Failure Safety
+
+On Linux, navigation, HTTP authentication, TLS, permission, and JavaScript
+dialog decisions use a safe deny/cancel result if the application callback
+throws or returns an error. Native pending decisions also expire after 30
+seconds. The failure is logged on one line so an application bug remains
+diagnosable without blocking WebKitGTK.
+
+Windows initialization failures are shown in the widget and may be retried with
+**Refresh**. **Install Webview2** opens Microsoft's runtime download page.
+Partial initialization state is released before a retry.
 
 ## Native Runtime Limits
 

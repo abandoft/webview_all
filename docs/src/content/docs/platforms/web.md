@@ -3,7 +3,7 @@ title: Web
 description: Browser iframe implementation, iframe attributes, fetch-backed requests, and security limits.
 ---
 
-Web is provided by `webview_all_web 1.3.1` and renders an HTML `iframe`.
+Web is provided by `webview_all_web 1.3.2` and renders an HTML `iframe`.
 
 ## Engine
 
@@ -40,6 +40,10 @@ final controller = WebViewController.fromPlatformCreationParams(params);
 | `iFrameAttributes` | Additional iframe attributes. `null` removes an attribute. |
 | `httpRequestFactory` | Test hook for fetch-backed loads. |
 
+Attribute names are validated before they reach the DOM. Empty or malformed
+names are rejected, and `id`, `src`, and `srcdoc` are reserved because the
+controller owns iframe identity and document loading.
+
 ## Controller API
 
 | API | Purpose |
@@ -70,6 +74,22 @@ Fetch-backed loads require server CORS approval for cross-origin requests.
 HTML response bytes are decoded using the declared `Content-Type` charset,
 including quoted and extension parameters. A `<base>` element preserves
 relative URL resolution.
+
+## History
+
+The controller keeps up to 100 typed history entries for direct URLs, inline
+HTML, and fetch-backed responses. Back/forward navigation restores the matching
+content type and removes stale `src` or `srcdoc` state.
+
+For fetch-backed POST or custom-header requests, history stores the decoded
+response snapshot. Going back and forward does not replay the request. An
+explicit `reload()` performs the request again and replaces the active
+snapshot. Concurrent fetches are generation-checked, so an older response
+cannot overwrite a newer navigation.
+
+This history covers loads initiated through the controller. Browser-owned
+navigation inside a cross-origin iframe cannot be inspected reliably because
+of the same-origin policy.
 
 ## Controllable Content
 
@@ -110,7 +130,18 @@ await WebViewCookieManager().setCookie(
 );
 ```
 
-It cannot read `HttpOnly` cookies or manage cookies for unrelated domains.
+Browser JavaScript exposes only cookies visible to the host document. Therefore:
+
+- `getCookies` returns data only when the requested scheme, host, and path
+  exactly match the current host document; other URLs return an empty list and
+  log the browser limitation once.
+- `setCookie` rejects a domain that is not visible from the host document.
+- `clearCookies` expires visible cookie names across matching parent
+  domain/path candidates and reports whether at least one visible cookie was
+  removed.
+- `HttpOnly` and unrelated-origin cookies remain inaccessible. The browser does
+  not expose cookie path/domain attributes on reads, so returned entries use
+  the current host and `/`.
 
 ## Unsupported or Limited APIs
 

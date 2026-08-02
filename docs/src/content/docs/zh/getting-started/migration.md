@@ -51,14 +51,25 @@ import 'package:webview_all_ohos/webview_all_ohos.dart';
 import 'package:webview_all_web/webview_all_web.dart';
 ```
 
-## 1.3.1 更新内容
+## 1.3.2 更新内容
 
-`1.3.1` 在不改变公共 controller 接口的前提下强化运行时失败处理：
+`1.3.2` 在不增加公共 `WebViewController.dispose()`、不提高 Flutter 3.35 /
+Dart 3.9 最低版本的前提下，完善资源生命周期、失败恢复和测试：
 
-- macOS 按系统版本使用原生 API，不可用能力打印说明并安全降级。
-- Web 保持受管理 HTML 的 origin 隔离，通过绑定导航生命周期的消息桥恢复受支持能力。
-- Linux 缩放禁用实际生效；OHOS 正确传播加载失败；Windows 初始化失败转为可诊断的平台错误。
-- Android 无法保留自定义 header 的 POST 会明确拒绝，不再静默发送语义不同的请求。
+- Windows 初始化具备幂等、失败清理和重试能力；居中的失败界面提供
+  **Install Webview2** 与 **Refresh**，过期的 resize 任务不会再覆盖新状态。
+- Web 会拒绝非法或保留的 iframe 属性；有上限的类型化历史记录会复用请求结果，
+  前进/后退不重放 POST，显式 reload 仍会重新请求，并发旧导航也不会覆盖新页面。
+- Web Cookie 读取要求请求 URL 的 scheme、host、path 与当前宿主文档完全
+  一致；拒绝外域写入，清理结果按浏览器可见 cookie 是否实际消失判断。
+- Linux 各类决策回调异常时默认采用安全结果，native 请求增加 30 秒截止时间，
+  避免导航、认证、TLS、权限或对话框永久阻塞引擎。
+- Android Cookie 解析保留值中的 `=`，容忍错误的 percent encoding，并迁移
+  当前最低 Flutter 版本可实现的上游 native binding 访问入口。
+- WKWebView 插件增加幂等的应用终止清理；需要更高 Flutter 最低版本的 scene
+  和 registrar API 暂不引入。
+- 所有非 OHOS 包增加最低/当前 Flutter CI、浏览器测试和宿主平台 native
+  构建；OHOS 可通过隔离脚本运行，不再覆盖 stock Flutter 的 package 配置。
 
 ## 1.3.0 更新内容
 
@@ -82,7 +93,7 @@ import 'package:webview_all_web/webview_all_web.dart';
 | --- | --- |
 | `loadRequest` | Android/OHOS 不支持 POST + 自定义 headers。Web 受 CORS 限制。 |
 | JavaScript | Web 可直接控制同源内容，并通过消息桥控制插件管理的隔离 HTML；直接跨域 iframe URL 仍由浏览器隔离。 |
-| Cookie | Web cookie 只来自宿主页 `document.cookie`。 |
+| Cookie | Web Cookie 读取要求当前宿主文档的精确 URL，写入不能指定外域。 |
 | TLS | Web 无法暴露可恢复证书错误决策。 |
 | macOS | 部分 UIKit 风格 WebKit 属性没有 macOS bridge。 |
 | Linux | 需要 WebKitGTK 4.1；标准 Flutter runner 无需修改源码。 |

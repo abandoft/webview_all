@@ -3,7 +3,7 @@ title: iOS and macOS
 description: WKWebView implementation, WebKit APIs, and Apple platform differences.
 ---
 
-iOS and macOS are provided by `webview_all_wkwebview ^1.3.1`. `webview_all` registers it as the default implementation for both Apple platforms.
+iOS and macOS are provided by `webview_all_wkwebview ^1.3.2`. `webview_all` registers it as the default implementation for both Apple platforms.
 
 ## Engine
 
@@ -106,6 +106,20 @@ emulate missing view APIs.
 
 These compatibility decisions are handled by `webview_all_wkwebview`, not by
 the main `webview_all` controller.
+
+## Engine Shutdown
+
+The child plugin performs idempotent teardown when the iOS application
+terminates, a supported scene disconnects, or the Flutter engine detaches:
+calls to Dart are disabled and Pigeon handlers and instances are cleared.
+Repeated lifecycle callbacks are harmless. macOS continues to use Flutter's
+engine-detach callback.
+
+Scene lifecycle registration is enabled automatically when the Flutter engine
+exposes the public scene protocol. The iOS native `WKWebView` accessor also
+accepts a `FlutterPluginRegistrar`: it uses Flutter's registrar lookup when
+available and an engine-isolated compatibility lookup on earlier supported
+Flutter versions. No host application changes are required.
 
 ## Known Limits
 
