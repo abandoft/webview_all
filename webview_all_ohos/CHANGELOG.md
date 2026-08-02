@@ -1,3 +1,17 @@
+## 1.3.2
+
+* Improve Windows WebView2 startup recovery and resource cleanup, including safe retries after initialization failures and protection against stale resize updates.
+* Show a centered Windows startup error with **Install Webview2** linking to Microsoft's official download page and **Refresh** retrying initialization.
+* Validate Web iframe attribute names and prevent overriding the controller-managed `id`, `src`, and `srcdoc` attributes.
+* Improve Web navigation history so back and forward restore the correct URL, HTML, or fetched response without replaying POST requests, while explicit reload still fetches fresh content.
+* Prevent an older concurrent Web request from replacing a newer navigation and limit controller-managed history to 100 entries.
+* Improve Web cookie safety and accuracy by rejecting foreign-domain writes, restricting reads to the current document context, clearing visible cookie paths more thoroughly, and tolerating malformed encoded values.
+* Prevent Linux navigation, authentication, TLS, permission, and JavaScript dialog callbacks from indefinitely blocking the WebView when an application callback fails or does not complete.
+* Improve Android cookie parsing for encoded names, values containing `=`, and malformed encoded values, improve native WebView access from Android host code, and support both legacy and Built-in Kotlin Android builds.
+* Improve iOS WebView cleanup when an application terminates, a scene disconnects, or the Flutter engine detaches, and add native `WKWebView` lookup from a `FlutterPluginRegistrar`.
+* Tolerate encoded names and malformed encoded cookie values on OHOS, and add an isolated OHOS Flutter command helper that does not alter the stock Flutter package configuration.
+* Update the Web implementation to use `web 1.1.1`.
+
 ## 1.3.1
 
 * Make macOS capabilities version-aware: use native background color and magnification APIs where available, fall back to older JavaScript preferences, and log safe no-ops for WebKit features with no public macOS API.

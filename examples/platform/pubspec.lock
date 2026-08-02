@@ -338,56 +338,56 @@ packages:
       path: "../../webview_all"
       relative: true
     source: path
-    version: "1.3.1"
+    version: "1.3.2"
   webview_all_android:
     dependency: "direct main"
     description:
       path: "../../webview_all_android"
       relative: true
     source: path
-    version: "1.3.1"
+    version: "1.3.2"
   webview_all_linux:
     dependency: "direct overridden"
     description:
       path: "../../webview_all_linux"
       relative: true
     source: path
-    version: "1.3.1"
+    version: "1.3.2"
   webview_all_ohos:
     dependency: "direct overridden"
     description:
       path: "../../webview_all_ohos"
       relative: true
     source: path
-    version: "1.3.1"
+    version: "1.3.2"
   webview_all_web:
     dependency: "direct overridden"
     description:
       path: "../../webview_all_web"
       relative: true
     source: path
-    version: "1.3.1"
+    version: "1.3.2"
   webview_all_windows:
     dependency: "direct overridden"
     description:
       path: "../../webview_all_windows"
       relative: true
     source: path
-    version: "1.3.1"
+    version: "1.3.2"
   webview_all_wkwebview:
     dependency: "direct main"
     description:
       path: "../../webview_all_wkwebview"
       relative: true
     source: path
-    version: "1.3.1"
+    version: "1.3.2"
   webview_platform_interface:
     dependency: "direct dev"
     description:
       path: "../../webview_platform_interface"
       relative: true
     source: path
-    version: "1.3.1"
+    version: "1.3.2"
   xdg_directories:
     dependency: transitive
     description:

@@ -1,3 +1,17 @@
+## 1.3.2
+
+* 完善 Windows WebView2 的启动恢复和资源清理，初始化失败后可安全重试，并避免过期的 resize 更新覆盖当前状态。
+* Windows 启动失败时显示居中错误界面，**Install Webview2** 跳转 Microsoft 官方下载页，**Refresh** 重新尝试初始化。
+* 校验 Web iframe 属性名，并禁止覆盖由控制器管理的 `id`、`src` 和 `srcdoc` 属性。
+* 完善 Web 导航历史，前进和后退可正确恢复 URL、HTML 或请求响应，不会重放 POST，显式 reload 仍会重新获取内容。
+* 避免较早完成的 Web 并发请求覆盖较新的导航，并将控制器管理的历史记录限制为最多 100 条。
+* 完善 Web Cookie 的安全性和结果准确性，拒绝外域写入、限制跨上下文读取、更完整地清理可见 Cookie path，并容忍错误的编码值。
+* 避免 Linux 导航、认证、TLS、权限和 JavaScript 对话框在应用回调失败或未完成时永久阻塞 WebView。
+* 完善 Android Cookie 解析，支持编码后的名称、包含 `=` 的值和错误的编码值，完善 Android 宿主代码访问原生 WebView 的方式，并兼容传统 Kotlin 与 Built-in Kotlin 构建。
+* 完善 iOS 应用终止、scene 断开或 Flutter engine detach 时的 WebView 资源清理，并支持通过 `FlutterPluginRegistrar` 查询原生 `WKWebView`。
+* OHOS Cookie 读取支持编码后的名称并可容忍错误的编码值，同时新增隔离运行 OHOS Flutter 命令的辅助脚本，避免改变 stock Flutter 的 package 配置。
+* Web 实现的 `web` 依赖更新至 1.1.1。
+
 ## 1.3.1
 
 * macOS 能力改为按系统版本判断：可用时使用原生背景色和 magnification API，旧系统回退到兼容的 JavaScript preferences；没有公开 WebKit API 的能力打印说明并安全忽略。
