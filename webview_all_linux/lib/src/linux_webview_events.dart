@@ -101,19 +101,34 @@ extension LinuxWebViewControllerEventHandling on LinuxWebViewController {
         }
         break;
       case 'navigationRequest':
-        _handleNavigationRequestEvent(event);
+        _dispatchEventHandler(
+          'navigation request',
+          () => _handleNavigationRequestEvent(event),
+        );
         break;
       case 'httpAuthRequest':
-        unawaited(_handleHttpAuthRequestEvent(event));
+        _dispatchEventHandler(
+          'HTTP authentication request',
+          () => _handleHttpAuthRequestEvent(event),
+        );
         break;
       case 'sslAuthError':
-        unawaited(_handleSslAuthErrorEvent(event));
+        _dispatchEventHandler(
+          'TLS authentication request',
+          () => _handleSslAuthErrorEvent(event),
+        );
         break;
       case 'permissionRequest':
-        unawaited(_handlePermissionRequestEvent(event));
+        _dispatchEventHandler(
+          'permission request',
+          () => _handlePermissionRequestEvent(event),
+        );
         break;
       case 'javaScriptDialog':
-        unawaited(_handleJavaScriptDialogEvent(event));
+        _dispatchEventHandler(
+          'JavaScript dialog',
+          () => _handleJavaScriptDialogEvent(event),
+        );
         break;
     }
   }
@@ -124,14 +139,19 @@ extension LinuxWebViewControllerEventHandling on LinuxWebViewController {
     final int requestId = (event['requestId'] as num?)?.toInt() ?? -1;
     bool allow = true;
     if (_navigationDelegate?.hasNavigationRequestHandler ?? false) {
-      final NavigationDecision? decision = await _navigationDelegate!
-          .decideNavigation(
-            NavigationRequest(
-              url: '${event['url'] ?? ''}',
-              isMainFrame: event['isMainFrame'] != false,
-            ),
-          );
-      allow = decision == NavigationDecision.navigate;
+      try {
+        final NavigationDecision? decision = await _navigationDelegate!
+            .decideNavigation(
+              NavigationRequest(
+                url: '${event['url'] ?? ''}',
+                isMainFrame: event['isMainFrame'] != false,
+              ),
+            );
+        allow = decision == NavigationDecision.navigate;
+      } catch (error, stackTrace) {
+        allow = false;
+        _reportEventError('application navigation callback', error, stackTrace);
+      }
     }
 
     await _invoke<void>('completeNavigationRequest', <String, Object?>{
@@ -150,35 +170,53 @@ extension LinuxWebViewControllerEventHandling on LinuxWebViewController {
       return;
     }
 
-    bool completed = false;
-    void complete(Map<String, Object?> arguments) {
+    var completed = false;
+    Future<void> complete(Map<String, Object?> arguments) {
       if (completed) {
-        return;
+        return Future<void>.value();
       }
       completed = true;
-      unawaited(_invoke<void>('completeHttpAuthRequest', arguments));
+      return _invoke<void>('completeHttpAuthRequest', arguments);
     }
 
-    _navigationDelegate!.handleHttpAuthRequest(
-      HttpAuthRequest(
-        host: '${event['host'] ?? ''}',
-        realm: event['realm'] as String?,
-        onProceed: (WebViewCredential credential) {
-          complete(<String, Object?>{
-            'requestId': requestId,
-            'action': 'proceed',
-            'user': credential.user,
-            'password': credential.password,
-          });
-        },
-        onCancel: () {
-          complete(<String, Object?>{
-            'requestId': requestId,
-            'action': 'cancel',
-          });
-        },
-      ),
-    );
+    try {
+      _navigationDelegate!.handleHttpAuthRequest(
+        HttpAuthRequest(
+          host: '${event['host'] ?? ''}',
+          realm: event['realm'] as String?,
+          onProceed: (WebViewCredential credential) {
+            _dispatchEventHandler(
+              'HTTP authentication completion',
+              () => complete(<String, Object?>{
+                'requestId': requestId,
+                'action': 'proceed',
+                'user': credential.user,
+                'password': credential.password,
+              }),
+            );
+          },
+          onCancel: () {
+            _dispatchEventHandler(
+              'HTTP authentication completion',
+              () => complete(<String, Object?>{
+                'requestId': requestId,
+                'action': 'cancel',
+              }),
+            );
+          },
+        ),
+      );
+    } catch (error, stackTrace) {
+      _reportEventError(
+        'application HTTP authentication callback',
+        error,
+        stackTrace,
+      );
+      await complete(<String, Object?>{
+        'requestId': requestId,
+        'action': 'cancel',
+      });
+    }
   }
 
   Future<void> _handleSslAuthErrorEvent(Map<dynamic, dynamic> event) async {
@@ -191,23 +229,31 @@ extension LinuxWebViewControllerEventHandling on LinuxWebViewController {
       return;
     }
 
-    _navigationDelegate!.handleSslAuthError(
-      LinuxPlatformSslAuthError(
-        description: '${event['description'] ?? 'TLS certificate error'}',
-        onProceed: () {
-          return _invoke<void>('completeSslAuthError', <String, Object?>{
-            'requestId': requestId,
-            'proceed': true,
-          });
-        },
-        onCancel: () {
-          return _invoke<void>('completeSslAuthError', <String, Object?>{
-            'requestId': requestId,
-            'proceed': false,
-          });
-        },
-      ),
+    final LinuxPlatformSslAuthError request = LinuxPlatformSslAuthError(
+      description: '${event['description'] ?? 'TLS certificate error'}',
+      onProceed: () {
+        return _invoke<void>('completeSslAuthError', <String, Object?>{
+          'requestId': requestId,
+          'proceed': true,
+        });
+      },
+      onCancel: () {
+        return _invoke<void>('completeSslAuthError', <String, Object?>{
+          'requestId': requestId,
+          'proceed': false,
+        });
+      },
     );
+    try {
+      _navigationDelegate!.handleSslAuthError(request);
+    } catch (error, stackTrace) {
+      _reportEventError(
+        'application TLS authentication callback',
+        error,
+        stackTrace,
+      );
+      await request.cancel();
+    }
   }
 
   Future<void> _handlePermissionRequestEvent(
@@ -237,23 +283,28 @@ extension LinuxWebViewControllerEventHandling on LinuxWebViewController {
       return;
     }
 
-    callback(
-      LinuxPlatformWebViewPermissionRequest(
-        types: types,
-        onGrant: () {
-          return _invoke<void>('completePermissionRequest', <String, Object?>{
-            'requestId': requestId,
-            'grant': true,
-          });
-        },
-        onDeny: () {
-          return _invoke<void>('completePermissionRequest', <String, Object?>{
-            'requestId': requestId,
-            'grant': false,
-          });
-        },
-      ),
-    );
+    final LinuxPlatformWebViewPermissionRequest request =
+        LinuxPlatformWebViewPermissionRequest(
+          types: types,
+          onGrant: () {
+            return _invoke<void>('completePermissionRequest', <String, Object?>{
+              'requestId': requestId,
+              'grant': true,
+            });
+          },
+          onDeny: () {
+            return _invoke<void>('completePermissionRequest', <String, Object?>{
+              'requestId': requestId,
+              'grant': false,
+            });
+          },
+        );
+    try {
+      callback(request);
+    } catch (error, stackTrace) {
+      _reportEventError('application permission callback', error, stackTrace);
+      await request.deny();
+    }
   }
 
   Future<void> _handleJavaScriptDialogEvent(Map<dynamic, dynamic> event) async {
@@ -313,12 +364,17 @@ extension LinuxWebViewControllerEventHandling on LinuxWebViewController {
           );
           return;
       }
-    } catch (_) {
+    } catch (error, stackTrace) {
+      _reportEventError(
+        'application JavaScript dialog callback',
+        error,
+        stackTrace,
+      );
       await _completeJavaScriptDialog(requestId, action: 'cancel');
       return;
     }
 
-    await _completeJavaScriptDialog(requestId, action: 'confirm');
+    await _completeJavaScriptDialog(requestId, action: 'cancel');
   }
 
   Future<void> _completeJavaScriptDialog(

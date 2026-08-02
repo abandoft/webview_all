@@ -55,14 +55,32 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(widget.controller.setFrame(Rect.zero, visible: false));
+    _setFrameSafely(Rect.zero, visible: false);
     super.dispose();
   }
 
   void _pushRect(Rect rect, {required bool visible}) {
     _lastRect = rect;
     _attached = visible;
-    unawaited(widget.controller.setFrame(rect, visible: visible));
+    _setFrameSafely(rect, visible: visible);
+  }
+
+  void _setFrameSafely(Rect rect, {required bool visible}) {
+    unawaited(() async {
+      try {
+        await widget.controller.setFrame(rect, visible: visible);
+      } on StateError catch (error) {
+        if (!error.toString().contains('disposed')) {
+          debugPrint(
+            'webview_all_linux: failed to update the WebView frame: $error',
+          );
+        }
+      } catch (error) {
+        debugPrint(
+          'webview_all_linux: failed to update the WebView frame: $error',
+        );
+      }
+    }());
   }
 
   void _handleGeometryChanged(Rect rect) {

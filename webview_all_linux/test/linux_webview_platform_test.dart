@@ -942,6 +942,114 @@ void main() {
       });
     },
   );
+
+  test('uses safe decisions when application callbacks throw', () async {
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final LinuxNavigationDelegate delegate = LinuxNavigationDelegate(
+      const PlatformNavigationDelegateCreationParams(),
+    );
+
+    await controller.currentUrl();
+    await delegate.setOnNavigationRequest((NavigationRequest request) {
+      throw StateError('navigation callback failed');
+    });
+    await delegate.setOnHttpAuthRequest((HttpAuthRequest request) {
+      throw StateError('authentication callback failed');
+    });
+    await delegate.setOnSSlAuthError((PlatformSslAuthError error) {
+      throw StateError('TLS callback failed');
+    });
+    await controller.setPlatformNavigationDelegate(delegate);
+    await controller.setOnPlatformPermissionRequest((_) {
+      throw StateError('permission callback failed');
+    });
+    await controller.setOnConsoleMessage((_) {
+      throw StateError('console callback failed');
+    });
+    await controller.setOnJavaScriptConfirmDialog((_) {
+      throw StateError('dialog callback failed');
+    });
+
+    await _emitLinuxWebViewEvent(<String, Object?>{
+      'type': 'navigationRequest',
+      'requestId': 31,
+      'url': 'https://example.test/navigation',
+      'isMainFrame': true,
+    });
+    await _emitLinuxWebViewEvent(<String, Object?>{
+      'type': 'httpAuthRequest',
+      'requestId': 32,
+      'host': 'secure.example.test',
+    });
+    await _emitLinuxWebViewEvent(<String, Object?>{
+      'type': 'sslAuthError',
+      'requestId': 33,
+      'description': 'TLS certificate error',
+    });
+    await _emitLinuxWebViewEvent(<String, Object?>{
+      'type': 'permissionRequest',
+      'requestId': 34,
+      'types': <String>['camera'],
+    });
+    await _emitLinuxWebViewEvent(<String, Object?>{
+      'type': 'consoleMessage',
+      'level': 'error',
+      'message': 'test',
+    });
+    await _emitLinuxWebViewEvent(<String, Object?>{
+      'type': 'javaScriptDialog',
+      'requestId': 35,
+      'dialogType': 'confirm',
+      'message': 'Continue?',
+      'url': 'https://example.test/dialog',
+    });
+    await _flushAsyncEvents();
+
+    expect(
+      calls
+          .singleWhere(
+            (MethodCall call) => call.method == 'completeNavigationRequest',
+          )
+          .arguments,
+      <String, Object?>{'requestId': 31, 'allow': false},
+    );
+    expect(
+      calls
+          .singleWhere(
+            (MethodCall call) => call.method == 'completeHttpAuthRequest',
+          )
+          .arguments,
+      <String, Object?>{'requestId': 32, 'action': 'cancel'},
+    );
+    expect(
+      calls
+          .singleWhere(
+            (MethodCall call) => call.method == 'completeSslAuthError',
+          )
+          .arguments,
+      <String, Object?>{'requestId': 33, 'proceed': false},
+    );
+    expect(
+      calls
+          .singleWhere(
+            (MethodCall call) => call.method == 'completePermissionRequest',
+          )
+          .arguments,
+      <String, Object?>{'requestId': 34, 'grant': false},
+    );
+    expect(
+      calls
+          .singleWhere(
+            (MethodCall call) => call.method == 'completeJavaScriptDialog',
+          )
+          .arguments,
+      <String, Object?>{'requestId': 35, 'action': 'cancel', 'text': null},
+    );
+  });
 }
 
 void _mockLinuxWebViewCreation({

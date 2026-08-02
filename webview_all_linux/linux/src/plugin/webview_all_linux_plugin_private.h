@@ -30,6 +30,7 @@ typedef struct {
   GHashTable *pending_permission_requests;
   GHashTable *pending_script_dialogs;
   GHashTable *pending_tls_errors;
+  GHashTable *pending_request_timeouts;
   GHashTable *js_channel_signal_ids;
   GHashTable *js_channels;
   gint next_request_id;
@@ -74,5 +75,6 @@ void root_method_call_cb(FlMethodChannel *channel, FlMethodCall *method_call,
                          gpointer user_data);
 GtkOverlay *ensure_overlay(WebviewAllLinuxPlugin *self);
 void update_flutter_view_input_region(WebviewAllLinuxPlugin *self);
+void cancel_pending_request_timeout(LinuxWebView *webview, gint request_id);
 
 #endif // WEBVIEW_ALL_LINUX_PLUGIN_PRIVATE_H_

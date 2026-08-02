@@ -750,6 +750,7 @@ void instance_method_call_cb(FlMethodChannel *channel,
 
   if (strcmp(method, "completeNavigationRequest") == 0) {
     gint request_id = static_cast<gint>(map_lookup_int(args, "requestId", -1));
+    cancel_pending_request_timeout(webview, request_id);
     gboolean allow = map_lookup_bool(args, "allow", TRUE);
     PendingNavigationDecision *pending =
         static_cast<PendingNavigationDecision *>(g_hash_table_lookup(
@@ -774,6 +775,7 @@ void instance_method_call_cb(FlMethodChannel *channel,
 
   if (strcmp(method, "completeHttpAuthRequest") == 0) {
     gint request_id = static_cast<gint>(map_lookup_int(args, "requestId", -1));
+    cancel_pending_request_timeout(webview, request_id);
     WebKitAuthenticationRequest *request =
         WEBKIT_AUTHENTICATION_REQUEST(g_hash_table_lookup(
             webview->pending_auth_requests, GINT_TO_POINTER(request_id)));
@@ -802,6 +804,7 @@ void instance_method_call_cb(FlMethodChannel *channel,
 
   if (strcmp(method, "completePermissionRequest") == 0) {
     gint request_id = static_cast<gint>(map_lookup_int(args, "requestId", -1));
+    cancel_pending_request_timeout(webview, request_id);
     WebKitPermissionRequest *request =
         WEBKIT_PERMISSION_REQUEST(g_hash_table_lookup(
             webview->pending_permission_requests, GINT_TO_POINTER(request_id)));
@@ -820,6 +823,7 @@ void instance_method_call_cb(FlMethodChannel *channel,
 
   if (strcmp(method, "completeJavaScriptDialog") == 0) {
     gint request_id = static_cast<gint>(map_lookup_int(args, "requestId", -1));
+    cancel_pending_request_timeout(webview, request_id);
     WebKitScriptDialog *dialog =
         static_cast<WebKitScriptDialog *>(g_hash_table_lookup(
             webview->pending_script_dialogs, GINT_TO_POINTER(request_id)));
@@ -850,6 +854,7 @@ void instance_method_call_cb(FlMethodChannel *channel,
 
   if (strcmp(method, "completeSslAuthError") == 0) {
     gint request_id = static_cast<gint>(map_lookup_int(args, "requestId", -1));
+    cancel_pending_request_timeout(webview, request_id);
     PendingTlsError *pending =
         static_cast<PendingTlsError *>(g_hash_table_lookup(
             webview->pending_tls_errors, GINT_TO_POINTER(request_id)));

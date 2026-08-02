@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:webview_platform_interface/webview_platform_interface.dart';
@@ -85,11 +86,32 @@ class LinuxWebViewController extends PlatformWebViewController {
         (throw StateError('Failed to create Linux WebView instance.'));
     _channel = MethodChannel('$linuxWebViewChannelPrefix/$id');
     _eventChannel = EventChannel('$linuxWebViewChannelPrefix/$id/events');
-    _eventSubscription = _eventChannel!.receiveBroadcastStream().listen((
-      dynamic event,
-    ) {
-      weakThis.target?._handleEvent(event);
-    }, onError: (_) {});
+    _eventSubscription = _eventChannel!.receiveBroadcastStream().listen(
+      (dynamic event) {
+        final LinuxWebViewController? target = weakThis.target;
+        if (target == null) {
+          return;
+        }
+        try {
+          target._handleEvent(event);
+        } catch (error, stackTrace) {
+          target._reportEventError('event callback', error, stackTrace);
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        weakThis.target?._reportEventError('event channel', error, stackTrace);
+      },
+      onDone: () {
+        final LinuxWebViewController? target = weakThis.target;
+        if (target != null && !target._disposed) {
+          target._reportEventError(
+            'event channel',
+            StateError('The native Linux WebView event channel closed.'),
+            StackTrace.current,
+          );
+        }
+      },
+    );
     final _LinuxWebViewDisposal disposal = _LinuxWebViewDisposal(
       channel: _channel!,
       eventSubscription: _eventSubscription!,
@@ -155,6 +177,25 @@ class LinuxWebViewController extends PlatformWebViewController {
   Future<T?> _invoke<T>(String method, [Object? arguments]) async {
     await _ensureReady();
     return _channel!.invokeMethod<T>(method, arguments);
+  }
+
+  void _dispatchEventHandler(
+    String operation,
+    Future<void> Function() handler,
+  ) {
+    unawaited(
+      handler().catchError((Object error, StackTrace stackTrace) {
+        _reportEventError(operation, error, stackTrace);
+      }),
+    );
+  }
+
+  void _reportEventError(
+    String operation,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    debugPrint('webview_all_linux: $operation failed: $error');
   }
 
   @override

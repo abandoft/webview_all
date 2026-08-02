@@ -16,6 +16,22 @@ typedef struct {
   gboolean is_main_frame;
 } ResourceRequestDetails;
 
+enum class PendingRequestType {
+  kNavigation,
+  kHttpAuthentication,
+  kPermission,
+  kJavaScriptDialog,
+  kTls,
+};
+
+typedef struct {
+  LinuxWebView *webview;
+  gint request_id;
+  PendingRequestType type;
+} PendingRequestTimeout;
+
+constexpr guint kPendingRequestTimeoutSeconds = 30;
+
 static void destroy_pending_tls_error(gpointer data) {
   PendingTlsError *error = static_cast<PendingTlsError *>(data);
   if (error == nullptr) {
@@ -69,6 +85,138 @@ static gint next_request_id(LinuxWebView *webview) {
   return webview->next_request_id++;
 }
 
+static void resolve_pending_request_with_safe_default(LinuxWebView *webview,
+                                                      gint request_id,
+                                                      PendingRequestType type) {
+  gpointer key = GINT_TO_POINTER(request_id);
+  switch (type) {
+  case PendingRequestType::kNavigation: {
+    PendingNavigationDecision *pending =
+        static_cast<PendingNavigationDecision *>(
+            g_hash_table_lookup(webview->pending_nav_decisions, key));
+    if (pending != nullptr) {
+      webkit_policy_decision_ignore(pending->decision);
+      g_hash_table_remove(webview->pending_nav_decisions, key);
+    }
+    break;
+  }
+  case PendingRequestType::kHttpAuthentication: {
+    WebKitAuthenticationRequest *request = WEBKIT_AUTHENTICATION_REQUEST(
+        g_hash_table_lookup(webview->pending_auth_requests, key));
+    if (request != nullptr) {
+      webkit_authentication_request_cancel(request);
+      g_hash_table_remove(webview->pending_auth_requests, key);
+    }
+    break;
+  }
+  case PendingRequestType::kPermission: {
+    WebKitPermissionRequest *request = WEBKIT_PERMISSION_REQUEST(
+        g_hash_table_lookup(webview->pending_permission_requests, key));
+    if (request != nullptr) {
+      webkit_permission_request_deny(request);
+      g_hash_table_remove(webview->pending_permission_requests, key);
+    }
+    break;
+  }
+  case PendingRequestType::kJavaScriptDialog: {
+    WebKitScriptDialog *dialog = static_cast<WebKitScriptDialog *>(
+        g_hash_table_lookup(webview->pending_script_dialogs, key));
+    if (dialog != nullptr) {
+      const WebKitScriptDialogType dialog_type =
+          webkit_script_dialog_get_dialog_type(dialog);
+      if (dialog_type == WEBKIT_SCRIPT_DIALOG_CONFIRM ||
+          dialog_type == WEBKIT_SCRIPT_DIALOG_BEFORE_UNLOAD_CONFIRM) {
+        webkit_script_dialog_confirm_set_confirmed(dialog, FALSE);
+      }
+      webkit_script_dialog_close(dialog);
+      g_hash_table_remove(webview->pending_script_dialogs, key);
+    }
+    break;
+  }
+  case PendingRequestType::kTls:
+    g_hash_table_remove(webview->pending_tls_errors, key);
+    break;
+  }
+}
+
+static gboolean pending_request_timeout_cb(gpointer user_data) {
+  PendingRequestTimeout *timeout =
+      static_cast<PendingRequestTimeout *>(user_data);
+  LinuxWebView *webview = timeout->webview;
+  g_hash_table_remove(webview->pending_request_timeouts,
+                      GINT_TO_POINTER(timeout->request_id));
+  g_warning("Linux WebView request %d timed out; applying a safe default.",
+            timeout->request_id);
+  resolve_pending_request_with_safe_default(webview, timeout->request_id,
+                                            timeout->type);
+  return G_SOURCE_REMOVE;
+}
+
+static void schedule_pending_request_timeout(LinuxWebView *webview,
+                                             gint request_id,
+                                             PendingRequestType type) {
+  PendingRequestTimeout *timeout = g_new0(PendingRequestTimeout, 1);
+  timeout->webview = webview;
+  timeout->request_id = request_id;
+  timeout->type = type;
+  const guint source_id = g_timeout_add_seconds_full(
+      G_PRIORITY_DEFAULT, kPendingRequestTimeoutSeconds,
+      pending_request_timeout_cb, timeout,
+      reinterpret_cast<GDestroyNotify>(g_free));
+  g_hash_table_insert(webview->pending_request_timeouts,
+                      GINT_TO_POINTER(request_id), GUINT_TO_POINTER(source_id));
+}
+
+void cancel_pending_request_timeout(LinuxWebView *webview, gint request_id) {
+  gpointer key = GINT_TO_POINTER(request_id);
+  const guint source_id = GPOINTER_TO_UINT(
+      g_hash_table_lookup(webview->pending_request_timeouts, key));
+  if (source_id != 0) {
+    g_source_remove(source_id);
+    g_hash_table_remove(webview->pending_request_timeouts, key);
+  }
+}
+
+static void resolve_all_pending_requests(LinuxWebView *webview) {
+  GList *timeout_ids = g_hash_table_get_keys(webview->pending_request_timeouts);
+  for (GList *item = timeout_ids; item != nullptr; item = item->next) {
+    cancel_pending_request_timeout(webview, GPOINTER_TO_INT(item->data));
+  }
+  g_list_free(timeout_ids);
+
+  GList *request_ids = g_hash_table_get_keys(webview->pending_nav_decisions);
+  for (GList *item = request_ids; item != nullptr; item = item->next) {
+    resolve_pending_request_with_safe_default(
+        webview, GPOINTER_TO_INT(item->data), PendingRequestType::kNavigation);
+  }
+  g_list_free(request_ids);
+
+  request_ids = g_hash_table_get_keys(webview->pending_auth_requests);
+  for (GList *item = request_ids; item != nullptr; item = item->next) {
+    resolve_pending_request_with_safe_default(
+        webview, GPOINTER_TO_INT(item->data),
+        PendingRequestType::kHttpAuthentication);
+  }
+  g_list_free(request_ids);
+
+  request_ids = g_hash_table_get_keys(webview->pending_permission_requests);
+  for (GList *item = request_ids; item != nullptr; item = item->next) {
+    resolve_pending_request_with_safe_default(
+        webview, GPOINTER_TO_INT(item->data), PendingRequestType::kPermission);
+  }
+  g_list_free(request_ids);
+
+  request_ids = g_hash_table_get_keys(webview->pending_script_dialogs);
+  for (GList *item = request_ids; item != nullptr; item = item->next) {
+    resolve_pending_request_with_safe_default(
+        webview, GPOINTER_TO_INT(item->data),
+        PendingRequestType::kJavaScriptDialog);
+  }
+  g_list_free(request_ids);
+
+  g_hash_table_remove_all(webview->pending_tls_errors);
+}
+
 static gboolean decide_policy_cb(WebKitWebView *widget,
                                  WebKitPolicyDecision *decision,
                                  WebKitPolicyDecisionType type,
@@ -109,6 +257,8 @@ static gboolean decide_policy_cb(WebKitWebView *widget,
       type == WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION;
   g_hash_table_insert(webview->pending_nav_decisions,
                       GINT_TO_POINTER(request_id), pending);
+  schedule_pending_request_timeout(webview, request_id,
+                                   PendingRequestType::kNavigation);
 
   FlValue *event = make_event("navigationRequest");
   fl_value_set_string_take(event, "requestId", fl_value_new_int(request_id));
@@ -308,6 +458,8 @@ static gboolean authenticate_cb(WebKitWebView *widget,
   gint request_id = next_request_id(webview);
   g_hash_table_insert(webview->pending_auth_requests,
                       GINT_TO_POINTER(request_id), g_object_ref(request));
+  schedule_pending_request_timeout(webview, request_id,
+                                   PendingRequestType::kHttpAuthentication);
 
   FlValue *event = make_event("httpAuthRequest");
   fl_value_set_string_take(event, "requestId", fl_value_new_int(request_id));
@@ -336,6 +488,8 @@ static gboolean permission_request_cb(WebKitWebView *widget,
   gint request_id = next_request_id(webview);
   g_hash_table_insert(webview->pending_permission_requests,
                       GINT_TO_POINTER(request_id), g_object_ref(request));
+  schedule_pending_request_timeout(webview, request_id,
+                                   PendingRequestType::kPermission);
 
   FlValue *event = make_event("permissionRequest");
   FlValue *types = fl_value_new_list();
@@ -398,6 +552,8 @@ static gboolean script_dialog_cb(WebKitWebView *widget,
   g_hash_table_insert(webview->pending_script_dialogs,
                       GINT_TO_POINTER(request_id),
                       webkit_script_dialog_ref(dialog));
+  schedule_pending_request_timeout(webview, request_id,
+                                   PendingRequestType::kJavaScriptDialog);
 
   FlValue *event = make_event("javaScriptDialog");
   fl_value_set_string_take(event, "requestId", fl_value_new_int(request_id));
@@ -487,6 +643,8 @@ static gboolean load_failed_with_tls_errors_cb(WebKitWebView *widget,
   gint request_id = next_request_id(webview);
   g_hash_table_insert(webview->pending_tls_errors, GINT_TO_POINTER(request_id),
                       pending);
+  schedule_pending_request_timeout(webview, request_id,
+                                   PendingRequestType::kTls);
 
   FlValue *event = make_event("sslAuthError");
   fl_value_set_string_take(event, "requestId", fl_value_new_int(request_id));
@@ -512,6 +670,7 @@ static FlMethodErrorResponse *
 event_cancel_cb(FlEventChannel *channel, FlValue *args, gpointer user_data) {
   LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
   webview->event_listening = FALSE;
+  resolve_all_pending_requests(webview);
   return nullptr;
 }
 
@@ -522,6 +681,7 @@ void destroy_linux_webview(gpointer data) {
   }
 
   if (webview->web_view != nullptr) {
+    resolve_all_pending_requests(webview);
     g_object_set_data(G_OBJECT(webview->web_view), "webview_all_linux_instance",
                       nullptr);
     gtk_widget_destroy(GTK_WIDGET(webview->web_view));
@@ -535,6 +695,7 @@ void destroy_linux_webview(gpointer data) {
   g_hash_table_destroy(webview->pending_permission_requests);
   g_hash_table_destroy(webview->pending_script_dialogs);
   g_hash_table_destroy(webview->pending_tls_errors);
+  g_hash_table_destroy(webview->pending_request_timeouts);
   g_hash_table_destroy(webview->js_channel_signal_ids);
   g_hash_table_destroy(webview->js_channels);
   g_free(webview);
@@ -568,6 +729,8 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
       reinterpret_cast<GDestroyNotify>(webkit_script_dialog_unref));
   webview->pending_tls_errors = g_hash_table_new_full(
       g_direct_hash, g_direct_equal, nullptr, destroy_pending_tls_error);
+  webview->pending_request_timeouts =
+      g_hash_table_new(g_direct_hash, g_direct_equal);
   webview->js_channel_signal_ids =
       g_hash_table_new_full(g_str_hash, g_str_equal, g_free, nullptr);
   webview->js_channels =
