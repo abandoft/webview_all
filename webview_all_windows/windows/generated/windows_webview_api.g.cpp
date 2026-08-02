@@ -1450,6 +1450,35 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
     }
   }
   {
+    BasicMessageChannel<> channel(
+        binary_messenger,
+        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi."
+        "openWebView2DownloadPage" +
+            prepended_suffix,
+        &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler(
+          [api](const EncodableValue &message,
+                const ::flutter::MessageReply<EncodableValue> &reply) {
+            try {
+              std::optional<FlutterError> output =
+                  api->OpenWebView2DownloadPage();
+              if (output.has_value()) {
+                reply(WrapError(output.value()));
+                return;
+              }
+              EncodableList wrapped;
+              wrapped.push_back(EncodableValue());
+              reply(EncodableValue(std::move(wrapped)));
+            } catch (const std::exception &exception) {
+              reply(WrapError(exception.what()));
+            }
+          });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
     BasicMessageChannel<> channel(binary_messenger,
                                   "dev.flutter.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.createWebView" +

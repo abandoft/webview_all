@@ -6,7 +6,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
@@ -117,7 +117,7 @@ class WindowsWebViewController extends PlatformWebViewController {
       ) {
     final WeakReference<WindowsWebViewController> weakThis =
         WeakReference<WindowsWebViewController>(this);
-    _initializationFuture = _initialize(weakThis);
+    _setInitializationFuture(_initialize(weakThis));
     _finalizer.attach(this, _webviewController, detach: this);
   }
 
@@ -264,6 +264,33 @@ class WindowsWebViewController extends PlatformWebViewController {
 
   Future<void> _ensureInitialized() async {
     await _initializationFuture!;
+  }
+
+  Future<void> _retryInitialization() {
+    final Future<void> initializationFuture = _prepareRetry();
+    _setInitializationFuture(initializationFuture);
+    return initializationFuture;
+  }
+
+  void _setInitializationFuture(Future<void> future) {
+    _initializationFuture = future;
+    unawaited(future.catchError((Object _) {}));
+  }
+
+  Future<void> _prepareRetry() async {
+    final List<StreamSubscription<dynamic>> subscriptions =
+        List<StreamSubscription<dynamic>>.of(_subscriptions);
+    _subscriptions.clear();
+    await Future.wait<void>(
+      subscriptions.map(
+        (StreamSubscription<dynamic> subscription) => subscription.cancel(),
+      ),
+    );
+    await _initialize(WeakReference<WindowsWebViewController>(this));
+  }
+
+  Future<void> _openWebView2DownloadPage() {
+    return native_webview.WebviewController.openWebView2DownloadPage();
   }
 
   void _handleUrlChanged(String url) {
@@ -1205,24 +1232,115 @@ class WindowsWebViewWidget extends PlatformWebViewWidget {
   @override
   Widget build(BuildContext context) {
     final controller = params.controller as WindowsWebViewController;
+    return _WindowsWebView(
+      key: params.key,
+      controller: controller,
+      scaleFactor: _windowsParams.scaleFactor,
+      filterQuality: _windowsParams.filterQuality,
+    );
+  }
+}
+
+class _WindowsWebView extends StatefulWidget {
+  const _WindowsWebView({
+    super.key,
+    required this.controller,
+    required this.scaleFactor,
+    required this.filterQuality,
+  });
+
+  final WindowsWebViewController controller;
+  final double? scaleFactor;
+  final FilterQuality filterQuality;
+
+  @override
+  State<_WindowsWebView> createState() => _WindowsWebViewState();
+}
+
+class _WindowsWebViewState extends State<_WindowsWebView> {
+  late Future<void> _initializationFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializationFuture = widget.controller._ensureInitialized();
+  }
+
+  @override
+  void didUpdateWidget(_WindowsWebView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller)) {
+      _initializationFuture = widget.controller._ensureInitialized();
+    }
+  }
+
+  void _retry() {
+    setState(() {
+      _initializationFuture = widget.controller._retryInitialization();
+    });
+  }
+
+  Future<void> _openWebView2DownloadPage() async {
+    try {
+      await widget.controller._openWebView2DownloadPage();
+    } catch (error) {
+      debugPrint(
+        'webview_all_windows: failed to open the WebView2 download page: $error',
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return FutureBuilder<void>(
-      future: controller._ensureInitialized(),
+      future: _initializationFuture,
       builder: (BuildContext context, AsyncSnapshot<void> snapshot) {
         if (snapshot.hasError) {
-          return const SizedBox.shrink();
+          return Material(
+            type: MaterialType.transparency,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      'WebView2 failed to initialize: ${snapshot.error}',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: <Widget>[
+                        FilledButton(
+                          onPressed: () {
+                            unawaited(_openWebView2DownloadPage());
+                          },
+                          child: const Text('Install Webview2'),
+                        ),
+                        OutlinedButton(
+                          onPressed: _retry,
+                          child: const Text('Refresh'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
         }
 
         if (snapshot.connectionState != ConnectionState.done) {
           return const SizedBox.shrink();
         }
 
-        return KeyedSubtree(
-          key: params.key,
-          child: native_webview.Webview(
-            controller._webviewController,
-            scaleFactor: _windowsParams.scaleFactor,
-            filterQuality: _windowsParams.filterQuality,
-          ),
+        return native_webview.Webview(
+          widget.controller._webviewController,
+          scaleFactor: widget.scaleFactor,
+          filterQuality: widget.filterQuality,
         );
       },
     );

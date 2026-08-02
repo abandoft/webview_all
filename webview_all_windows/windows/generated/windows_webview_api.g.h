@@ -455,6 +455,7 @@ public:
   virtual std::optional<FlutterError>
   InitializeEnvironment(const WindowsEnvironmentOptions &options) = 0;
   virtual ErrorOr<std::optional<std::string>> GetWebViewVersion() = 0;
+  virtual std::optional<FlutterError> OpenWebView2DownloadPage() = 0;
   virtual void
   CreateWebView(std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)>
                     result) = 0;

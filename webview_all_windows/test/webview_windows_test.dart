@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:webview_all_windows/src/windows_webview_api.g.dart';
@@ -85,6 +86,100 @@ void main() {
     await controller.dispose();
 
     expect(disposeCallCount, 1);
+  });
+
+  test('native controller unregisters callbacks and closes streams', () async {
+    final native_webview.WebviewController controller =
+        native_webview.WebviewController();
+    final List<Future<void>> streamDoneFutures = <Future<void>>[
+      controller.url.drain<void>(),
+      controller.loadingState.drain<void>(),
+      controller.onDownloadEvent.drain<void>(),
+      controller.onLoadError.drain<void>(),
+      controller.httpResponseError.drain<void>(),
+      controller.historyChanged.drain<void>(),
+      controller.securityStateChanged.drain<void>(),
+      controller.title.drain<void>(),
+      controller.webMessage.drain<void>(),
+      controller.containsFullScreenElementChanged.drain<void>(),
+    ];
+
+    await controller.initialize();
+    await controller.dispose();
+    await Future.wait<void>(streamDoneFutures);
+
+    final ByteData? response = await _sendWindowsWebViewMethod(
+      'permissionRequested',
+      <String, Object?>{
+        'url': 'https://example.test/camera',
+        'permissionKind': native_types.WebviewPermissionKind.camera.index,
+        'isUserInitiated': true,
+      },
+    );
+    expect(response, isNull);
+  });
+
+  test('native controller can retry after an initialization failure', () async {
+    _mockWindowsWebViewCreation(creationFailureCount: 1);
+    final native_webview.WebviewController controller =
+        native_webview.WebviewController();
+
+    await expectLater(
+      controller.initialize(),
+      throwsA(
+        isA<PlatformException>().having(
+          (PlatformException error) => error.code,
+          'code',
+          'environment_creation_failed',
+        ),
+      ),
+    );
+    await controller.initialize();
+    await controller.dispose();
+  });
+
+  testWidgets('initialization error offers install and refresh actions', (
+    WidgetTester tester,
+  ) async {
+    var openDownloadPageCount = 0;
+    _mockWindowsWebViewCreation(
+      creationFailureCount: 1,
+      onOpenWebView2DownloadPage: () {
+        openDownloadPageCount += 1;
+      },
+    );
+    final WindowsWebViewController controller = WindowsWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final WindowsWebViewWidget platformWidget = WindowsWebViewWidget(
+      PlatformWebViewWidgetCreationParams(controller: controller),
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 800,
+          height: 600,
+          child: Builder(builder: platformWidget.build),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Install Webview2'), findsOneWidget);
+    expect(find.text('Refresh'), findsOneWidget);
+
+    await tester.tap(find.text('Install Webview2'));
+    await tester.pump();
+    expect(openDownloadPageCount, 1);
+
+    await tester.tap(find.text('Refresh'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Install Webview2'), findsNothing);
+    expect(find.text('Refresh'), findsNothing);
+    expect(find.byType(Texture), findsOneWidget);
   });
 
   test('rejects invalid generic cookies before native cookie calls', () async {
@@ -841,6 +936,8 @@ void main() {
 }
 
 void _mockWindowsWebViewCreation({
+  int creationFailureCount = 0,
+  void Function()? onOpenWebView2DownloadPage,
   void Function(WindowsLoadRequestData request)? onLoadRequest,
   void Function(String url)? onLoadUrl,
   void Function(WindowsVirtualHostMappingData mapping)?
@@ -863,12 +960,27 @@ void _mockWindowsWebViewCreation({
 }) {
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  var remainingCreationFailures = creationFailureCount;
   messenger.setMockMessageHandler(_hostApiChannel('createWebView'), (
     ByteData? message,
   ) async {
+    if (remainingCreationFailures > 0) {
+      remainingCreationFailures -= 1;
+      return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
+        'environment_creation_failed',
+        'The WebView2 Runtime could not be initialized.',
+        null,
+      ]);
+    }
     return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
       WindowsCreateWebViewResult(textureId: 1),
     ]);
+  });
+  messenger.setMockMessageHandler(_hostApiChannel('openWebView2DownloadPage'), (
+    ByteData? message,
+  ) async {
+    onOpenWebView2DownloadPage?.call();
+    return _encodePigeonSuccess();
   });
   messenger.setMockMessageHandler(_hostApiChannel('setPopupWindowPolicy'), (
     ByteData? message,
@@ -990,6 +1102,10 @@ void _clearWindowsWebViewCreationMock() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   messenger.setMockMessageHandler(_hostApiChannel('createWebView'), null);
   messenger.setMockMessageHandler(
+    _hostApiChannel('openWebView2DownloadPage'),
+    null,
+  );
+  messenger.setMockMessageHandler(
     _hostApiChannel('setPopupWindowPolicy'),
     null,
   );
@@ -1048,6 +1164,14 @@ Future<Object?> _invokeWindowsWebViewMethod(
   String method,
   Map<String, Object?> arguments,
 ) async {
+  final ByteData? response = await _sendWindowsWebViewMethod(method, arguments);
+  return const StandardMethodCodec().decodeEnvelope(response!);
+}
+
+Future<ByteData?> _sendWindowsWebViewMethod(
+  String method,
+  Map<String, Object?> arguments,
+) async {
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   final completer = Completer<ByteData?>();
@@ -1056,8 +1180,7 @@ Future<Object?> _invokeWindowsWebViewMethod(
     const StandardMethodCodec().encodeMethodCall(MethodCall(method, arguments)),
     completer.complete,
   );
-  final ByteData? response = await completer.future;
-  return const StandardMethodCodec().decodeEnvelope(response!);
+  return completer.future;
 }
 
 Future<void> _emitWindowsWebViewEvent(Map<String, Object?> event) async {

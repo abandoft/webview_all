@@ -37,6 +37,7 @@ private:
   std::optional<FlutterError>
   InitializeEnvironment(const WindowsEnvironmentOptions &options) override;
   ErrorOr<std::optional<std::string>> GetWebViewVersion() override;
+  std::optional<FlutterError> OpenWebView2DownloadPage() override;
   void CreateWebView(
       std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result)
       override;

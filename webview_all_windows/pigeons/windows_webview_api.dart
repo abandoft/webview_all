@@ -126,6 +126,8 @@ abstract class WindowsWebViewHostApi {
 
   String? getWebViewVersion();
 
+  void openWebView2DownloadPage();
+
   @async
   WindowsCreateWebViewResult createWebView();
 

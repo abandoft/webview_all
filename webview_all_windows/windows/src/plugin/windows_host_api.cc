@@ -1,5 +1,6 @@
 #include "plugin/windows_host_api.h"
 
+#include <shellapi.h>
 #include <windows.h>
 
 #include <format>
@@ -11,6 +12,7 @@
 
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "shell32.lib")
 
 namespace webview_all_windows {
 namespace {
@@ -21,6 +23,7 @@ constexpr auto kErrorCodeEnvironmentCreationFailed =
 constexpr auto kErrorCodeEnvironmentAlreadyInitialized =
     "environment_already_initialized";
 constexpr auto kErrorCodeWebviewCreationFailed = "webview_creation_failed";
+constexpr auto kErrorCodeOpenUrlFailed = "open_url_failed";
 constexpr auto kErrorUnsupportedPlatform = "unsupported_platform";
 constexpr auto kErrorMethodFailed = "method_failed";
 constexpr auto kErrorNotSupported = "not_supported";
@@ -104,6 +107,21 @@ WindowsHostApi::GetWebViewVersion() {
     return std::optional<std::string>(util::Utf8FromUtf16(version_info));
   }
   return std::optional<std::string>();
+}
+
+std::optional<webview_all_windows::FlutterError>
+WindowsHostApi::OpenWebView2DownloadPage() {
+  constexpr wchar_t kWebView2DownloadUrl[] =
+      L"https://developer.microsoft.com/en-us/microsoft-edge/webview2/"
+      L"#download-section";
+  const auto result = ShellExecuteW(nullptr, L"open", kWebView2DownloadUrl,
+                                    nullptr, nullptr, SW_SHOWNORMAL);
+  if (reinterpret_cast<INT_PTR>(result) <= 32) {
+    return webview_all_windows::FlutterError(
+        kErrorCodeOpenUrlFailed,
+        "Failed to open the Microsoft WebView2 Runtime download page.");
+  }
+  return std::nullopt;
 }
 
 void WindowsHostApi::CreateWebView(

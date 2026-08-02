@@ -146,11 +146,24 @@ class WebviewController extends ValueNotifier<WebviewValue> {
     return _hostApi.getWebViewVersion();
   }
 
-  late Completer<void> _creatingCompleter;
+  /// Opens Microsoft's WebView2 Runtime download page in the default browser.
+  static Future<void> openWebView2DownloadPage() {
+    return _hostApi.openWebView2DownloadPage();
+  }
+
+  Future<void>? _initializationFuture;
+  Future<void>? _disposeFuture;
   int _textureId = 0;
   bool _isDisposed = false;
+  bool _nativeWebViewCreated = false;
+  bool _methodCallHandlerRegistered = false;
+  bool _streamsClosed = false;
 
-  Future<void> get ready => _creatingCompleter.future;
+  Future<void> get ready =>
+      _initializationFuture ??
+      Future<void>.error(
+        StateError('The Windows WebView has not been initialized.'),
+      );
 
   PermissionRequestedDelegate? _permissionRequested;
   JavaScriptDialogRequestedDelegate? _javaScriptDialogRequested;
@@ -259,14 +272,20 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   WebviewController() : super(WebviewValue.uninitialized());
 
   /// Initializes the underlying platform view.
-  Future<void> initialize() async {
+  Future<void> initialize() {
     if (_isDisposed) {
-      return Future<void>.value();
+      return Future<void>.error(
+        StateError('This Windows WebView controller has been disposed.'),
+      );
     }
-    _creatingCompleter = Completer<void>();
+    return _initializationFuture ??= _initialize();
+  }
+
+  Future<void> _initialize() async {
     try {
       final reply = await _hostApi.createWebView();
       _textureId = reply.textureId;
+      _nativeWebViewCreated = true;
       _methodChannel = MethodChannel(
         '$windowsWebViewChannelPrefix/$_textureId',
       );
@@ -364,14 +383,26 @@ class WebviewController extends ValueNotifier<WebviewValue> {
 
         throw MissingPluginException('Unknown method ${call.method}');
       });
+      _methodCallHandlerRegistered = true;
 
+      if (_isDisposed) {
+        throw StateError(
+          'This Windows WebView controller was disposed while initializing.',
+        );
+      }
       value = value.copyWith(isInitialized: true);
-      _creatingCompleter.complete();
-    } on PlatformException catch (e) {
-      _creatingCompleter.completeError(e);
+    } catch (error, stackTrace) {
+      try {
+        await _releaseNativeBindings();
+      } catch (cleanupError) {
+        debugPrint(
+          'webview_all_windows: failed to clean up after a WebView2 initialization error: $cleanupError',
+        );
+      } finally {
+        _initializationFuture = null;
+      }
+      Error.throwWithStackTrace(error, stackTrace);
     }
-
-    return _creatingCompleter.future;
   }
 
   Future<bool?> _onPermissionRequested(Map<dynamic, dynamic> args) async {
@@ -468,34 +499,107 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   }
 
   @override
-  Future<void> dispose() async {
-    await _creatingCompleter.future;
-    if (_isDisposed) {
-      return;
+  Future<void> dispose() {
+    final Future<void>? existingFuture = _disposeFuture;
+    if (existingFuture != null) {
+      return existingFuture;
     }
     _isDisposed = true;
+    super.dispose();
+    return _disposeFuture = _dispose();
+  }
 
+  Future<void> _dispose() async {
     Object? disposalError;
     StackTrace? disposalStackTrace;
     try {
-      await _eventStreamSubscription?.cancel();
+      await _initializationFuture;
     } catch (error, stackTrace) {
       disposalError = error;
       disposalStackTrace = stackTrace;
     }
     try {
-      await _hostApi.disposeWebView(_textureId);
+      await _releaseNativeBindings();
     } catch (error, stackTrace) {
       disposalError ??= error;
       disposalStackTrace ??= stackTrace;
     }
-    super.dispose();
+    _permissionRequested = null;
+    _javaScriptDialogRequested = null;
+    _httpAuthRequested = null;
+    _sslAuthErrorRequested = null;
+    _closeStreams();
     if (disposalError != null) {
       Error.throwWithStackTrace(
         disposalError,
         disposalStackTrace ?? StackTrace.current,
       );
     }
+  }
+
+  Future<void> _releaseNativeBindings() async {
+    Object? cleanupError;
+    StackTrace? cleanupStackTrace;
+
+    if (_methodCallHandlerRegistered) {
+      try {
+        _methodChannel.setMethodCallHandler(null);
+      } catch (error, stackTrace) {
+        cleanupError = error;
+        cleanupStackTrace = stackTrace;
+      } finally {
+        _methodCallHandlerRegistered = false;
+      }
+    }
+
+    try {
+      await _eventStreamSubscription?.cancel();
+    } catch (error, stackTrace) {
+      cleanupError ??= error;
+      cleanupStackTrace ??= stackTrace;
+    } finally {
+      _eventStreamSubscription = null;
+    }
+
+    if (_nativeWebViewCreated) {
+      try {
+        await _hostApi.disposeWebView(_textureId);
+      } catch (error, stackTrace) {
+        cleanupError ??= error;
+        cleanupStackTrace ??= stackTrace;
+      } finally {
+        _nativeWebViewCreated = false;
+        _textureId = 0;
+        if (!_isDisposed) {
+          value = value.copyWith(isInitialized: false);
+        }
+      }
+    }
+
+    if (cleanupError != null) {
+      Error.throwWithStackTrace(
+        cleanupError,
+        cleanupStackTrace ?? StackTrace.current,
+      );
+    }
+  }
+
+  void _closeStreams() {
+    if (_streamsClosed) {
+      return;
+    }
+    _streamsClosed = true;
+    unawaited(_urlStreamController.close());
+    unawaited(_loadingStateStreamController.close());
+    unawaited(_downloadEventStreamController.close());
+    unawaited(_onLoadErrorStreamController.close());
+    unawaited(_httpResponseErrorStreamController.close());
+    unawaited(_historyChangedStreamController.close());
+    unawaited(_securityStateChangedStreamController.close());
+    unawaited(_titleStreamController.close());
+    unawaited(_cursorStreamController.close());
+    unawaited(_webMessageStreamController.close());
+    unawaited(_containsFullScreenElementChangedStreamController.close());
   }
 
   /// Loads the given [url].
@@ -1059,6 +1163,7 @@ class _WebviewState extends State<Webview> {
   WebviewController get _controller => widget.controller;
 
   StreamSubscription? _cursorSubscription;
+  int _surfaceSizeGeneration = 0;
 
   @override
   void initState() {
@@ -1068,9 +1173,11 @@ class _WebviewState extends State<Webview> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _reportSurfaceSize());
 
     _cursorSubscription = _controller._cursor.listen((cursor) {
-      setState(() {
-        _cursor = cursor;
-      });
+      if (mounted) {
+        setState(() {
+          _cursor = cursor;
+        });
+      }
     });
   }
 
@@ -1186,22 +1293,41 @@ class _WebviewState extends State<Webview> {
     );
   }
 
-  void _reportSurfaceSize() async {
-    final box = _key.currentContext?.findRenderObject() as RenderBox?;
-    if (box != null) {
+  Future<void> _reportSurfaceSize() async {
+    final int generation = ++_surfaceSizeGeneration;
+    final BuildContext? initialContext = _key.currentContext;
+    final RenderBox? box = initialContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      return;
+    }
+    final Size size = box.size;
+
+    try {
       await _controller.ready;
-      unawaited(
-        _controller._setSize(
-          box.size,
-          widget.scaleFactor ?? View.of(_key.currentContext!).devicePixelRatio,
-        ),
-      );
+      if (!mounted || generation != _surfaceSizeGeneration) {
+        return;
+      }
+      final BuildContext? currentContext = _key.currentContext;
+      if (currentContext == null) {
+        return;
+      }
+      final double scaleFactor =
+          widget.scaleFactor ?? View.of(currentContext).devicePixelRatio;
+      await _controller._setSize(size, scaleFactor);
+    } catch (error) {
+      if (mounted) {
+        debugPrint(
+          'webview_all_windows: failed to update the WebView2 surface size: $error',
+        );
+      }
     }
   }
 
   @override
   void dispose() {
+    _surfaceSizeGeneration += 1;
+    unawaited(_cursorSubscription?.cancel());
+    _cursorSubscription = null;
     super.dispose();
-    _cursorSubscription?.cancel();
   }
 }
