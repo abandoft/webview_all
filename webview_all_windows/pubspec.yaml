@@ -27,7 +27,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  pigeon: ^27.1.0
+  pigeon: ">=26.3.4 <27.1.1"
 
 topics:
   - html
