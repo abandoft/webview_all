@@ -87,5 +87,66 @@ void main() {
         );
       },
     );
+
+    test('rejects cookie domains outside the current document host', () async {
+      await expectLater(
+        () => manager.setCookie(
+          const WebViewCookie(
+            name: 'valid_name',
+            value: 'value',
+            domain: 'unrelated.invalid',
+            path: '/',
+          ),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('returns no cookies for an inaccessible URL context', () async {
+      final Uri currentUri = Uri.parse(web.window.location.href);
+      final String name =
+          'webview_all_unrelated_${DateTime.now().microsecondsSinceEpoch}';
+      await manager.setCookie(
+        WebViewCookie(name: name, value: 'value', domain: '', path: '/'),
+      );
+      addTearDown(() {
+        web.document.cookie =
+            '$name=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+      });
+
+      expect(
+        await manager.getCookies(currentUri.replace(host: 'unrelated.invalid')),
+        isEmpty,
+      );
+      expect(
+        await manager.getCookies(currentUri.replace(path: '/another/path')),
+        isEmpty,
+      );
+    });
+
+    test(
+      'clears visible cookies and reports whether one was removed',
+      () async {
+        final String name =
+            'webview_all_clear_${DateTime.now().microsecondsSinceEpoch}';
+        await manager.setCookie(
+          WebViewCookie(name: name, value: 'value', domain: '', path: '/'),
+        );
+
+        expect(await manager.clearCookies(), isTrue);
+        expect(
+          await manager.getCookies(Uri.parse(web.window.location.href)),
+          isNot(
+            contains(
+              isA<WebViewCookie>().having(
+                (WebViewCookie cookie) => cookie.name,
+                'name',
+                name,
+              ),
+            ),
+          ),
+        );
+      },
+    );
   });
 }
