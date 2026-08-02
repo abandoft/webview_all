@@ -20,7 +20,7 @@ void main() {
     // Build our app and trigger a frame.
     await tester.pumpWidget(const BilibiliApp());
 
-    expect(find.text('Bilibili APP'), findsOneWidget);
+    expect(find.text('Bilibili'), findsOneWidget);
     expect(find.byType(MaterialApp), findsOneWidget);
   });
 }
