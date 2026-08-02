@@ -84,8 +84,10 @@ class OhosWebViewCookieManager extends PlatformWebViewCookieManager {
 
       webViewCookies.add(
         WebViewCookie(
-          name: trimmedCookie.substring(0, separatorIndex),
-          value: Uri.decodeComponent(
+          name: _decodeCookieComponent(
+            trimmedCookie.substring(0, separatorIndex),
+          ),
+          value: _decodeCookieComponent(
             trimmedCookie.substring(separatorIndex + 1),
           ),
           domain: url.host,
@@ -94,6 +96,14 @@ class OhosWebViewCookieManager extends PlatformWebViewCookieManager {
       );
     }
     return webViewCookies;
+  }
+
+  String _decodeCookieComponent(String value) {
+    try {
+      return Uri.decodeComponent(value);
+    } on ArgumentError {
+      return value;
+    }
   }
 
   void _validateWebViewCookie(WebViewCookie cookie) {
