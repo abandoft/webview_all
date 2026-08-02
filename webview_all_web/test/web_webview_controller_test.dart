@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
 
@@ -62,6 +63,35 @@ void main() {
           ),
           throwsArgumentError,
         );
+      });
+
+      test(
+        'rejects attributes reserved for controller identity and loading',
+        () {
+          for (final String name in <String>['id', 'ID', 'src', 'srcdoc']) {
+            expect(
+              () => WebWebViewControllerCreationParams(
+                iFrameAttributes: <String, String?>{name: 'value'},
+              ),
+              throwsArgumentError,
+            );
+          }
+        },
+      );
+
+      test('rejects malformed custom iFrame attribute names', () {
+        for (final String name in <String>[
+          'bad name',
+          'bad=name',
+          'bad/name',
+        ]) {
+          expect(
+            () => WebWebViewControllerCreationParams(
+              iFrameAttributes: <String, String?>{name: 'value'},
+            ),
+            throwsArgumentError,
+          );
+        }
       });
     });
 
@@ -628,6 +658,200 @@ void main() {
       );
     });
 
+    group('controller-managed history', () {
+      test(
+        'restores URL and inline HTML entries without stale srcdoc',
+        () async {
+          final WebWebViewControllerCreationParams params =
+              WebWebViewControllerCreationParams();
+          final WebWebViewController controller = WebWebViewController(params);
+
+          await controller.loadRequest(
+            LoadRequestParams(uri: Uri.parse('https://example.test/first')),
+          );
+          await controller.loadHtmlString(
+            '<main>inline history entry</main>',
+            baseUrl: 'https://example.test/inline/',
+          );
+
+          expect(await controller.canGoBack(), isTrue);
+          expect(
+            params.iFrame.getAttribute('srcdoc'),
+            contains('inline history'),
+          );
+
+          await controller.goBack();
+
+          expect(await controller.currentUrl(), 'https://example.test/first');
+          expect(params.iFrame.getAttribute('srcdoc'), isNull);
+          expect(params.iFrame.src, 'https://example.test/first');
+          expect(await controller.canGoForward(), isTrue);
+
+          await controller.goForward();
+
+          expect(await controller.currentUrl(), 'https://example.test/inline/');
+          expect(
+            params.iFrame.getAttribute('srcdoc'),
+            contains('inline history'),
+          );
+        },
+      );
+
+      test(
+        'restores fetch responses without replaying POST requests',
+        () async {
+          final MockHttpRequestFactory requestFactory =
+              MockHttpRequestFactory();
+          final WebWebViewControllerCreationParams params =
+              WebWebViewControllerCreationParams(
+                httpRequestFactory: requestFactory,
+              );
+          final WebWebViewController controller = WebWebViewController(params);
+          final web.Response response = web.Response(
+            '<main>saved response</main>'.toJS,
+            <String, Object>{
+                  'headers': <String, Object>{
+                    'content-type': 'text/html; charset=utf-8',
+                  },
+                }.jsify()!
+                as web.ResponseInit,
+          );
+          when(
+            requestFactory.request(
+              any,
+              method: anyNamed('method'),
+              requestHeaders: anyNamed('requestHeaders'),
+              sendData: anyNamed('sendData'),
+            ),
+          ).thenAnswer((_) async => response);
+
+          await controller.loadRequest(
+            LoadRequestParams(uri: Uri.parse('https://example.test/first')),
+          );
+          await controller.loadRequest(
+            LoadRequestParams(
+              uri: Uri.parse('https://example.test/form'),
+              method: LoadRequestMethod.post,
+              headers: const <String, String>{'X-Test': 'history'},
+              body: Uint8List.fromList(<int>[1, 2, 3]),
+            ),
+          );
+          expect(params.iFrame.src, contains('saved%20response'));
+
+          await controller.goBack();
+          await controller.goForward();
+
+          expect(await controller.currentUrl(), 'https://example.test/form');
+          expect(params.iFrame.src, contains('saved%20response'));
+          verify(
+            requestFactory.request(
+              'https://example.test/form',
+              method: 'post',
+              requestHeaders: const <String, String>{'X-Test': 'history'},
+              sendData: anyNamed('sendData'),
+            ),
+          ).called(1);
+        },
+      );
+
+      test(
+        'does not move the history index when navigation is denied',
+        () async {
+          final WebWebViewController controller = WebWebViewController(
+            WebWebViewControllerCreationParams(),
+          );
+          final WebNavigationDelegate delegate = WebNavigationDelegate(
+            const WebNavigationDelegateCreationParams(),
+          );
+          var allowNavigation = false;
+
+          await controller.loadRequest(
+            LoadRequestParams(uri: Uri.parse('https://example.test/first')),
+          );
+          await controller.loadRequest(
+            LoadRequestParams(uri: Uri.parse('https://example.test/second')),
+          );
+          await delegate.setOnNavigationRequest((NavigationRequest request) {
+            return allowNavigation
+                ? NavigationDecision.navigate
+                : NavigationDecision.prevent;
+          });
+          await controller.setPlatformNavigationDelegate(delegate);
+
+          await controller.goBack();
+
+          expect(await controller.currentUrl(), 'https://example.test/second');
+          expect(await controller.canGoBack(), isTrue);
+          expect(await controller.canGoForward(), isFalse);
+
+          allowNavigation = true;
+          await controller.goBack();
+
+          expect(await controller.currentUrl(), 'https://example.test/first');
+          expect(await controller.canGoBack(), isFalse);
+          expect(await controller.canGoForward(), isTrue);
+        },
+      );
+
+      test(
+        'a stale fetch response cannot replace a newer navigation',
+        () async {
+          final MockHttpRequestFactory requestFactory =
+              MockHttpRequestFactory();
+          final Completer<web.Response> firstResponse =
+              Completer<web.Response>();
+          final Completer<web.Response> secondResponse =
+              Completer<web.Response>();
+          final WebWebViewControllerCreationParams params =
+              WebWebViewControllerCreationParams(
+                httpRequestFactory: requestFactory,
+              );
+          final WebWebViewController controller = WebWebViewController(params);
+
+          when(
+            requestFactory.request(
+              any,
+              method: anyNamed('method'),
+              requestHeaders: anyNamed('requestHeaders'),
+              sendData: anyNamed('sendData'),
+            ),
+          ).thenAnswer((Invocation invocation) {
+            return invocation.positionalArguments.single ==
+                    'https://example.test/first'
+                ? firstResponse.future
+                : secondResponse.future;
+          });
+
+          final Future<void> firstLoad = controller.loadRequest(
+            LoadRequestParams(
+              uri: Uri.parse('https://example.test/first'),
+              headers: const <String, String>{'X-WebView-Test': 'first'},
+            ),
+          );
+          await Future<void>.delayed(Duration.zero);
+          final Future<void> secondLoad = controller.loadRequest(
+            LoadRequestParams(
+              uri: Uri.parse('https://example.test/second'),
+              headers: const <String, String>{'X-WebView-Test': 'second'},
+            ),
+          );
+
+          secondResponse.complete(
+            web.Response('<main>second response</main>'.toJS),
+          );
+          await secondLoad;
+          firstResponse.complete(
+            web.Response('<main>stale first response</main>'.toJS),
+          );
+          await firstLoad;
+
+          expect(await controller.currentUrl(), 'https://example.test/second');
+          expect(params.iFrame.src, contains('second%20response'));
+          expect(params.iFrame.src, isNot(contains('stale%20first')));
+        },
+      );
+    });
+
     group('loadFlutterAsset', () {
       test('keeps loadFileWithParams unsupported on web', () async {
         final controller = WebWebViewController(
@@ -861,6 +1085,12 @@ void main() {
           controller.setIFrameAttribute('', 'value'),
           throwsArgumentError,
         );
+        for (final String name in <String>['id', 'src', 'srcdoc']) {
+          await expectLater(
+            controller.setIFrameAttribute(name, 'value'),
+            throwsArgumentError,
+          );
+        }
       });
 
       test('delivers JavaScript channel messages', () async {

@@ -42,14 +42,36 @@ extension _WebHeadersExtension on web.Headers {
 }
 
 void _validateIFrameAttributeName(String name) {
-  if (name.trim().isEmpty) {
+  final String normalizedName = name.trim().toLowerCase();
+  if (normalizedName.isEmpty) {
     throw ArgumentError.value(
       name,
       'name',
       'Attribute name must not be empty.',
     );
   }
+  if (RegExp(r'''[\x00-\x20"'/>=]''').hasMatch(name)) {
+    throw ArgumentError.value(
+      name,
+      'name',
+      'Attribute name contains characters that are not valid in HTML.',
+    );
+  }
+  if (_reservedIFrameAttributeNames.contains(normalizedName)) {
+    throw ArgumentError.value(
+      name,
+      'name',
+      'The "$normalizedName" attribute is managed internally by '
+          'webview_all_web.',
+    );
+  }
 }
+
+const Set<String> _reservedIFrameAttributeNames = <String>{
+  'id',
+  'src',
+  'srcdoc',
+};
 
 void _setIFrameAttribute(
   web.HTMLIFrameElement iFrame,
@@ -162,6 +184,7 @@ class WebWebViewController extends PlatformWebViewController {
           : target._tryReadCurrentFrameUrl() ?? target._currentUrl;
       if (resolvedUrl != null) {
         target._currentUrl = resolvedUrl;
+        target._updateActiveUrlFromFrame(resolvedUrl);
         target._navigationDelegate?.onUrlChange?.call(
           UrlChange(url: resolvedUrl),
         );
@@ -220,15 +243,16 @@ class WebWebViewController extends PlatformWebViewController {
   WebWebViewControllerCreationParams get _webWebViewParams =>
       params as WebWebViewControllerCreationParams;
 
-  final List<String> _history = <String>[];
+  static const int _maximumHistoryEntries = 100;
+
+  final List<_WebHistoryEntry> _history = <_WebHistoryEntry>[];
   int _historyIndex = -1;
   String? _currentUrl;
   String? _userAgentOverride;
   String? _customSandbox;
-  String? _lastHtmlStringContent;
-  LoadRequestParams? _lastXhrRequestParams;
+  _WebHistoryEntry? _activeHistoryEntry;
   WebNavigationDelegate? _navigationDelegate;
-  _NavigationLoadType _lastLoadedType = _NavigationLoadType.none;
+  int _navigationGeneration = 0;
   bool _verticalScrollBarEnabled = true;
   bool _horizontalScrollBarEnabled = true;
   JavaScriptMode _javaScriptMode = JavaScriptMode.unrestricted;
@@ -284,15 +308,14 @@ class WebWebViewController extends PlatformWebViewController {
 
   @override
   Future<void> loadHtmlString(String html, {String? baseUrl}) async {
+    _navigationGeneration += 1;
     final String content = _injectBaseUrl(html, baseUrl);
-    _navigationDelegate?.onPageStarted?.call(baseUrl ?? 'about:blank');
-    _navigationDelegate?.onProgress?.call(0);
-    _currentUrl = baseUrl ?? 'about:blank';
-    _lastHtmlStringContent = content;
-    _lastXhrRequestParams = null;
-    _lastLoadedType = _NavigationLoadType.html;
-    _markLogicalUrlHistoryEntry(_currentUrl!);
-    _webWebViewParams.iFrame.srcdoc = _prepareInlineHtml(content).toJS;
+    final _HtmlHistoryEntry entry = _HtmlHistoryEntry(
+      url: baseUrl ?? 'about:blank',
+      content: content,
+    );
+    _activateHtmlEntry(entry);
+    _recordHistoryEntry(entry);
   }
 
   @override
@@ -332,8 +355,7 @@ class WebWebViewController extends PlatformWebViewController {
     if (!await canGoBack()) {
       return;
     }
-    _historyIndex -= 1;
-    await _loadUrl(_history[_historyIndex], updateHistory: false);
+    await _goToHistoryIndex(_historyIndex - 1);
   }
 
   @override
@@ -341,27 +363,23 @@ class WebWebViewController extends PlatformWebViewController {
     if (!await canGoForward()) {
       return;
     }
-    _historyIndex += 1;
-    await _loadUrl(_history[_historyIndex], updateHistory: false);
+    await _goToHistoryIndex(_historyIndex + 1);
   }
 
   @override
   Future<void> reload() async {
-    if (_lastLoadedType == _NavigationLoadType.html) {
-      _webWebViewParams.iFrame.srcdoc = _prepareInlineHtml(
-        _lastHtmlStringContent ?? '',
-      ).toJS;
-      return;
-    }
-
-    if (_lastLoadedType == _NavigationLoadType.xhrResponse &&
-        _lastXhrRequestParams != null) {
-      await _updateIFrameFromXhr(_lastXhrRequestParams!, updateHistory: false);
-      return;
-    }
-
-    if (_currentUrl != null) {
-      await _loadUrl(_currentUrl!, updateHistory: false);
+    switch (_activeHistoryEntry) {
+      case final _HtmlHistoryEntry entry:
+        _navigationGeneration += 1;
+        _activateHtmlEntry(entry);
+      case final _XhrHistoryEntry entry:
+        await _updateIFrameFromXhr(entry.request, updateHistory: false);
+      case final _UrlHistoryEntry entry:
+        await _loadUrl(entry.url, updateHistory: false);
+      case null:
+        if (_currentUrl != null) {
+          await _loadUrl(_currentUrl!, updateHistory: false);
+        }
     }
   }
 
@@ -1615,27 +1633,21 @@ class WebWebViewController extends PlatformWebViewController {
   }
 
   Future<void> _loadUrl(String url, {required bool updateHistory}) async {
+    final int generation = ++_navigationGeneration;
     if (!await _shouldNavigate(url)) {
       return;
     }
-
-    _currentUrl = url;
-    _navigationDelegate?.onPageStarted?.call(url);
-    _navigationDelegate?.onProgress?.call(0);
-    _navigationDelegate?.onUrlChange?.call(UrlChange(url: url));
-
-    if (updateHistory) {
-      if (_historyIndex < _history.length - 1) {
-        _history.removeRange(_historyIndex + 1, _history.length);
-      }
-      _history.add(url);
-      _historyIndex = _history.length - 1;
+    if (generation != _navigationGeneration) {
+      return;
     }
 
-    _lastLoadedType = _NavigationLoadType.url;
-    _lastXhrRequestParams = null;
-    _resetIsolatedBridge();
-    _webWebViewParams.iFrame.src = url;
+    final _UrlHistoryEntry entry = _UrlHistoryEntry(url);
+    _activateUrlEntry(entry);
+    if (updateHistory) {
+      _recordHistoryEntry(entry);
+    } else {
+      _replaceActiveHistoryEntry(entry);
+    }
   }
 
   Future<bool> _shouldNavigate(String url) async {
@@ -1656,14 +1668,15 @@ class WebWebViewController extends PlatformWebViewController {
     LoadRequestParams params, {
     bool updateHistory = true,
   }) async {
+    final int generation = ++_navigationGeneration;
     if (!await _shouldNavigate(params.uri.toString())) {
       return;
     }
+    if (generation != _navigationGeneration) {
+      return;
+    }
 
-    _currentUrl = params.uri.toString();
-    _navigationDelegate?.onPageStarted?.call(_currentUrl!);
-    _navigationDelegate?.onProgress?.call(0);
-    _navigationDelegate?.onUrlChange?.call(UrlChange(url: _currentUrl));
+    _beginNavigation(params.uri.toString());
 
     final web.Response response;
     try {
@@ -1676,16 +1689,21 @@ class WebWebViewController extends PlatformWebViewController {
               )
               as web.Response;
     } catch (error) {
-      _navigationDelegate?.onWebResourceError?.call(
-        WebResourceError(
-          errorCode: 0,
-          description: error.toString(),
-          errorType: WebResourceErrorType.connect,
-          isForMainFrame: true,
-          url: params.uri.toString(),
-        ),
-      );
+      if (generation == _navigationGeneration) {
+        _navigationDelegate?.onWebResourceError?.call(
+          WebResourceError(
+            errorCode: 0,
+            description: error.toString(),
+            errorType: WebResourceErrorType.connect,
+            isForMainFrame: true,
+            url: params.uri.toString(),
+          ),
+        );
+      }
       rethrow;
+    }
+    if (generation != _navigationGeneration) {
+      return;
     }
 
     final Map<String, String> responseHeaders = _headersFromResponse(response);
@@ -1718,42 +1736,27 @@ class WebWebViewController extends PlatformWebViewController {
     final Encoding encoding = Encoding.getByName(contentType.charset) ?? utf8;
     final ByteBuffer responseBuffer =
         (await response.arrayBuffer().toDart).toDart;
+    if (generation != _navigationGeneration) {
+      return;
+    }
     final String responseBody = _decodeResponseBody(
       encoding,
       responseBuffer.asUint8List(),
     );
 
-    if (updateHistory) {
-      _markLogicalUrlHistoryEntry(params.uri.toString());
-    }
-
-    _lastXhrRequestParams = params;
-    _lastLoadedType = _NavigationLoadType.xhrResponse;
-    final String mimeType = contentType.mimeType ?? 'text/html';
-    final String renderedBody;
-    if (_isHtmlMimeType(mimeType) &&
-        _javaScriptMode == JavaScriptMode.unrestricted &&
-        _currentSandboxAllowsScripts) {
-      _prepareIsolatedBridge();
-      renderedBody = _injectIntoDocumentHead(
-        responseBody,
-        '${_baseElement(params.uri.toString())}'
-        '${_isolatedBridgeBootstrap(_isolatedBridgeGeneration)}',
-      );
-    } else {
-      _resetIsolatedBridge();
-      renderedBody = _isHtmlMimeType(mimeType)
-          ? _injectIntoDocumentHead(
-              responseBody,
-              _baseElement(params.uri.toString()),
-            )
-          : responseBody;
-    }
-    _webWebViewParams.iFrame.src = Uri.dataFromString(
-      renderedBody,
-      mimeType: mimeType,
+    final _XhrHistoryEntry entry = _XhrHistoryEntry(
+      url: params.uri.toString(),
+      request: _copyLoadRequestParams(params),
+      responseBody: responseBody,
+      mimeType: contentType.mimeType ?? 'text/html',
       encoding: encoding,
-    ).toString();
+    );
+    _activateXhrEntry(entry, notifyNavigation: false);
+    if (updateHistory) {
+      _recordHistoryEntry(entry);
+    } else {
+      _replaceActiveHistoryEntry(entry);
+    }
   }
 
   String _injectBaseUrl(String html, String? baseUrl) {
@@ -1926,16 +1929,130 @@ class WebWebViewController extends PlatformWebViewController {
   }
 
   bool get _shouldPreserveLogicalUrl {
-    return _lastLoadedType == _NavigationLoadType.html ||
-        _lastLoadedType == _NavigationLoadType.xhrResponse;
+    return _activeHistoryEntry is _HtmlHistoryEntry ||
+        _activeHistoryEntry is _XhrHistoryEntry;
   }
 
-  void _markLogicalUrlHistoryEntry(String url) {
+  void _beginNavigation(String url) {
+    _currentUrl = url;
+    _navigationDelegate?.onPageStarted?.call(url);
+    _navigationDelegate?.onProgress?.call(0);
+    _navigationDelegate?.onUrlChange?.call(UrlChange(url: url));
+  }
+
+  void _activateUrlEntry(_UrlHistoryEntry entry) {
+    _beginNavigation(entry.url);
+    _activeHistoryEntry = entry;
+    _resetIsolatedBridge();
+    _webWebViewParams.iFrame.removeAttribute('srcdoc');
+    _webWebViewParams.iFrame.src = entry.url;
+  }
+
+  void _activateHtmlEntry(
+    _HtmlHistoryEntry entry, {
+    bool notifyNavigation = true,
+  }) {
+    if (notifyNavigation) {
+      _beginNavigation(entry.url);
+    } else {
+      _currentUrl = entry.url;
+    }
+    _activeHistoryEntry = entry;
+    _webWebViewParams.iFrame.removeAttribute('src');
+    _webWebViewParams.iFrame.srcdoc = _prepareInlineHtml(entry.content).toJS;
+  }
+
+  void _activateXhrEntry(
+    _XhrHistoryEntry entry, {
+    bool notifyNavigation = true,
+  }) {
+    if (notifyNavigation) {
+      _beginNavigation(entry.url);
+    } else {
+      _currentUrl = entry.url;
+    }
+    _activeHistoryEntry = entry;
+
+    final String renderedBody;
+    if (_isHtmlMimeType(entry.mimeType) &&
+        _javaScriptMode == JavaScriptMode.unrestricted &&
+        _currentSandboxAllowsScripts) {
+      _prepareIsolatedBridge();
+      renderedBody = _injectIntoDocumentHead(
+        entry.responseBody,
+        '${_baseElement(entry.url)}'
+        '${_isolatedBridgeBootstrap(_isolatedBridgeGeneration)}',
+      );
+    } else {
+      _resetIsolatedBridge();
+      renderedBody = _isHtmlMimeType(entry.mimeType)
+          ? _injectIntoDocumentHead(entry.responseBody, _baseElement(entry.url))
+          : entry.responseBody;
+    }
+
+    _webWebViewParams.iFrame.removeAttribute('srcdoc');
+    _webWebViewParams.iFrame.src = Uri.dataFromString(
+      renderedBody,
+      mimeType: entry.mimeType,
+      encoding: entry.encoding,
+    ).toString();
+  }
+
+  Future<void> _goToHistoryIndex(int targetIndex) async {
+    final int generation = ++_navigationGeneration;
+    final _WebHistoryEntry entry = _history[targetIndex];
+    if (!await _shouldNavigate(entry.url)) {
+      return;
+    }
+    if (generation != _navigationGeneration) {
+      return;
+    }
+
+    switch (entry) {
+      case final _UrlHistoryEntry urlEntry:
+        _activateUrlEntry(urlEntry);
+      case final _HtmlHistoryEntry htmlEntry:
+        _activateHtmlEntry(htmlEntry);
+      case final _XhrHistoryEntry xhrEntry:
+        _activateXhrEntry(xhrEntry);
+    }
+    _historyIndex = targetIndex;
+  }
+
+  void _recordHistoryEntry(_WebHistoryEntry entry) {
     if (_historyIndex < _history.length - 1) {
       _history.removeRange(_historyIndex + 1, _history.length);
     }
-    _history.add(url);
+    _history.add(entry);
+    if (_history.length > _maximumHistoryEntries) {
+      _history.removeAt(0);
+    }
     _historyIndex = _history.length - 1;
+  }
+
+  void _replaceActiveHistoryEntry(_WebHistoryEntry entry) {
+    _activeHistoryEntry = entry;
+    if (_historyIndex >= 0 && _historyIndex < _history.length) {
+      _history[_historyIndex] = entry;
+    }
+  }
+
+  void _updateActiveUrlFromFrame(String url) {
+    if (_activeHistoryEntry case final _UrlHistoryEntry entry) {
+      if (entry.url == url) {
+        return;
+      }
+      _replaceActiveHistoryEntry(_UrlHistoryEntry(url));
+    }
+  }
+
+  LoadRequestParams _copyLoadRequestParams(LoadRequestParams params) {
+    return LoadRequestParams(
+      uri: params.uri,
+      method: params.method,
+      headers: Map<String, String>.unmodifiable(params.headers),
+      body: params.body == null ? null : Uint8List.fromList(params.body!),
+    );
   }
 
   String _resolveFlutterAssetUrl(String key) {
@@ -1979,7 +2096,36 @@ class WebWebViewController extends PlatformWebViewController {
   }
 }
 
-enum _NavigationLoadType { none, url, html, xhrResponse }
+sealed class _WebHistoryEntry {
+  const _WebHistoryEntry({required this.url});
+
+  final String url;
+}
+
+final class _UrlHistoryEntry extends _WebHistoryEntry {
+  const _UrlHistoryEntry(String url) : super(url: url);
+}
+
+final class _HtmlHistoryEntry extends _WebHistoryEntry {
+  const _HtmlHistoryEntry({required super.url, required this.content});
+
+  final String content;
+}
+
+final class _XhrHistoryEntry extends _WebHistoryEntry {
+  const _XhrHistoryEntry({
+    required super.url,
+    required this.request,
+    required this.responseBody,
+    required this.mimeType,
+    required this.encoding,
+  });
+
+  final LoadRequestParams request;
+  final String responseBody;
+  final String mimeType;
+  final Encoding encoding;
+}
 
 /// Web implementation of [WebResourceRequest] for XHR-backed loads.
 class WebWebResourceRequest extends WebResourceRequest {
