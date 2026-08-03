@@ -328,6 +328,41 @@ void main() {
       );
 
       test(
+        'limitsNavigationsToAppBoundDomains contains native failures',
+        () async {
+          final mockConfiguration = MockWKWebViewConfiguration();
+          when(
+            mockConfiguration.setLimitsNavigationsToAppBoundDomains(true),
+          ).thenAnswer(
+            (_) => Future<bool>.error(
+              StateError('configuration failure\nsecond line'),
+            ),
+          );
+          PigeonOverrides.wKWebViewConfiguration_new =
+              ({dynamic observeValue}) => mockConfiguration;
+          final DebugPrintCallback previousDebugPrint = debugPrint;
+          final List<String> logs = <String>[];
+          debugPrint = (String? message, {int? wrapWidth}) {
+            if (message != null) {
+              logs.add(message);
+            }
+          };
+          addTearDown(() {
+            debugPrint = previousDebugPrint;
+          });
+
+          WebKitWebViewControllerCreationParams(
+            limitsNavigationsToAppBoundDomains: true,
+          );
+          await pumpEventQueue();
+
+          expect(logs, hasLength(1));
+          expect(logs.single, contains('failed to configure'));
+          expect(logs.single, isNot(contains('\n')));
+        },
+      );
+
+      test(
         'limitsNavigationsToAppBoundDomains is not called if it uses default value (false)',
         () {
           final mockConfiguration = MockWKWebViewConfiguration();
@@ -1280,6 +1315,72 @@ void main() {
 
       verifyNoMoreInteractions(mockUserContentController);
     });
+
+    test(
+      'removeJavaScriptChannel waits for native scripts and handlers to be removed',
+      () async {
+        PigeonOverrides.wKScriptMessageHandler_new =
+            ({
+              required void Function(
+                WKScriptMessageHandler,
+                WKUserContentController,
+                WKScriptMessage,
+              )
+              didReceiveScriptMessage,
+              dynamic observeValue,
+            }) {
+              return WKScriptMessageHandler.pigeon_detached(
+                didReceiveScriptMessage: didReceiveScriptMessage,
+              );
+            };
+
+        final MockWKUserContentController mockUserContentController =
+            MockWKUserContentController();
+        final WebKitWebViewController controller = createControllerWithMocks(
+          mockUserContentController: mockUserContentController,
+        );
+        final WebKitJavaScriptChannelParams javaScriptChannelParams =
+            WebKitJavaScriptChannelParams(
+              name: 'name',
+              onMessageReceived: (JavaScriptMessage message) {},
+            );
+        final Completer<void> nativeRemoval = Completer<void>();
+        final Completer<void> handlerRemoval = Completer<void>();
+
+        await controller.addJavaScriptChannel(javaScriptChannelParams);
+        reset(mockUserContentController);
+        when(
+          mockUserContentController.removeAllUserScripts(),
+        ).thenAnswer((_) => nativeRemoval.future);
+        when(
+          mockUserContentController.removeScriptMessageHandler('name'),
+        ).thenAnswer((_) => handlerRemoval.future);
+
+        final Future<void> removal = controller.removeJavaScriptChannel('name');
+        var removalCompleted = false;
+        unawaited(
+          removal.whenComplete(() {
+            removalCompleted = true;
+          }),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        verify(mockUserContentController.removeAllUserScripts());
+        verifyNever(
+          mockUserContentController.removeScriptMessageHandler('name'),
+        );
+
+        nativeRemoval.complete();
+        await Future<void>.delayed(Duration.zero);
+
+        verify(mockUserContentController.removeScriptMessageHandler('name'));
+        expect(removalCompleted, isFalse);
+
+        handlerRemoval.complete();
+        await removal;
+        expect(removalCompleted, isTrue);
+      },
+    );
 
     test('removeJavaScriptChannel multiple times', () async {
       PigeonOverrides.wKScriptMessageHandler_new =

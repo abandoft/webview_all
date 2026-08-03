@@ -108,19 +108,28 @@ class WebKitWebViewControllerCreationParams
             .setLimitsNavigationsToAppBoundDomains(
               limitsNavigationsToAppBoundDomains,
             )
-            .then((bool supported) {
-              if (!supported) {
-                final String requirement =
-                    defaultTargetPlatform == TargetPlatform.macOS
-                    ? 'macOS 11.0'
-                    : 'iOS 14.0';
+            .then(
+              (bool supported) {
+                if (!supported) {
+                  final String requirement =
+                      defaultTargetPlatform == TargetPlatform.macOS
+                      ? 'macOS 11.0'
+                      : 'iOS 14.0';
+                  debugPrint(
+                    'webview_all_wkwebview: '
+                    'limitsNavigationsToAppBoundDomains requires $requirement '
+                    'or later. The setting was ignored.',
+                  );
+                }
+              },
+              onError: (Object error, StackTrace stackTrace) {
                 debugPrint(
-                  'webview_all_wkwebview: '
-                  'limitsNavigationsToAppBoundDomains requires $requirement '
-                  'or later. The setting was ignored.',
+                  'webview_all_wkwebview: failed to configure '
+                  'limitsNavigationsToAppBoundDomains; the setting was ignored: '
+                  '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
                 );
-              }
-            }),
+              },
+            ),
       );
     }
   }
@@ -972,13 +981,14 @@ class WebKitWebViewController extends PlatformWebViewController {
   Future<void> _resetUserScripts({String? removedJavaScriptChannel}) async {
     final WKUserContentController controller = await _webView.configuration
         .getUserContentController();
-    unawaited(controller.removeAllUserScripts());
+    await controller.removeAllUserScripts();
     // TODO(bparrishMines): This can be replaced with
     // `removeAllScriptMessageHandlers` once Dart supports runtime version
     // checking. (e.g. The equivalent to @availability in Objective-C.)
-    _javaScriptChannelParams.keys.forEach(
-      controller.removeScriptMessageHandler,
-    );
+    await Future.wait(<Future<void>>[
+      for (final String channelName in _javaScriptChannelParams.keys)
+        controller.removeScriptMessageHandler(channelName),
+    ]);
     final remainingChannelParams =
         Map<String, WebKitJavaScriptChannelParams>.from(
           _javaScriptChannelParams,
