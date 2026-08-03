@@ -15,20 +15,13 @@ import XCTest
 #endif
 
 class SecCertificateProxyAPITests: XCTestCase {
-  func createDummyCertificate() -> SecCertificate {
-    let url = FlutterAssetManager().urlForAsset("assets/test_cert.der")!
-    let certificateData = NSData(contentsOf: url)
-
-    return SecCertificateCreateWithData(nil, certificateData!)!
-  }
-
   func testCopyData() {
     let registrar = TestProxyApiRegistrar()
     let delegate = TestSecCertificateProxyAPIDelegate()
     let api = PigeonApiSecCertificate(pigeonRegistrar: registrar, delegate: delegate)
 
     let value = try? api.pigeonDelegate.copyData(
-      pigeonApi: api, certificate: SecCertificateWrapper(value: createDummyCertificate()))
+      pigeonApi: api, certificate: SecCertificateWrapper(value: createTestCertificate()))
 
     XCTAssertEqual(value?.data, delegate.data)
   }

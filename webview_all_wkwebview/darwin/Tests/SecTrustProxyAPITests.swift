@@ -18,7 +18,7 @@ class SecTrustProxyAPITests: XCTestCase {
   func createTrust(delegate: TestSecTrustProxyAPIDelegate) -> SecTrustWrapper {
     var trust: SecTrust?
     SecTrustCreateWithCertificates(
-      [delegate.createDummyCertificate()] as AnyObject, SecPolicyCreateBasicX509(), &trust)
+      [createTestCertificate()] as AnyObject, SecPolicyCreateBasicX509(), &trust)
 
     return SecTrustWrapper(value: trust!)
   }
@@ -95,13 +95,6 @@ class SecTrustProxyAPITests: XCTestCase {
 }
 
 class TestSecTrustProxyAPIDelegate: SecTrustProxyAPIDelegate {
-  func createDummyCertificate() -> SecCertificate {
-    let url = FlutterAssetManager().urlForAsset("assets/test_cert.der")!
-    let certificateData = NSData(contentsOf: url)
-
-    return SecCertificateCreateWithData(nil, certificateData!)!
-  }
-
   override func secTrustEvaluateWithError(
     _ trust: SecTrust, _ error: UnsafeMutablePointer<CFError?>?
   ) -> Bool {
@@ -125,7 +118,7 @@ class TestSecTrustProxyAPIDelegate: SecTrustProxyAPIDelegate {
 
   override func secTrustCopyCertificateChain(_ trust: SecTrust) -> CFArray? {
     if #available(iOS 15.0, *) {
-      return [createDummyCertificate()] as CFArray
+      return [createTestCertificate()] as CFArray
     }
 
     return nil

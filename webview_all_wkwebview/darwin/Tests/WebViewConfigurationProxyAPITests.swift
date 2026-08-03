@@ -106,7 +106,7 @@ class WebViewConfigurationProxyAPITests: XCTestCase {
 
     let instance = WKWebViewConfiguration()
     let limit = true
-    try? api.pigeonDelegate.setLimitsNavigationsToAppBoundDomains(
+    _ = try? api.pigeonDelegate.setLimitsNavigationsToAppBoundDomains(
       pigeonApi: api, pigeonInstance: instance, limit: limit)
 
     XCTAssertEqual(instance.limitsNavigationsToAppBoundDomains, limit)

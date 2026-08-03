@@ -271,7 +271,7 @@ class WebViewProxyAPITests: XCTestCase {
 
     let instance = TestViewWKWebView()
     let inspectable = true
-    try? api.pigeonDelegate.setInspectable(
+    _ = try? api.pigeonDelegate.setInspectable(
       pigeonApi: api, pigeonInstance: instance, inspectable: inspectable)
 
     XCTAssertEqual(instance.setInspectableArgs, [inspectable])
