@@ -1,3 +1,10 @@
+## 1.3.3
+
+* Prevent Windows WebView2 from blocking when application callbacks fail or do not complete, using safe defaults to keep the WebView running.
+* Fix Linux native view position and visibility synchronization when a `WebViewWidget` switches controllers.
+* Fix WKWebView JavaScript channel cleanup ordering and safely handle configuration limited by the operating system version.
+* Contain critical application callback failures on Web and OHOS so uncaught errors do not interrupt WebView operation.
+
 ## 1.3.2
 
 * Improve Windows WebView2 startup recovery and resource cleanup, including safe retries after initialization failures and protection against stale resize updates.

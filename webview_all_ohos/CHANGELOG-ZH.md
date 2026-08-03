@@ -1,3 +1,10 @@
+## 1.3.3
+
+* 避免 Windows WebView2 在应用回调失败或未完成时长期阻塞，并使用安全默认行为保持 WebView 运行。
+* 修复 Linux `WebViewWidget` 切换 controller 时原生视图位置和可见性不同步的问题。
+* 修复 WKWebView JavaScript channel 的清理顺序，并安全处理受系统版本限制的配置。
+* 隔离 Web 和 OHOS 的关键应用回调失败，避免未捕获异常中断 WebView 运行。
+
 ## 1.3.2
 
 * 完善 Windows WebView2 的启动恢复和资源清理，初始化失败后可安全重试，并避免过期的 resize 更新覆盖当前状态。
