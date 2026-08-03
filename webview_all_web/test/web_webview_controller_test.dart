@@ -1251,6 +1251,37 @@ void main() {
         },
       );
 
+      test('contains asynchronous alert callback failures', () async {
+        final WebWebViewControllerCreationParams params =
+            WebWebViewControllerCreationParams();
+        final WebWebViewController controller = WebWebViewController(params);
+        final DebugPrintCallback previousDebugPrint = debugPrint;
+        final List<String> messages = <String>[];
+        debugPrint = (String? message, {int? wrapWidth}) {
+          if (message != null) {
+            messages.add(message);
+          }
+        };
+        addTearDown(() {
+          debugPrint = previousDebugPrint;
+          params.iFrame.remove();
+        });
+
+        await _attachAndLoadScrollableHtml(controller, params);
+        await controller.setOnJavaScriptAlertDialog((_) {
+          return Future<void>.error(StateError('first line\nsecond line'));
+        });
+        await controller.runJavaScript("alert('failing alert')");
+
+        for (int i = 0; i < 20 && messages.isEmpty; i += 1) {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+
+        expect(messages, hasLength(1));
+        expect(messages.single, contains('JavaScript alert callback failed'));
+        expect(messages.single, isNot(contains('\n')));
+      });
+
       test('installs alert forwarding after content loads', () async {
         final params = WebWebViewControllerCreationParams();
         final controller = WebWebViewController(params);
@@ -1389,6 +1420,48 @@ void main() {
         expect(requests.single.url, isNotEmpty);
         expect(requests.single.defaultText, 'world');
       });
+
+      test('uses safe fallbacks when dialog callbacks throw', () async {
+        final params = WebWebViewControllerCreationParams();
+        final controller = WebWebViewController(params);
+        final DebugPrintCallback previousDebugPrint = debugPrint;
+        final List<String> messages = <String>[];
+        debugPrint = (String? message, {int? wrapWidth}) {
+          if (message != null) {
+            messages.add(message);
+          }
+        };
+        addTearDown(() {
+          debugPrint = previousDebugPrint;
+          params.iFrame.remove();
+        });
+
+        await _attachAndLoadScrollableHtml(controller, params);
+        await controller.setOnJavaScriptConfirmDialog((_) {
+          throw StateError('confirm failure\nsecond line');
+        });
+        await controller.setOnJavaScriptTextInputDialog((_) {
+          throw StateError('prompt failure\nsecond line');
+        });
+
+        expect(
+          await controller.runJavaScriptReturningResult("confirm('continue?')"),
+          isFalse,
+        );
+        expect(
+          await controller.runJavaScriptReturningResult(
+            "prompt('name', 'fallback')",
+          ),
+          'fallback',
+        );
+        expect(messages, hasLength(2));
+        expect(messages, contains(contains('confirm callback failed')));
+        expect(messages, contains(contains('prompt callback failed')));
+        expect(
+          messages.every((String message) => !message.contains('\n')),
+          isTrue,
+        );
+      });
     });
 
     group('permissions', () {
@@ -1489,6 +1562,100 @@ void main() {
           'yes',
         );
       });
+
+      test('denies permission requests when the callback throws', () async {
+        final params = WebWebViewControllerCreationParams();
+        final controller = WebWebViewController(params);
+        final DebugPrintCallback previousDebugPrint = debugPrint;
+        final List<String> messages = <String>[];
+        debugPrint = (String? message, {int? wrapWidth}) {
+          if (message != null) {
+            messages.add(message);
+          }
+        };
+        addTearDown(() {
+          debugPrint = previousDebugPrint;
+          params.iFrame.remove();
+        });
+
+        await _attachAndLoadScrollableHtml(controller, params);
+        await _installFakeGetUserMedia(controller);
+        await controller.setOnPlatformPermissionRequest((_) {
+          throw StateError('permission failure\nsecond line');
+        });
+
+        await controller.runJavaScript('''
+          window.permissionResult = 'pending';
+          navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(function() {
+              window.permissionResult = 'granted';
+            })
+            .catch(function(error) {
+              window.permissionResult = error.name;
+            });
+        ''');
+
+        expect(
+          await _waitForJavaScriptValue(
+            controller,
+            'window.permissionResult',
+            isNot('pending'),
+          ),
+          'NotAllowedError',
+        );
+        expect(messages, hasLength(1));
+        expect(messages.single, contains('permission callback failed'));
+        expect(messages.single, isNot(contains('\n')));
+      });
+
+      test(
+        'preserves a completed permission decision when the callback throws',
+        () async {
+          final params = WebWebViewControllerCreationParams();
+          final controller = WebWebViewController(params);
+          final DebugPrintCallback previousDebugPrint = debugPrint;
+          final List<String> messages = <String>[];
+          debugPrint = (String? message, {int? wrapWidth}) {
+            if (message != null) {
+              messages.add(message);
+            }
+          };
+          addTearDown(() {
+            debugPrint = previousDebugPrint;
+            params.iFrame.remove();
+          });
+
+          await _attachAndLoadScrollableHtml(controller, params);
+          await _installFakeGetUserMedia(controller);
+          await controller.setOnPlatformPermissionRequest((request) {
+            request.grant();
+            throw StateError('failure after decision\nsecond line');
+          });
+
+          await controller.runJavaScript('''
+            window.permissionResult = 'pending';
+            navigator.mediaDevices.getUserMedia({ audio: true })
+              .then(function(stream) {
+                window.permissionResult = stream;
+              })
+              .catch(function(error) {
+                window.permissionResult = error.name;
+              });
+          ''');
+
+          expect(
+            await _waitForJavaScriptValue(
+              controller,
+              'window.permissionResult',
+              isNot('pending'),
+            ),
+            'fake-stream',
+          );
+          expect(messages, hasLength(1));
+          expect(messages.single, contains('completed decision was preserved'));
+          expect(messages.single, isNot(contains('\n')));
+        },
+      );
 
       test('rejects forged in-frame permission decisions', () async {
         final params = WebWebViewControllerCreationParams();

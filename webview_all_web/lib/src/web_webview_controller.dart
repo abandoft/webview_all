@@ -287,6 +287,33 @@ class WebWebViewController extends PlatformWebViewController {
     }
   }
 
+  void _runAsyncCallbackSafely(
+    String callbackName,
+    Future<void> Function() callback,
+  ) {
+    Future<void> future;
+    try {
+      future = callback();
+    } catch (error) {
+      debugPrint(
+        'webview_all_web: $callbackName failed: '
+        '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
+      );
+      return;
+    }
+    unawaited(
+      future.then<void>(
+        (_) {},
+        onError: (Object error, StackTrace stackTrace) {
+          debugPrint(
+            'webview_all_web: $callbackName failed: '
+            '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Future<void> loadFile(String absoluteFilePath) {
     throw UnsupportedError(
@@ -1033,12 +1060,12 @@ class WebWebViewController extends PlatformWebViewController {
         if (callback == null) {
           return;
         }
-        unawaited(
-          callback(
-            JavaScriptAlertDialogRequest(
-              message: '${decoded['message'] ?? ''}',
-              url: '${decoded['url'] ?? _currentUrl ?? 'about:blank'}',
-            ),
+        final String message = '${decoded['message'] ?? ''}';
+        final String url = '${decoded['url'] ?? _currentUrl ?? 'about:blank'}';
+        _runAsyncCallbackSafely(
+          'JavaScript alert callback',
+          () => callback(
+            JavaScriptAlertDialogRequest(message: message, url: url),
           ),
         );
         return;
@@ -1049,14 +1076,37 @@ class WebWebViewController extends PlatformWebViewController {
         if (callback == null || requestId == null) {
           return;
         }
-        callback(
-          WebWebViewPermissionRequest._(
-            types: _permissionTypesFromMessage(decoded['types']),
-            onDecision: (bool granted) {
-              _sendPlatformPermissionDecision(requestId, granted);
-            },
-          ),
-        );
+        final WebWebViewPermissionRequest request =
+            WebWebViewPermissionRequest._(
+              types: _permissionTypesFromMessage(decoded['types']),
+              onDecision: (bool granted) {
+                _sendPlatformPermissionDecision(requestId, granted);
+              },
+            );
+        try {
+          callback(request);
+        } catch (error, stackTrace) {
+          final String failure =
+              '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}; '
+              'stack: '
+              '${stackTrace.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}';
+          if (request._isCompleted) {
+            debugPrint(
+              'webview_all_web: platform permission callback failed after '
+              'completing its decision; the completed decision was preserved: '
+              '$failure',
+            );
+          } else {
+            debugPrint(
+              'webview_all_web: platform permission callback failed; the '
+              'request was denied: $failure',
+            );
+            _runAsyncCallbackSafely(
+              'platform permission fallback',
+              request.deny,
+            );
+          }
+        }
         return;
     }
   }
@@ -1339,8 +1389,20 @@ class WebWebViewController extends PlatformWebViewController {
     _ensureJavaScriptDialogBridgeRoot()[_webWebViewParams.iFrame.id] = bridge;
   }
 
+  void _logJavaScriptDialogCallbackFailure(
+    String dialogName,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    debugPrint(
+      'webview_all_web: JavaScript $dialogName callback failed: '
+      '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}; '
+      'stack: ${stackTrace.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
+    );
+  }
+
   T _completeJavaScriptDialogSynchronously<T>(
-    Future<T> future,
+    Future<T> Function() callback,
     String dialogName,
     T fallback,
   ) {
@@ -1348,6 +1410,13 @@ class WebWebViewController extends PlatformWebViewController {
     bool returned = false;
     T? result;
     Object? error;
+    late final Future<T> future;
+    try {
+      future = callback();
+    } catch (exception, stackTrace) {
+      _logJavaScriptDialogCallbackFailure(dialogName, exception, stackTrace);
+      return fallback;
+    }
 
     future.then(
       (T value) {
@@ -1365,10 +1434,7 @@ class WebWebViewController extends PlatformWebViewController {
       onError: (Object exception, StackTrace stack) {
         completed = true;
         error = exception;
-        debugPrint(
-          'webview_all_web: JavaScript $dialogName callback failed: '
-          '$exception\n$stack',
-        );
+        _logJavaScriptDialogCallbackFailure(dialogName, exception, stack);
       },
     );
 
@@ -1396,7 +1462,8 @@ class WebWebViewController extends PlatformWebViewController {
     }
 
     return _completeJavaScriptDialogSynchronously<bool>(
-      callback(JavaScriptConfirmDialogRequest(message: message, url: url)),
+      () =>
+          callback(JavaScriptConfirmDialogRequest(message: message, url: url)),
       'confirm',
       false,
     );
@@ -1414,7 +1481,7 @@ class WebWebViewController extends PlatformWebViewController {
     }
 
     return _completeJavaScriptDialogSynchronously<String>(
-      callback(
+      () => callback(
         JavaScriptTextInputDialogRequest(
           message: message,
           url: url,
@@ -2173,6 +2240,8 @@ class WebWebViewPermissionRequest extends PlatformWebViewPermissionRequest {
   }) : _decision = _WebWebViewPermissionDecision(onDecision);
 
   final _WebWebViewPermissionDecision _decision;
+
+  bool get _isCompleted => _decision._hasDecision;
 
   @override
   Future<void> grant() async {
