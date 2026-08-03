@@ -23,6 +23,33 @@ import 'core/instance_manager.dart';
 import 'ohos_platform_views.dart';
 import 'core/weak_reference.dart';
 
+void _runOhosAsyncCallbackSafely(
+  String callbackName,
+  Future<void> Function() callback,
+) {
+  Future<void> future;
+  try {
+    future = callback();
+  } catch (error) {
+    debugPrint(
+      'webview_all_ohos: $callbackName failed: '
+      '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
+    );
+    return;
+  }
+  unawaited(
+    future.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {
+        debugPrint(
+          'webview_all_ohos: $callbackName failed: '
+          '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
+        );
+      },
+    ),
+  );
+}
+
 /// Object specifying creation parameters for creating a [OhosWebViewController].
 ///
 /// When adding additional fields make sure they can be null or have a default
@@ -617,7 +644,7 @@ class OhosWebViewController extends PlatformWebViewController {
   ) async {
     _currentNavigationDelegate = handler;
     handler._onControllerPageFinished = (_) {
-      unawaited(_applyViewportStyle());
+      _runOhosAsyncCallbackSafely('viewport style update', _applyViewportStyle);
     };
     await Future.wait(<Future<void>>[
       handler.setOnLoadRequest(loadRequest),
@@ -1697,28 +1724,51 @@ class OhosNavigationDelegate extends PlatformNavigationDelegate {
                       return;
                     }
                     completed = true;
-                    unawaited(action());
+                    _runOhosAsyncCallbackSafely(
+                      'HTTP authentication decision',
+                      action,
+                    );
                   }
 
-                  callback(
-                    HttpAuthRequest(
-                      onProceed: (WebViewCredential credential) {
-                        complete(
-                          () => httpAuthHandler.proceed(
-                            credential.user,
-                            credential.password,
-                          ),
-                        );
-                      },
-                      onCancel: () {
-                        complete(httpAuthHandler.cancel);
-                      },
-                      host: host,
-                      realm: realm,
-                    ),
+                  final HttpAuthRequest request = HttpAuthRequest(
+                    onProceed: (WebViewCredential credential) {
+                      complete(
+                        () => httpAuthHandler.proceed(
+                          credential.user,
+                          credential.password,
+                        ),
+                      );
+                    },
+                    onCancel: () {
+                      complete(httpAuthHandler.cancel);
+                    },
+                    host: host,
+                    realm: realm,
                   );
+                  try {
+                    callback(request);
+                  } catch (error) {
+                    if (completed) {
+                      debugPrint(
+                        'webview_all_ohos: HTTP authentication callback failed '
+                        'after completing its decision; the completed decision '
+                        'was preserved: '
+                        '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
+                      );
+                    } else {
+                      debugPrint(
+                        'webview_all_ohos: HTTP authentication callback failed; '
+                        'the request was canceled: '
+                        '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
+                      );
+                      complete(httpAuthHandler.cancel);
+                    }
+                  }
                 } else {
-                  httpAuthHandler.cancel();
+                  _runOhosAsyncCallbackSafely(
+                    'HTTP authentication fallback',
+                    httpAuthHandler.cancel,
+                  );
                 }
               },
           onReceivedSslAuthError:
@@ -1732,18 +1782,42 @@ class OhosNavigationDelegate extends PlatformNavigationDelegate {
                 final void Function(PlatformSslAuthError)? callback =
                     weakThis.target?._onSslAuthError;
                 if (callback != null) {
-                  callback(
-                    OhosPlatformSslAuthError._(
-                      handler: sslAuthHandler,
-                      description: description.isEmpty
-                          ? 'SSL certificate error for $url.'
-                          : description,
-                      url: url,
-                      errorCode: errorCode,
-                    ),
-                  );
+                  final OhosPlatformSslAuthError error =
+                      OhosPlatformSslAuthError._(
+                        handler: sslAuthHandler,
+                        description: description.isEmpty
+                            ? 'SSL certificate error for $url.'
+                            : description,
+                        url: url,
+                        errorCode: errorCode,
+                      );
+                  try {
+                    callback(error);
+                  } catch (callbackError) {
+                    if (error._isCompleted) {
+                      debugPrint(
+                        'webview_all_ohos: SSL authentication callback failed '
+                        'after completing its decision; the completed decision '
+                        'was preserved: '
+                        '${callbackError.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
+                      );
+                    } else {
+                      debugPrint(
+                        'webview_all_ohos: SSL authentication callback failed; '
+                        'the request was canceled: '
+                        '${callbackError.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
+                      );
+                      _runOhosAsyncCallbackSafely(
+                        'SSL authentication fallback',
+                        error.cancel,
+                      );
+                    }
+                  }
                 } else {
-                  sslAuthHandler.cancel();
+                  _runOhosAsyncCallbackSafely(
+                    'SSL authentication fallback',
+                    sslAuthHandler.cancel,
+                  );
                 }
               },
         );
@@ -1956,6 +2030,8 @@ class OhosPlatformSslAuthError extends PlatformSslAuthError {
 
   final ohos_webview.SslAuthHandler _handler;
   final Completer<void> _completion = Completer<void>();
+
+  bool get _isCompleted => _completion.isCompleted;
 
   /// URL that triggered the recoverable SSL certificate error.
   final String url;

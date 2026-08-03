@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:webview_all_ohos/src/core/instance_manager.dart';
 import 'package:webview_all_ohos/src/ohos_webview_native.dart';
@@ -323,6 +323,17 @@ class TestHttpAuthHandler extends ohos_webview.HttpAuthHandler {
   @override
   Future<void> proceed(String username, String password) async {
     credentials.add(WebViewCredential(user: username, password: password));
+  }
+}
+
+// ignore: must_be_immutable
+class FailingHttpAuthHandler extends TestHttpAuthHandler {
+  FailingHttpAuthHandler(InstanceManager instanceManager)
+    : super(instanceManager);
+
+  @override
+  Future<void> cancel() {
+    return Future<void>.error(StateError('first line\nsecond line'));
   }
 }
 
@@ -743,6 +754,141 @@ void main() {
     expect(httpAuthHandler.credentials, isEmpty);
     expect(httpAuthHandler.canceled, isTrue);
   });
+
+  test('navigation delegate contains HTTP auth completion failures', () async {
+    final InstanceManager instanceManager = InstanceManager(
+      onWeakReferenceRemoved: (_) {},
+    );
+    late TestWebViewClient webViewClient;
+    final OhosNavigationDelegate delegate = _createTestNavigationDelegate(
+      instanceManager: instanceManager,
+      onCreateWebViewClient: (TestWebViewClient client) {
+        webViewClient = client;
+      },
+    );
+    final FailingHttpAuthHandler httpAuthHandler = FailingHttpAuthHandler(
+      instanceManager,
+    );
+    final DebugPrintCallback previousDebugPrint = debugPrint;
+    final List<String> messages = <String>[];
+    debugPrint = (String? message, {int? wrapWidth}) {
+      if (message != null) {
+        messages.add(message);
+      }
+    };
+    addTearDown(() {
+      debugPrint = previousDebugPrint;
+    });
+
+    await delegate.setOnHttpAuthRequest((HttpAuthRequest request) {
+      request.onCancel();
+    });
+    webViewClient.onReceivedHttpAuthRequest!(
+      ohos_webview.WebView.detached(instanceManager: instanceManager),
+      httpAuthHandler,
+      'secure.example.test',
+      'Restricted Area',
+    );
+    await _flushAsyncEvents();
+
+    expect(messages, hasLength(1));
+    expect(messages.single, contains('HTTP authentication decision failed'));
+    expect(messages.single, isNot(contains('\n')));
+  });
+
+  test(
+    'navigation delegate cancels HTTP auth when the callback throws',
+    () async {
+      final InstanceManager instanceManager = InstanceManager(
+        onWeakReferenceRemoved: (_) {},
+      );
+      late TestWebViewClient webViewClient;
+      final OhosNavigationDelegate delegate = _createTestNavigationDelegate(
+        instanceManager: instanceManager,
+        onCreateWebViewClient: (TestWebViewClient client) {
+          webViewClient = client;
+        },
+      );
+      final TestHttpAuthHandler httpAuthHandler = TestHttpAuthHandler(
+        instanceManager,
+      );
+      final DebugPrintCallback previousDebugPrint = debugPrint;
+      final List<String> messages = <String>[];
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) {
+          messages.add(message);
+        }
+      };
+      addTearDown(() {
+        debugPrint = previousDebugPrint;
+      });
+
+      await delegate.setOnHttpAuthRequest((_) {
+        throw StateError('callback failure\nsecond line');
+      });
+      webViewClient.onReceivedHttpAuthRequest!(
+        ohos_webview.WebView.detached(instanceManager: instanceManager),
+        httpAuthHandler,
+        'secure.example.test',
+        'Restricted Area',
+      );
+      await _flushAsyncEvents();
+
+      expect(httpAuthHandler.canceled, isTrue);
+      expect(messages, hasLength(1));
+      expect(messages.single, contains('HTTP authentication callback failed'));
+      expect(messages.single, isNot(contains('\n')));
+    },
+  );
+
+  test(
+    'navigation delegate preserves completed HTTP auth when callback throws',
+    () async {
+      final InstanceManager instanceManager = InstanceManager(
+        onWeakReferenceRemoved: (_) {},
+      );
+      late TestWebViewClient webViewClient;
+      final OhosNavigationDelegate delegate = _createTestNavigationDelegate(
+        instanceManager: instanceManager,
+        onCreateWebViewClient: (TestWebViewClient client) {
+          webViewClient = client;
+        },
+      );
+      final TestHttpAuthHandler httpAuthHandler = TestHttpAuthHandler(
+        instanceManager,
+      );
+      final DebugPrintCallback previousDebugPrint = debugPrint;
+      final List<String> messages = <String>[];
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) {
+          messages.add(message);
+        }
+      };
+      addTearDown(() {
+        debugPrint = previousDebugPrint;
+      });
+
+      await delegate.setOnHttpAuthRequest((HttpAuthRequest request) {
+        request.onProceed(
+          const WebViewCredential(user: 'test-user', password: 'test-password'),
+        );
+        throw StateError('callback failure after decision\nsecond line');
+      });
+      webViewClient.onReceivedHttpAuthRequest!(
+        ohos_webview.WebView.detached(instanceManager: instanceManager),
+        httpAuthHandler,
+        'secure.example.test',
+        'Restricted Area',
+      );
+      await _flushAsyncEvents();
+
+      expect(httpAuthHandler.credentials, hasLength(1));
+      expect(httpAuthHandler.canceled, isFalse);
+      expect(messages, hasLength(1));
+      expect(messages.single, contains('completed decision was preserved'));
+      expect(messages.single, isNot(contains('\n')));
+    },
+  );
 
   test('loads files with params through the native WebView', () async {
     final InstanceManager instanceManager = InstanceManager(
@@ -1602,6 +1748,102 @@ void main() {
     expect(sslAuthHandler.cancelCount, 1);
     expect(sslAuthHandler.canceled, isTrue);
   });
+
+  test(
+    'navigation delegate cancels SSL auth when the callback throws',
+    () async {
+      final InstanceManager instanceManager = InstanceManager(
+        onWeakReferenceRemoved: (_) {},
+      );
+      late TestWebViewClient webViewClient;
+      final OhosNavigationDelegate delegate = _createTestNavigationDelegate(
+        instanceManager: instanceManager,
+        onCreateWebViewClient: (TestWebViewClient client) {
+          webViewClient = client;
+        },
+      );
+      final TestSslAuthHandler sslAuthHandler = TestSslAuthHandler(
+        instanceManager,
+      );
+      final DebugPrintCallback previousDebugPrint = debugPrint;
+      final List<String> messages = <String>[];
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) {
+          messages.add(message);
+        }
+      };
+      addTearDown(() {
+        debugPrint = previousDebugPrint;
+      });
+
+      await delegate.setOnSSlAuthError((_) {
+        throw StateError('callback failure\nsecond line');
+      });
+      webViewClient.onReceivedSslAuthError!(
+        ohos_webview.WebView.detached(instanceManager: instanceManager),
+        sslAuthHandler,
+        'https://expired.example.test/',
+        ohos_webview.WebViewClient.errorFailedSslHandshake,
+        'Certificate has expired.',
+      );
+      await _flushAsyncEvents();
+
+      expect(sslAuthHandler.proceeded, isFalse);
+      expect(sslAuthHandler.cancelCount, 1);
+      expect(sslAuthHandler.canceled, isTrue);
+      expect(messages, hasLength(1));
+      expect(messages.single, contains('SSL authentication callback failed'));
+      expect(messages.single, isNot(contains('\n')));
+    },
+  );
+
+  test(
+    'navigation delegate preserves completed SSL auth when callback throws',
+    () async {
+      final InstanceManager instanceManager = InstanceManager(
+        onWeakReferenceRemoved: (_) {},
+      );
+      late TestWebViewClient webViewClient;
+      final OhosNavigationDelegate delegate = _createTestNavigationDelegate(
+        instanceManager: instanceManager,
+        onCreateWebViewClient: (TestWebViewClient client) {
+          webViewClient = client;
+        },
+      );
+      final TestSslAuthHandler sslAuthHandler = TestSslAuthHandler(
+        instanceManager,
+      );
+      final DebugPrintCallback previousDebugPrint = debugPrint;
+      final List<String> messages = <String>[];
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) {
+          messages.add(message);
+        }
+      };
+      addTearDown(() {
+        debugPrint = previousDebugPrint;
+      });
+
+      await delegate.setOnSSlAuthError((PlatformSslAuthError error) {
+        unawaited(error.proceed());
+        throw StateError('callback failure after decision\nsecond line');
+      });
+      webViewClient.onReceivedSslAuthError!(
+        ohos_webview.WebView.detached(instanceManager: instanceManager),
+        sslAuthHandler,
+        'https://expired.example.test/',
+        ohos_webview.WebViewClient.errorFailedSslHandshake,
+        'Certificate has expired.',
+      );
+      await _flushAsyncEvents();
+
+      expect(sslAuthHandler.proceedCount, 1);
+      expect(sslAuthHandler.cancelCount, 0);
+      expect(messages, hasLength(1));
+      expect(messages.single, contains('completed decision was preserved'));
+      expect(messages.single, isNot(contains('\n')));
+    },
+  );
 }
 
 OhosWebViewController _createTestWebViewController({
