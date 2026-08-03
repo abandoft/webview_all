@@ -200,6 +200,30 @@ jobs:
         working-directory: webview_all/example
         run: flutter build macos --debug
 
+      - name: Run WKWebView native Swift tests
+        if: matrix.flutter == '3.44.x'
+        run: |
+          python3 tool/add_swift_tests_to_xcode_target.py \
+            webview_all/example/macos/Runner.xcodeproj \
+            RunnerTests \
+            webview_all_wkwebview/darwin/Tests
+          xcodebuild test \
+            -workspace webview_all/example/macos/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -only-testing:RunnerTests \
+            GCC_TREAT_WARNINGS_AS_ERRORS=YES \
+            CODE_SIGNING_ALLOWED=NO \
+            -quiet
+
+      - name: Run macOS integration tests
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: |
+          flutter pub get
+          flutter test integration_test/webview_flutter_test.dart -d macos
+
   linux:
     name: Linux native build
     runs-on: ubuntu-latest
