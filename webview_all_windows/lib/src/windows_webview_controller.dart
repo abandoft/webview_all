@@ -13,6 +13,12 @@ import 'package:webview_platform_interface/webview_platform_interface.dart';
 import 'windows_webview_types.dart' as native_types;
 import 'windows_webview_native.dart' as native_webview;
 
+const Duration _pendingWebView2RequestTimeout = Duration(seconds: 30);
+
+String _singleLineWindowsLogValue(Object value) {
+  return value.toString().replaceAll(RegExp(r'[\r\n]+'), ' ');
+}
+
 Future<void> _disposeFinalizedWindowsWebView(
   native_webview.WebviewController controller,
 ) async {
@@ -170,6 +176,32 @@ class WindowsWebViewController extends PlatformWebViewController {
   static const String _javaScriptChannelMessageType = 'javascriptChannel';
   static const String _consoleMessageType = 'consoleMessage';
   static const String _scrollMessageType = 'scrollPositionChange';
+
+  Future<T> _awaitPendingRequest<T>(
+    Future<T> Function() decision, {
+    required T fallback,
+    required String requestName,
+  }) async {
+    try {
+      return await decision().timeout(
+        _pendingWebView2RequestTimeout,
+        onTimeout: () {
+          debugPrint(
+            'webview_all_windows: $requestName did not complete within '
+            '${_pendingWebView2RequestTimeout.inSeconds} seconds; the safe '
+            'default was used.',
+          );
+          return fallback;
+        },
+      );
+    } catch (error) {
+      debugPrint(
+        'webview_all_windows: $requestName failed; the safe default was used: '
+        '${_singleLineWindowsLogValue(error)}',
+      );
+      return fallback;
+    }
+  }
 
   /// Explicitly initializes the shared WebView2 environment.
   static Future<void> initializeEnvironment({
@@ -403,32 +435,55 @@ class WindowsWebViewController extends PlatformWebViewController {
         if (callback == null) {
           return null;
         }
-        await callback(
-          JavaScriptAlertDialogRequest(message: message, url: url),
+        return _awaitPendingRequest<Map<String, Object?>?>(
+          () =>
+              callback(
+                JavaScriptAlertDialogRequest(message: message, url: url),
+              ).then<Map<String, Object?>?>(
+                (_) => <String, Object?>{'action': 'accept'},
+              ),
+          fallback: null,
+          requestName: 'JavaScript alert callback',
         );
-        return <String, Object?>{'action': 'accept'};
       case 'confirm':
         final callback = _onJavaScriptConfirmDialogCallback;
         if (callback == null) {
           return null;
         }
-        final bool confirmed = await callback(
-          JavaScriptConfirmDialogRequest(message: message, url: url),
+        return _awaitPendingRequest<Map<String, Object?>?>(
+          () =>
+              callback(
+                JavaScriptConfirmDialogRequest(message: message, url: url),
+              ).then<Map<String, Object?>?>(
+                (bool confirmed) => <String, Object?>{
+                  'action': confirmed ? 'confirm' : 'cancel',
+                },
+              ),
+          fallback: null,
+          requestName: 'JavaScript confirm callback',
         );
-        return <String, Object?>{'action': confirmed ? 'confirm' : 'cancel'};
       case 'prompt':
         final callback = _onJavaScriptTextInputDialogCallback;
         if (callback == null) {
           return null;
         }
-        final String text = await callback(
-          JavaScriptTextInputDialogRequest(
-            message: message,
-            url: url,
-            defaultText: defaultText,
-          ),
+        return _awaitPendingRequest<Map<String, Object?>?>(
+          () =>
+              callback(
+                JavaScriptTextInputDialogRequest(
+                  message: message,
+                  url: url,
+                  defaultText: defaultText,
+                ),
+              ).then<Map<String, Object?>?>(
+                (String text) => <String, Object?>{
+                  'action': 'confirm',
+                  'text': text,
+                },
+              ),
+          fallback: null,
+          requestName: 'JavaScript prompt callback',
         );
-        return <String, Object?>{'action': 'confirm', 'text': text};
     }
 
     return null;
@@ -467,10 +522,26 @@ class WindowsWebViewController extends PlatformWebViewController {
           },
         ),
       );
-    } catch (_) {
+    } catch (error) {
+      if (completer.isCompleted) {
+        debugPrint(
+          'webview_all_windows: HTTP authentication callback failed after '
+          'completing its decision; the completed decision was preserved: '
+          '${_singleLineWindowsLogValue(error)}',
+        );
+        return completer.future;
+      }
+      debugPrint(
+        'webview_all_windows: HTTP authentication callback failed; the request '
+        'was canceled: ${_singleLineWindowsLogValue(error)}',
+      );
       return <String, Object?>{'action': 'cancel'};
     }
-    return completer.future;
+    return _awaitPendingRequest<Map<String, Object?>>(
+      () => completer.future,
+      fallback: <String, Object?>{'action': 'cancel'},
+      requestName: 'HTTP authentication callback',
+    );
   }
 
   String? _parseHttpAuthRealm(String challenge) {
@@ -523,10 +594,26 @@ class WindowsWebViewController extends PlatformWebViewController {
           },
         ),
       );
-    } catch (_) {
+    } catch (error) {
+      if (completer.isCompleted) {
+        debugPrint(
+          'webview_all_windows: SSL authentication callback failed after '
+          'completing its decision; the completed decision was preserved: '
+          '${_singleLineWindowsLogValue(error)}',
+        );
+        return completer.future;
+      }
+      debugPrint(
+        'webview_all_windows: SSL authentication callback failed; the request '
+        'was canceled: ${_singleLineWindowsLogValue(error)}',
+      );
       return <String, Object?>{'action': 'cancel'};
     }
-    return completer.future;
+    return _awaitPendingRequest<Map<String, Object?>>(
+      () => completer.future,
+      fallback: <String, Object?>{'action': 'cancel'},
+      requestName: 'SSL authentication callback',
+    );
   }
 
   native_types.WebErrorStatus _webErrorStatusFromIndex(int index) {
@@ -864,8 +951,34 @@ class WindowsWebViewController extends PlatformWebViewController {
         return native_types.WebviewPermissionDecision.none;
       }
       final request = _WindowsWebViewPermissionRequest(types: types);
-      target._onPlatformPermissionRequestCallback?.call(request);
-      return request.decision.future;
+      try {
+        target._onPlatformPermissionRequestCallback?.call(request);
+      } catch (error) {
+        if (request.decision.isCompleted) {
+          debugPrint(
+            'webview_all_windows: permission callback failed after completing '
+            'its decision; the completed decision was preserved: '
+            '${_singleLineWindowsLogValue(error)}',
+          );
+          return target
+              ._awaitPendingRequest<native_types.WebviewPermissionDecision>(
+                () => request.decision.future,
+                fallback: native_types.WebviewPermissionDecision.deny,
+                requestName: 'permission callback',
+              );
+        }
+        debugPrint(
+          'webview_all_windows: permission callback failed; the safe default '
+          'was used: ${_singleLineWindowsLogValue(error)}',
+        );
+        return native_types.WebviewPermissionDecision.deny;
+      }
+      return target
+          ._awaitPendingRequest<native_types.WebviewPermissionDecision>(
+            () => request.decision.future,
+            fallback: native_types.WebviewPermissionDecision.deny,
+            requestName: 'permission callback',
+          );
     });
   }
 

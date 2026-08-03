@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
+    _activeMockTextureId = ++_lastMockTextureId;
     _mockWindowsWebViewCreation();
   });
 
@@ -895,6 +897,252 @@ void main() {
     },
   );
 
+  testWidgets('uses safe defaults when application decisions do not complete', (
+    WidgetTester tester,
+  ) async {
+    final controller = WindowsWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final delegate = WindowsNavigationDelegate(
+      const PlatformNavigationDelegateCreationParams(),
+    );
+    final Completer<void> pendingAlert = Completer<void>();
+    final Completer<bool> pendingConfirm = Completer<bool>();
+    final Completer<String> pendingPrompt = Completer<String>();
+
+    await controller.setOnJavaScriptAlertDialog((_) => pendingAlert.future);
+    await controller.setOnJavaScriptConfirmDialog((_) => pendingConfirm.future);
+    await controller.setOnJavaScriptTextInputDialog(
+      (_) => pendingPrompt.future,
+    );
+    await controller.setOnPlatformPermissionRequest((_) {});
+    await delegate.setOnHttpAuthRequest((_) {});
+    await delegate.setOnSSlAuthError((_) {});
+    await controller.setPlatformNavigationDelegate(delegate);
+
+    final Future<Object?> dialogResult = _invokeWindowsWebViewMethod(
+      'javaScriptDialogRequested',
+      <String, Object?>{
+        'dialogType': 'alert',
+        'message': 'waiting',
+        'url': 'https://example.test/dialog',
+      },
+    );
+    final Future<Object?> confirmResult = _invokeWindowsWebViewMethod(
+      'javaScriptDialogRequested',
+      <String, Object?>{
+        'dialogType': 'confirm',
+        'message': 'waiting',
+        'url': 'https://example.test/dialog',
+      },
+    );
+    final Future<Object?> promptResult = _invokeWindowsWebViewMethod(
+      'javaScriptDialogRequested',
+      <String, Object?>{
+        'dialogType': 'prompt',
+        'message': 'waiting',
+        'url': 'https://example.test/dialog',
+        'defaultText': 'default',
+      },
+    );
+    final Future<Object?> permissionResult =
+        _invokeWindowsWebViewMethod('permissionRequested', <String, Object?>{
+          'url': 'https://example.test/camera',
+          'permissionKind': native_types.WebviewPermissionKind.camera.index,
+          'isUserInitiated': true,
+        });
+    final Future<Object?> httpAuthResult =
+        _invokeWindowsWebViewMethod('httpAuthRequested', <String, Object?>{
+          'url': 'https://secure.example.test/private',
+          'challenge': 'Basic realm="Restricted Area"',
+        });
+    final Future<Object?> sslAuthResult = _invokeWindowsWebViewMethod(
+      'sslAuthError',
+      <String, Object?>{
+        'url': 'https://expired.example.test/',
+        'errorStatus': 2,
+      },
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 30));
+
+    expect(await dialogResult, isNull);
+    expect(await confirmResult, isNull);
+    expect(await promptResult, isNull);
+    expect(await permissionResult, isFalse);
+    expect(await httpAuthResult, <String, Object?>{'action': 'cancel'});
+    expect(await sslAuthResult, <String, Object?>{'action': 'cancel'});
+  });
+
+  test('uses safe defaults when decision callbacks throw', () async {
+    final controller = WindowsWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final delegate = WindowsNavigationDelegate(
+      const PlatformNavigationDelegateCreationParams(),
+    );
+    final DebugPrintCallback previousDebugPrint = debugPrint;
+    final List<String> messages = <String>[];
+    debugPrint = (String? message, {int? wrapWidth}) {
+      if (message != null) {
+        messages.add(message);
+      }
+    };
+    addTearDown(() {
+      debugPrint = previousDebugPrint;
+    });
+
+    await controller.setOnJavaScriptAlertDialog((_) {
+      throw StateError('alert failure\nsecond line');
+    });
+    await controller.setOnPlatformPermissionRequest((_) {
+      throw StateError('permission failure\nsecond line');
+    });
+    await delegate.setOnHttpAuthRequest((_) {
+      throw StateError('HTTP auth failure\nsecond line');
+    });
+    await delegate.setOnSSlAuthError((_) {
+      throw StateError('SSL auth failure\nsecond line');
+    });
+    await controller.setPlatformNavigationDelegate(delegate);
+
+    expect(
+      await _invokeWindowsWebViewMethod(
+        'javaScriptDialogRequested',
+        <String, Object?>{
+          'dialogType': 'alert',
+          'message': 'failing',
+          'url': 'https://example.test/dialog',
+        },
+      ),
+      isNull,
+    );
+    expect(
+      await _invokeWindowsWebViewMethod(
+        'permissionRequested',
+        <String, Object?>{
+          'url': 'https://example.test/camera',
+          'permissionKind': native_types.WebviewPermissionKind.camera.index,
+          'isUserInitiated': true,
+        },
+      ),
+      isFalse,
+    );
+    expect(
+      await _invokeWindowsWebViewMethod('httpAuthRequested', <String, Object?>{
+        'url': 'https://secure.example.test/private',
+        'challenge': 'Basic realm="Restricted Area"',
+      }),
+      <String, Object?>{'action': 'cancel'},
+    );
+    expect(
+      await _invokeWindowsWebViewMethod('sslAuthError', <String, Object?>{
+        'url': 'https://expired.example.test/',
+        'errorStatus': 2,
+      }),
+      <String, Object?>{'action': 'cancel'},
+    );
+    expect(messages, hasLength(4));
+    expect(messages.every((String message) => !message.contains('\n')), true);
+  });
+
+  test(
+    'contains callback failures and preserves completed decisions',
+    () async {
+      final controller = WindowsWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final delegate = WindowsNavigationDelegate(
+        const PlatformNavigationDelegateCreationParams(),
+      );
+      final DebugPrintCallback previousDebugPrint = debugPrint;
+      final List<String> messages = <String>[];
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) {
+          messages.add(message);
+        }
+      };
+      addTearDown(() {
+        debugPrint = previousDebugPrint;
+      });
+
+      await controller.setOnJavaScriptAlertDialog((_) {
+        throw StateError('alert failure\nsecond line');
+      });
+      await controller.setOnPlatformPermissionRequest((request) {
+        request.grant();
+        throw StateError('permission failure after decision\nsecond line');
+      });
+      await delegate.setOnHttpAuthRequest((HttpAuthRequest request) {
+        request.onProceed(
+          const WebViewCredential(user: 'user', password: 'password'),
+        );
+        throw StateError('HTTP auth failure after decision\nsecond line');
+      });
+      await delegate.setOnSSlAuthError((PlatformSslAuthError error) {
+        unawaited(error.proceed());
+        throw StateError('SSL auth failure after decision\nsecond line');
+      });
+      await controller.setPlatformNavigationDelegate(delegate);
+
+      expect(
+        await _invokeWindowsWebViewMethod(
+          'javaScriptDialogRequested',
+          <String, Object?>{
+            'dialogType': 'alert',
+            'message': 'failing',
+            'url': 'https://example.test/dialog',
+          },
+        ),
+        isNull,
+      );
+      expect(
+        await _invokeWindowsWebViewMethod(
+          'permissionRequested',
+          <String, Object?>{
+            'url': 'https://example.test/camera',
+            'permissionKind': native_types.WebviewPermissionKind.camera.index,
+            'isUserInitiated': true,
+          },
+        ),
+        isTrue,
+      );
+      expect(
+        await _invokeWindowsWebViewMethod(
+          'httpAuthRequested',
+          <String, Object?>{
+            'url': 'https://secure.example.test/private',
+            'challenge': 'Basic realm="Restricted Area"',
+          },
+        ),
+        <String, Object?>{
+          'action': 'proceed',
+          'user': 'user',
+          'password': 'password',
+        },
+      );
+      expect(
+        await _invokeWindowsWebViewMethod('sslAuthError', <String, Object?>{
+          'url': 'https://expired.example.test/',
+          'errorStatus': 2,
+        }),
+        <String, Object?>{'action': 'proceed'},
+      );
+      expect(messages, hasLength(4));
+      expect(
+        messages,
+        containsAll(<Matcher>[
+          contains('JavaScript alert callback failed'),
+          contains('permission callback failed'),
+          contains('HTTP authentication callback failed'),
+          contains('SSL authentication callback failed'),
+        ]),
+      );
+      expect(messages.every((String message) => !message.contains('\n')), true);
+    },
+  );
+
   test('applies overscroll mode stylesheet across page loads', () async {
     final addedScripts = <String>[];
     final removedScriptIds = <String>[];
@@ -973,7 +1221,7 @@ void _mockWindowsWebViewCreation({
       ]);
     }
     return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
-      WindowsCreateWebViewResult(textureId: 1),
+      WindowsCreateWebViewResult(textureId: _activeMockTextureId),
     ]);
   });
   messenger.setMockMessageHandler(_hostApiChannel('openWebView2DownloadPage'), (
@@ -1092,10 +1340,13 @@ void _mockWindowsWebViewCreation({
   });
 
   messenger.setMockMethodCallHandler(
-    const MethodChannel('$windowsWebViewChannelPrefix/1/events'),
+    MethodChannel('$windowsWebViewChannelPrefix/$_activeMockTextureId/events'),
     (MethodCall methodCall) async => null,
   );
 }
+
+int _lastMockTextureId = 0;
+int _activeMockTextureId = 0;
 
 void _clearWindowsWebViewCreationMock() {
   final messenger =
@@ -1141,7 +1392,7 @@ void _clearWindowsWebViewCreationMock() {
   );
   messenger.setMockMessageHandler(_hostApiChannel('disposeWebView'), null);
   messenger.setMockMethodCallHandler(
-    const MethodChannel('$windowsWebViewChannelPrefix/1/events'),
+    MethodChannel('$windowsWebViewChannelPrefix/$_activeMockTextureId/events'),
     null,
   );
 }
@@ -1176,7 +1427,7 @@ Future<ByteData?> _sendWindowsWebViewMethod(
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   final completer = Completer<ByteData?>();
   await messenger.handlePlatformMessage(
-    '$windowsWebViewChannelPrefix/1',
+    '$windowsWebViewChannelPrefix/$_activeMockTextureId',
     const StandardMethodCodec().encodeMethodCall(MethodCall(method, arguments)),
     completer.complete,
   );
@@ -1188,7 +1439,7 @@ Future<void> _emitWindowsWebViewEvent(Map<String, Object?> event) async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   final completer = Completer<ByteData?>();
   await messenger.handlePlatformMessage(
-    '$windowsWebViewChannelPrefix/1/events',
+    '$windowsWebViewChannelPrefix/$_activeMockTextureId/events',
     const StandardMethodCodec().encodeSuccessEnvelope(event),
     completer.complete,
   );
