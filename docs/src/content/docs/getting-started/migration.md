@@ -47,6 +47,19 @@ import 'package:webview_all_ohos/webview_all_ohos.dart';
 import 'package:webview_all_web/webview_all_web.dart';
 ```
 
+## Version 1.3.3 Notes
+
+The `1.3.3` release improves failure recovery without changing the public API:
+
+- Windows completes stalled application decisions after 30 seconds with safe
+  defaults and preserves decisions made before a callback fails.
+- Linux transfers native view position and visibility when a widget switches
+  controllers.
+- WKWebView waits for user scripts and message handlers to be removed before
+  rebuilding JavaScript channels.
+- Web and OHOS contain critical callback failures so dialogs, permissions, and
+  authentication requests do not leave the WebView in a broken state.
+
 ## Version 1.3.2 Notes
 
 The `1.3.2` line hardens resource ownership, failure recovery, and test

@@ -51,6 +51,17 @@ import 'package:webview_all_ohos/webview_all_ohos.dart';
 import 'package:webview_all_web/webview_all_web.dart';
 ```
 
+## 1.3.3 更新内容
+
+`1.3.3` 在不改变公共 API 的前提下完善失败恢复：
+
+- Windows 应用决策超过 30 秒未完成时使用安全默认值；回调在完成决定后抛错时，
+  已完成的决定仍会保留。
+- Linux widget 切换 controller 时会同步迁移原生视图的位置和可见性。
+- WKWebView 会等待用户脚本和消息处理器移除完成，再重建 JavaScript channel。
+- Web 和 OHOS 会隔离关键回调失败，避免对话框、权限或认证请求破坏 WebView
+  运行状态。
+
 ## 1.3.2 更新内容
 
 `1.3.2` 在不增加公共 `WebViewController.dispose()`、不提高 Flutter 3.35 /

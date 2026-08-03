@@ -3,7 +3,7 @@ title: OHOS
 description: ArkWeb 实现、API 和 HarmonyOS/OpenHarmony 限制。
 ---
 
-OHOS 由 `webview_all_ohos 1.3.2` 提供，底层使用 ArkWeb。
+OHOS 由 `webview_all_ohos 1.3.3` 提供，底层使用 ArkWeb。
 
 | 项 | 值 |
 | --- | --- |

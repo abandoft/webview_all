@@ -125,7 +125,7 @@ if (await controller.supportsSetScrollBarsEnabled()) {
 }
 ```
 
-In `webview_all 1.3.2`, scrollbar rendering remains engine-specific. macOS
+Since `webview_all 1.3.2`, scrollbar rendering remains engine-specific. macOS
 reports this capability as unsupported because public `WKWebView` does not
 expose its internal scroll view. Web and Windows implement visibility with
 injected CSS.

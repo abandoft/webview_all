@@ -3,7 +3,7 @@ title: Android
 description: Android WebView implementation, APIs, and platform limits.
 ---
 
-Android is provided by `webview_all_android ^1.3.2`. `webview_all` registers it as the default Android implementation.
+Android is provided by `webview_all_android ^1.3.3`. `webview_all` registers it as the default Android implementation.
 
 ## Engine
 

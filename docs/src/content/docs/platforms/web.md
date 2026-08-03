@@ -3,7 +3,7 @@ title: Web
 description: Browser iframe implementation, iframe attributes, fetch-backed requests, and security limits.
 ---
 
-Web is provided by `webview_all_web 1.3.2` and renders an HTML `iframe`.
+Web is provided by `webview_all_web 1.3.3` and renders an HTML `iframe`.
 
 ## Engine
 
