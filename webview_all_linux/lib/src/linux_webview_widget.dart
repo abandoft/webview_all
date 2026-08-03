@@ -49,26 +49,47 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
-    _pushRect(_lastRect, visible: _attached);
+    _setFrameSafely(widget.controller, _lastRect, visible: _attached);
+  }
+
+  @override
+  void didUpdateWidget(_LinuxPlatformWebView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(oldWidget.controller, widget.controller)) {
+      return;
+    }
+
+    final Rect currentRect = _lastRect;
+    final bool isVisible = _attached;
+    _setFrameSafely(oldWidget.controller, Rect.zero, visible: false);
+    _setFrameSafely(
+      widget.controller,
+      isVisible ? currentRect : Rect.zero,
+      visible: isVisible,
+    );
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _setFrameSafely(Rect.zero, visible: false);
+    _setFrameSafely(widget.controller, Rect.zero, visible: false);
     super.dispose();
   }
 
   void _pushRect(Rect rect, {required bool visible}) {
     _lastRect = rect;
     _attached = visible;
-    _setFrameSafely(rect, visible: visible);
+    _setFrameSafely(widget.controller, rect, visible: visible);
   }
 
-  void _setFrameSafely(Rect rect, {required bool visible}) {
+  void _setFrameSafely(
+    LinuxWebViewController controller,
+    Rect rect, {
+    required bool visible,
+  }) {
     unawaited(() async {
       try {
-        await widget.controller.setFrame(rect, visible: visible);
+        await controller.setFrame(rect, visible: visible);
       } on StateError catch (error) {
         if (!error.toString().contains('disposed')) {
           debugPrint(

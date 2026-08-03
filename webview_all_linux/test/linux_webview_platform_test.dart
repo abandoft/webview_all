@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:webview_all_linux/src/linux_webview_constants.dart';
@@ -51,6 +52,90 @@ void main() {
         const PlatformWebViewCookieManagerCreationParams(),
       ),
       isA<LinuxWebViewCookieManager>(),
+    );
+  });
+
+  testWidgets('moves the native view when the controller changes', (
+    WidgetTester tester,
+  ) async {
+    final Map<int, List<MethodCall>> calls = <int, List<MethodCall>>{
+      101: <MethodCall>[],
+      102: <MethodCall>[],
+    };
+    _mockLinuxWebViewCreation(
+      instanceIds: <int>[101, 102],
+      onInstanceCallWithId: (int id, MethodCall call) {
+        calls[id]!.add(call);
+      },
+    );
+    final LinuxWebViewController firstController = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final LinuxWebViewController secondController = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+
+    Widget buildWebView(LinuxWebViewController controller) {
+      final LinuxWebViewWidget platformWidget = LinuxWebViewWidget(
+        PlatformWebViewWidgetCreationParams(
+          key: const ValueKey<String>('linux-webview'),
+          controller: controller,
+        ),
+      );
+      return Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 320,
+          height: 180,
+          child: Builder(builder: platformWidget.build),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildWebView(firstController));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      calls[101]!.where((MethodCall call) => call.method == 'setFrame'),
+      contains(
+        isA<MethodCall>().having(
+          (MethodCall call) =>
+              (call.arguments as Map<Object?, Object?>)['visible'],
+          'visible',
+          isTrue,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(buildWebView(secondController));
+    await tester.pump();
+    await tester.pump();
+
+    final MethodCall oldControllerFrame = calls[101]!.lastWhere(
+      (MethodCall call) => call.method == 'setFrame',
+    );
+    final MethodCall newControllerFrame = calls[102]!.lastWhere(
+      (MethodCall call) => call.method == 'setFrame',
+    );
+    expect(
+      (oldControllerFrame.arguments as Map<Object?, Object?>)['visible'],
+      isFalse,
+    );
+    expect(
+      (newControllerFrame.arguments as Map<Object?, Object?>)['visible'],
+      isTrue,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    expect(
+      (calls[102]!
+              .lastWhere((MethodCall call) => call.method == 'setFrame')
+              .arguments
+          as Map<Object?, Object?>)['visible'],
+      isFalse,
     );
   });
 
@@ -1055,30 +1140,60 @@ void main() {
 void _mockLinuxWebViewCreation({
   void Function(MethodCall call)? onRootCall,
   void Function(MethodCall call)? onInstanceCall,
+  void Function(int id, MethodCall call)? onInstanceCallWithId,
+  List<int>? instanceIds,
 }) {
   final TestDefaultBinaryMessenger messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  _clearLinuxInstanceMocks();
+  final List<int> ids = instanceIds ?? <int>[++_lastMockLinuxWebViewInstanceId];
+  _activeMockLinuxWebViewInstanceIds = ids;
+  var nextInstanceIndex = 0;
   messenger.setMockMethodCallHandler(
     const MethodChannel(linuxWebViewChannelPrefix),
     (MethodCall methodCall) async {
       onRootCall?.call(methodCall);
       if (methodCall.method == 'createWebView') {
-        return 1;
+        final int index = nextInstanceIndex < ids.length
+            ? nextInstanceIndex++
+            : ids.length - 1;
+        return ids[index];
       }
       return null;
     },
   );
-  messenger.setMockMethodCallHandler(
-    const MethodChannel('$linuxWebViewChannelPrefix/1'),
-    (MethodCall methodCall) async {
-      onInstanceCall?.call(methodCall);
-      return null;
-    },
-  );
-  messenger.setMockMethodCallHandler(
-    const MethodChannel('$linuxWebViewChannelPrefix/1/events'),
-    (MethodCall methodCall) async => null,
-  );
+  for (final int id in ids) {
+    messenger.setMockMethodCallHandler(
+      MethodChannel('$linuxWebViewChannelPrefix/$id'),
+      (MethodCall methodCall) async {
+        onInstanceCall?.call(methodCall);
+        onInstanceCallWithId?.call(id, methodCall);
+        return null;
+      },
+    );
+    messenger.setMockMethodCallHandler(
+      MethodChannel('$linuxWebViewChannelPrefix/$id/events'),
+      (MethodCall methodCall) async => null,
+    );
+  }
+}
+
+int _lastMockLinuxWebViewInstanceId = 0;
+List<int> _activeMockLinuxWebViewInstanceIds = <int>[];
+
+void _clearLinuxInstanceMocks() {
+  final TestDefaultBinaryMessenger messenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  for (final int id in _activeMockLinuxWebViewInstanceIds) {
+    messenger.setMockMethodCallHandler(
+      MethodChannel('$linuxWebViewChannelPrefix/$id'),
+      null,
+    );
+    messenger.setMockMethodCallHandler(
+      MethodChannel('$linuxWebViewChannelPrefix/$id/events'),
+      null,
+    );
+  }
 }
 
 void _clearLinuxWebViewCreationMock() {
@@ -1088,22 +1203,17 @@ void _clearLinuxWebViewCreationMock() {
     const MethodChannel(linuxWebViewChannelPrefix),
     null,
   );
-  messenger.setMockMethodCallHandler(
-    const MethodChannel('$linuxWebViewChannelPrefix/1'),
-    null,
-  );
-  messenger.setMockMethodCallHandler(
-    const MethodChannel('$linuxWebViewChannelPrefix/1/events'),
-    null,
-  );
+  _clearLinuxInstanceMocks();
+  _activeMockLinuxWebViewInstanceIds = <int>[];
 }
 
 Future<void> _emitLinuxWebViewEvent(Map<String, Object?> event) async {
   final TestDefaultBinaryMessenger messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   final Completer<ByteData?> completer = Completer<ByteData?>();
+  final int id = _activeMockLinuxWebViewInstanceIds.first;
   await messenger.handlePlatformMessage(
-    '$linuxWebViewChannelPrefix/1/events',
+    '$linuxWebViewChannelPrefix/$id/events',
     const StandardMethodCodec().encodeSuccessEnvelope(event),
     completer.complete,
   );
