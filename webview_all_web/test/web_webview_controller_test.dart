@@ -18,6 +18,13 @@ import 'package:webview_all_web/webview_all_web.dart';
 
 import 'web_webview_controller_test.mocks.dart';
 
+@JS('Object.defineProperty')
+external JSObject _defineProperty(
+  JSObject object,
+  JSString property,
+  JSObject descriptor,
+);
+
 @GenerateMocks(
   <Type>[],
   customMocks: <MockSpec<Object>>[
@@ -270,10 +277,160 @@ void main() {
         );
 
         expect(
-          (controller.params as WebWebViewControllerCreationParams).iFrame.src,
-          'data:;charset=utf-8,${Uri.encodeFull('test data')}',
+          Uri.parse(
+            (controller.params as WebWebViewControllerCreationParams)
+                .iFrame
+                .src,
+          ).data!.contentAsString(),
+          'test data',
         );
         expect(await controller.currentUrl(), 'https://flutter.dev');
+      });
+
+      test('preserves binary response bytes', () async {
+        final mockHttpRequestFactory = MockHttpRequestFactory();
+        final params = WebWebViewControllerCreationParams(
+          httpRequestFactory: mockHttpRequestFactory,
+        );
+        final controller = WebWebViewController(params);
+        final Uint8List bytes = Uint8List.fromList(<int>[0, 255, 216, 0, 1]);
+        final web.Response fakeResponse = web.Response(
+          bytes.toJS,
+          <String, Object>{
+                'headers': <String, Object>{
+                  'content-type': 'application/octet-stream',
+                },
+              }.jsify()!
+              as web.ResponseInit,
+        );
+        when(
+          mockHttpRequestFactory.request(
+            any,
+            method: anyNamed('method'),
+            requestHeaders: anyNamed('requestHeaders'),
+            sendData: anyNamed('sendData'),
+          ),
+        ).thenAnswer((_) async => fakeResponse);
+
+        await controller.loadRequest(
+          LoadRequestParams(
+            uri: Uri.parse('https://example.test/binary'),
+            method: LoadRequestMethod.post,
+          ),
+        );
+
+        final UriData data = Uri.parse(params.iFrame.src).data!;
+        expect(data.mimeType, 'application/octet-stream');
+        expect(data.contentAsBytes(), bytes);
+      });
+
+      test('uses the final response URL after redirects', () async {
+        final mockHttpRequestFactory = MockHttpRequestFactory();
+        final params = WebWebViewControllerCreationParams(
+          httpRequestFactory: mockHttpRequestFactory,
+        );
+        final controller = WebWebViewController(params);
+        final WebNavigationDelegate delegate = WebNavigationDelegate(
+          const WebNavigationDelegateCreationParams(),
+        );
+        final List<String?> changedUrls = <String?>[];
+        final List<String> navigationRequests = <String>[];
+        final web.Response fakeResponse = web.Response(
+          '<main>redirected</main>'.toJS,
+          <String, Object>{
+                'headers': <String, Object>{'content-type': 'text/html'},
+              }.jsify()!
+              as web.ResponseInit,
+        );
+        _defineProperty(
+          fakeResponse,
+          'url'.toJS,
+          <String, Object>{'value': 'https://example.test/final/'}.jsify()!
+              as JSObject,
+        );
+        await delegate.setOnUrlChange(
+          (UrlChange change) => changedUrls.add(change.url),
+        );
+        await delegate.setOnNavigationRequest((NavigationRequest request) {
+          navigationRequests.add(request.url);
+          return NavigationDecision.navigate;
+        });
+        await controller.setPlatformNavigationDelegate(delegate);
+        when(
+          mockHttpRequestFactory.request(
+            any,
+            method: anyNamed('method'),
+            requestHeaders: anyNamed('requestHeaders'),
+            sendData: anyNamed('sendData'),
+          ),
+        ).thenAnswer((_) async => fakeResponse);
+
+        await controller.loadRequest(
+          LoadRequestParams(
+            uri: Uri.parse('https://example.test/original'),
+            method: LoadRequestMethod.post,
+          ),
+        );
+
+        expect(await controller.currentUrl(), 'https://example.test/final/');
+        expect(changedUrls.last, 'https://example.test/final/');
+        expect(navigationRequests, <String>[
+          'https://example.test/original',
+          'https://example.test/final/',
+        ]);
+        expect(
+          Uri.parse(params.iFrame.src).data!.contentAsString(),
+          contains('<base href="https://example.test/final/">'),
+        );
+      });
+
+      test('can reject the final URL after a fetch redirect', () async {
+        final MockHttpRequestFactory requestFactory = MockHttpRequestFactory();
+        final WebWebViewControllerCreationParams params =
+            WebWebViewControllerCreationParams(
+              httpRequestFactory: requestFactory,
+            );
+        final WebWebViewController controller = WebWebViewController(params);
+        final WebNavigationDelegate delegate = WebNavigationDelegate(
+          const WebNavigationDelegateCreationParams(),
+        );
+        final List<String?> changedUrls = <String?>[];
+        final web.Response response = web.Response('<main>blocked</main>'.toJS);
+        _defineProperty(
+          response,
+          'url'.toJS,
+          <String, Object>{'value': 'https://blocked.example/final'}.jsify()!
+              as JSObject,
+        );
+        when(
+          requestFactory.request(
+            any,
+            method: anyNamed('method'),
+            requestHeaders: anyNamed('requestHeaders'),
+            sendData: anyNamed('sendData'),
+          ),
+        ).thenAnswer((_) async => response);
+        await delegate.setOnNavigationRequest(
+          (NavigationRequest request) => request.url.contains('blocked.example')
+              ? NavigationDecision.prevent
+              : NavigationDecision.navigate,
+        );
+        await delegate.setOnUrlChange(
+          (UrlChange change) => changedUrls.add(change.url),
+        );
+        await controller.setPlatformNavigationDelegate(delegate);
+
+        await controller.loadRequest(
+          LoadRequestParams(
+            uri: Uri.parse('https://example.test/original'),
+            method: LoadRequestMethod.post,
+          ),
+        );
+
+        expect(params.iFrame.src, isEmpty);
+        expect(await controller.currentUrl(), isNull);
+        expect(await controller.canGoBack(), isFalse);
+        expect(changedUrls, <String?>['https://example.test/original', null]);
       });
 
       test('reports HTTP status errors with request and response', () async {
@@ -426,8 +583,12 @@ void main() {
         );
 
         expect(
-          (controller.params as WebWebViewControllerCreationParams).iFrame.src,
-          contains('profiled'),
+          Uri.parse(
+            (controller.params as WebWebViewControllerCreationParams)
+                .iFrame
+                .src,
+          ).data!.contentAsString(),
+          'profiled',
         );
       });
 
@@ -793,6 +954,49 @@ void main() {
         },
       );
 
+      test('bounds retained response history by total bytes', () async {
+        final MockHttpRequestFactory requestFactory = MockHttpRequestFactory();
+        final WebWebViewController controller = WebWebViewController(
+          WebWebViewControllerCreationParams(
+            httpRequestFactory: requestFactory,
+          ),
+        );
+        when(
+          requestFactory.request(
+            any,
+            method: anyNamed('method'),
+            requestHeaders: anyNamed('requestHeaders'),
+            sendData: anyNamed('sendData'),
+          ),
+        ).thenAnswer(
+          (_) async => web.Response(
+            Uint8List(4 * 1024 * 1024).toJS,
+            <String, Object>{
+                  'headers': <String, Object>{
+                    'content-type': 'application/octet-stream',
+                  },
+                }.jsify()!
+                as web.ResponseInit,
+          ),
+        );
+
+        for (int index = 0; index < 9; index += 1) {
+          await controller.loadRequest(
+            LoadRequestParams(
+              uri: Uri.parse('https://example.test/history/$index'),
+              method: LoadRequestMethod.post,
+            ),
+          );
+        }
+
+        var retainedBackEntries = 0;
+        while (await controller.canGoBack()) {
+          await controller.goBack();
+          retainedBackEntries += 1;
+        }
+        expect(retainedBackEntries, 6);
+      });
+
       test(
         'a stale fetch response cannot replace a newer navigation',
         () async {
@@ -846,8 +1050,10 @@ void main() {
           await firstLoad;
 
           expect(await controller.currentUrl(), 'https://example.test/second');
-          expect(params.iFrame.src, contains('second%20response'));
-          expect(params.iFrame.src, isNot(contains('stale%20first')));
+          expect(
+            Uri.parse(params.iFrame.src).data!.contentAsString(),
+            '<main>second response</main>',
+          );
         },
       );
     });

@@ -244,9 +244,11 @@ class WebWebViewController extends PlatformWebViewController {
       params as WebWebViewControllerCreationParams;
 
   static const int _maximumHistoryEntries = 100;
+  static const int _maximumHistoryBytes = 32 * 1024 * 1024;
 
   final List<_WebHistoryEntry> _history = <_WebHistoryEntry>[];
   int _historyIndex = -1;
+  int _historyRetainedBytes = 0;
   String? _currentUrl;
   String? _userAgentOverride;
   String? _customSandbox;
@@ -1736,6 +1738,7 @@ class WebWebViewController extends PlatformWebViewController {
     bool updateHistory = true,
   }) async {
     final int generation = ++_navigationGeneration;
+    final String? previousUrl = _currentUrl;
     if (!await _shouldNavigate(params.uri.toString())) {
       return;
     }
@@ -1773,6 +1776,28 @@ class WebWebViewController extends PlatformWebViewController {
       return;
     }
 
+    final String requestedUrl = params.uri.toString();
+    final String responseUrl = response.url;
+    final Uri? parsedResponseUri = responseUrl.isEmpty
+        ? null
+        : Uri.tryParse(responseUrl);
+    final Uri effectiveUri =
+        parsedResponseUri != null && parsedResponseUri.hasScheme
+        ? parsedResponseUri
+        : params.uri;
+    final String effectiveUrl = effectiveUri.toString();
+    if (effectiveUrl != requestedUrl) {
+      final bool shouldFollowRedirect = await _shouldNavigate(effectiveUrl);
+      if (generation != _navigationGeneration) {
+        return;
+      }
+      if (!shouldFollowRedirect) {
+        _currentUrl = previousUrl;
+        _navigationDelegate?.onUrlChange?.call(UrlChange(url: previousUrl));
+        return;
+      }
+    }
+
     final Map<String, String> responseHeaders = _headersFromResponse(response);
     final String? contentTypeHeader = responseHeaders['content-type'];
     final String header = contentTypeHeader ?? 'text/html';
@@ -1787,7 +1812,7 @@ class WebWebViewController extends PlatformWebViewController {
             isForMainFrame: true,
           ),
           response: WebWebResourceResponse._(
-            uri: params.uri,
+            uri: effectiveUri,
             statusCode: response.status,
             headers: responseHeaders,
             mimeType: _mimeTypeFromContentTypeHeader(contentTypeHeader),
@@ -1799,26 +1824,26 @@ class WebWebViewController extends PlatformWebViewController {
       );
     }
 
-    final contentType = ContentType.parse(header);
+    final ContentType contentType = ContentType.parse(header);
     final Encoding encoding = Encoding.getByName(contentType.charset) ?? utf8;
     final ByteBuffer responseBuffer =
         (await response.arrayBuffer().toDart).toDart;
     if (generation != _navigationGeneration) {
       return;
     }
-    final String responseBody = _decodeResponseBody(
-      encoding,
-      responseBuffer.asUint8List(),
-    );
+    final Uint8List responseBytes = responseBuffer.asUint8List();
 
     final _XhrHistoryEntry entry = _XhrHistoryEntry(
-      url: params.uri.toString(),
+      url: effectiveUrl,
       request: _copyLoadRequestParams(params),
-      responseBody: responseBody,
+      responseBytes: responseBytes,
       mimeType: contentType.mimeType ?? 'text/html',
       encoding: encoding,
     );
     _activateXhrEntry(entry, notifyNavigation: false);
+    if (effectiveUrl != requestedUrl) {
+      _navigationDelegate?.onUrlChange?.call(UrlChange(url: effectiveUrl));
+    }
     if (updateHistory) {
       _recordHistoryEntry(entry);
     } else {
@@ -1887,6 +1912,16 @@ class WebWebViewController extends PlatformWebViewController {
 
   bool _isHtmlMimeType(String mimeType) {
     return mimeType.trim().toLowerCase() == 'text/html';
+  }
+
+  bool _isTextualMimeType(String mimeType) {
+    final String normalized = mimeType.trim().toLowerCase();
+    return normalized.startsWith('text/') ||
+        normalized == 'application/json' ||
+        normalized == 'application/javascript' ||
+        normalized == 'application/xml' ||
+        normalized.endsWith('+json') ||
+        normalized.endsWith('+xml');
   }
 
   String _isolatedBridgeBootstrap(int generation) {
@@ -2040,28 +2075,43 @@ class WebWebViewController extends PlatformWebViewController {
     }
     _activeHistoryEntry = entry;
 
-    final String renderedBody;
-    if (_isHtmlMimeType(entry.mimeType) &&
-        _javaScriptMode == JavaScriptMode.unrestricted &&
-        _currentSandboxAllowsScripts) {
-      _prepareIsolatedBridge();
-      renderedBody = _injectIntoDocumentHead(
-        entry.responseBody,
-        '${_baseElement(entry.url)}'
-        '${_isolatedBridgeBootstrap(_isolatedBridgeGeneration)}',
+    _webWebViewParams.iFrame.removeAttribute('srcdoc');
+    if (_isHtmlMimeType(entry.mimeType)) {
+      final String responseBody = _decodeResponseBody(
+        entry.encoding,
+        entry.responseBytes,
       );
-    } else {
-      _resetIsolatedBridge();
-      renderedBody = _isHtmlMimeType(entry.mimeType)
-          ? _injectIntoDocumentHead(entry.responseBody, _baseElement(entry.url))
-          : entry.responseBody;
+      final String renderedBody;
+      if (_javaScriptMode == JavaScriptMode.unrestricted &&
+          _currentSandboxAllowsScripts) {
+        _prepareIsolatedBridge();
+        renderedBody = _injectIntoDocumentHead(
+          responseBody,
+          '${_baseElement(entry.url)}'
+          '${_isolatedBridgeBootstrap(_isolatedBridgeGeneration)}',
+        );
+      } else {
+        _resetIsolatedBridge();
+        renderedBody = _injectIntoDocumentHead(
+          responseBody,
+          _baseElement(entry.url),
+        );
+      }
+      _webWebViewParams.iFrame.src = Uri.dataFromString(
+        renderedBody,
+        mimeType: entry.mimeType,
+        encoding: entry.encoding,
+      ).toString();
+      return;
     }
 
-    _webWebViewParams.iFrame.removeAttribute('srcdoc');
-    _webWebViewParams.iFrame.src = Uri.dataFromString(
-      renderedBody,
+    _resetIsolatedBridge();
+    _webWebViewParams.iFrame.src = Uri.dataFromBytes(
+      entry.responseBytes,
       mimeType: entry.mimeType,
-      encoding: entry.encoding,
+      parameters: _isTextualMimeType(entry.mimeType)
+          ? <String, String>{'charset': entry.encoding.name}
+          : null,
     ).toString();
   }
 
@@ -2088,19 +2138,41 @@ class WebWebViewController extends PlatformWebViewController {
 
   void _recordHistoryEntry(_WebHistoryEntry entry) {
     if (_historyIndex < _history.length - 1) {
-      _history.removeRange(_historyIndex + 1, _history.length);
+      _removeHistoryRange(_historyIndex + 1, _history.length);
     }
     _history.add(entry);
-    if (_history.length > _maximumHistoryEntries) {
-      _history.removeAt(0);
-    }
+    _historyRetainedBytes += entry.retainedByteSize;
     _historyIndex = _history.length - 1;
+    _trimHistory();
   }
 
   void _replaceActiveHistoryEntry(_WebHistoryEntry entry) {
     _activeHistoryEntry = entry;
     if (_historyIndex >= 0 && _historyIndex < _history.length) {
+      _historyRetainedBytes -= _history[_historyIndex].retainedByteSize;
       _history[_historyIndex] = entry;
+      _historyRetainedBytes += entry.retainedByteSize;
+      _trimHistory();
+    }
+  }
+
+  void _removeHistoryRange(int start, int end) {
+    for (final _WebHistoryEntry entry in _history.sublist(start, end)) {
+      _historyRetainedBytes -= entry.retainedByteSize;
+    }
+    _history.removeRange(start, end);
+  }
+
+  void _trimHistory() {
+    while (_history.length > 1 &&
+        (_history.length > _maximumHistoryEntries ||
+            _historyRetainedBytes > _maximumHistoryBytes)) {
+      final int removalIndex = _historyIndex == 0 ? _history.length - 1 : 0;
+      _historyRetainedBytes -= _history[removalIndex].retainedByteSize;
+      _history.removeAt(removalIndex);
+      if (removalIndex < _historyIndex) {
+        _historyIndex -= 1;
+      }
     }
   }
 
@@ -2164,32 +2236,50 @@ class WebWebViewController extends PlatformWebViewController {
 }
 
 sealed class _WebHistoryEntry {
-  const _WebHistoryEntry({required this.url});
+  const _WebHistoryEntry({required this.url, required this.retainedByteSize});
 
   final String url;
+  final int retainedByteSize;
 }
 
 final class _UrlHistoryEntry extends _WebHistoryEntry {
-  const _UrlHistoryEntry(String url) : super(url: url);
+  _UrlHistoryEntry(String url)
+    : super(url: url, retainedByteSize: url.length * 2);
 }
 
 final class _HtmlHistoryEntry extends _WebHistoryEntry {
-  const _HtmlHistoryEntry({required super.url, required this.content});
+  _HtmlHistoryEntry({required String url, required this.content})
+    : super(url: url, retainedByteSize: (url.length + content.length) * 2);
 
   final String content;
 }
 
 final class _XhrHistoryEntry extends _WebHistoryEntry {
-  const _XhrHistoryEntry({
-    required super.url,
+  _XhrHistoryEntry({
+    required String url,
     required this.request,
-    required this.responseBody,
+    required this.responseBytes,
     required this.mimeType,
     required this.encoding,
-  });
+  }) : super(
+         url: url,
+         retainedByteSize:
+             responseBytes.length +
+             (request.body?.length ?? 0) +
+             (url.length +
+                     request.uri.toString().length +
+                     mimeType.length +
+                     encoding.name.length +
+                     request.headers.entries.fold<int>(
+                       0,
+                       (int size, MapEntry<String, String> header) =>
+                           size + header.key.length + header.value.length,
+                     )) *
+                 2,
+       );
 
   final LoadRequestParams request;
-  final String responseBody;
+  final Uint8List responseBytes;
   final String mimeType;
   final Encoding encoding;
 }
