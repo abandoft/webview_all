@@ -17,6 +17,34 @@ import 'android_webkit_constants.dart';
 import 'platform_views_service_proxy.dart';
 import 'weak_reference_utils.dart';
 
+void _reportAndroidCallbackError(String callbackName, Object error) {
+  debugPrint(
+    'webview_all_android: $callbackName failed: '
+    '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
+  );
+}
+
+void _runAndroidAsyncCallbackSafely(
+  String callbackName,
+  Future<void> Function() callback,
+) {
+  Future<void> future;
+  try {
+    future = callback();
+  } catch (error) {
+    _reportAndroidCallbackError(callbackName, error);
+    return;
+  }
+  unawaited(
+    future.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {
+        _reportAndroidCallbackError(callbackName, error);
+      },
+    ),
+  );
+}
+
 /// Defines different types of sources causing window insets.
 ///
 /// See https://developer.android.com/reference/androidx/core/view/WindowInsetsCompat.Type
@@ -613,6 +641,13 @@ class AndroidWebViewController extends PlatformWebViewController {
   Future<void> addJavaScriptChannel(
     JavaScriptChannelParams javaScriptChannelParams,
   ) {
+    if (javaScriptChannelParams.name.isEmpty) {
+      throw ArgumentError.value(
+        javaScriptChannelParams.name,
+        'javaScriptChannelParams.name',
+        'JavaScript channel names must not be empty.',
+      );
+    }
     final AndroidJavaScriptChannelParams androidJavaScriptParams =
         javaScriptChannelParams is AndroidJavaScriptChannelParams
         ? javaScriptChannelParams
@@ -1755,21 +1790,38 @@ class AndroidNavigationDelegate extends PlatformNavigationDelegate {
       return;
     }
 
-    final FutureOr<NavigationDecision> returnValue = onNavigationRequest(
-      NavigationRequest(url: url, isMainFrame: isForMainFrame),
-    );
+    FutureOr<NavigationDecision> returnValue;
+    try {
+      returnValue = onNavigationRequest(
+        NavigationRequest(url: url, isMainFrame: isForMainFrame),
+      );
+    } catch (error) {
+      _reportAndroidCallbackError('navigation request callback', error);
+      return;
+    }
 
-    if (returnValue is NavigationDecision &&
-        returnValue == NavigationDecision.navigate) {
-      onLoadRequest(LoadRequestParams(uri: Uri.parse(url), headers: headers));
-    } else if (returnValue is Future<NavigationDecision>) {
-      returnValue.then((NavigationDecision shouldLoadUrl) {
-        if (shouldLoadUrl == NavigationDecision.navigate) {
-          onLoadRequest(
+    void handleDecision(NavigationDecision decision) {
+      if (decision == NavigationDecision.navigate) {
+        _runAndroidAsyncCallbackSafely(
+          'approved navigation load',
+          () => onLoadRequest(
             LoadRequestParams(uri: Uri.parse(url), headers: headers),
-          );
-        }
-      });
+          ),
+        );
+      }
+    }
+
+    if (returnValue is NavigationDecision) {
+      handleDecision(returnValue);
+    } else {
+      unawaited(
+        returnValue.then<void>(
+          handleDecision,
+          onError: (Object error, StackTrace stackTrace) {
+            _reportAndroidCallbackError('navigation request callback', error);
+          },
+        ),
+      );
     }
   }
 

@@ -460,6 +460,66 @@ void main() {
       },
     );
 
+    test('navigation callback failures safely prevent loading', () async {
+      final androidNavigationDelegate = AndroidNavigationDelegate(
+        _buildCreationParams(),
+      );
+      var loadCount = 0;
+      await androidNavigationDelegate.setOnLoadRequest((_) async {
+        loadCount += 1;
+      });
+      await androidNavigationDelegate.setOnNavigationRequest((_) {
+        throw StateError('synchronous failure');
+      });
+      final CapturingWebViewClient webViewClient =
+          CapturingWebViewClient.lastCreatedDelegate;
+
+      expect(
+        () => webViewClient.urlLoading!(
+          webViewClient,
+          TestWebView(),
+          'https://example.test/synchronous',
+        ),
+        returnsNormally,
+      );
+
+      await androidNavigationDelegate.setOnNavigationRequest(
+        (_) => Future<NavigationDecision>.error(
+          StateError('asynchronous failure'),
+        ),
+      );
+      webViewClient.urlLoading!(
+        webViewClient,
+        TestWebView(),
+        'https://example.test/asynchronous',
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(loadCount, 0);
+    });
+
+    test('approved load failures do not escape navigation callbacks', () async {
+      final androidNavigationDelegate = AndroidNavigationDelegate(
+        _buildCreationParams(),
+      );
+      await androidNavigationDelegate.setOnNavigationRequest(
+        (_) => NavigationDecision.navigate,
+      );
+      await androidNavigationDelegate.setOnLoadRequest(
+        (_) => Future<void>.error(StateError('load failure')),
+      );
+
+      expect(
+        () => CapturingWebViewClient.lastCreatedDelegate.urlLoading!(
+          CapturingWebViewClient(),
+          TestWebView(),
+          'https://example.test/load-failure',
+        ),
+        returnsNormally,
+      );
+      await Future<void>.delayed(Duration.zero);
+    });
+
     test('setOnNavigationRequest should override URL loading', () {
       final androidNavigationDelegate = AndroidNavigationDelegate(
         _buildCreationParams(),

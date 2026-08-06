@@ -1720,6 +1720,17 @@ void main() {
       ).called(1);
     });
 
+    test('addJavaScriptChannel rejects an empty name', () async {
+      final AndroidWebViewController controller = createControllerWithMocks();
+
+      expect(
+        () => controller.addJavaScriptChannel(
+          JavaScriptChannelParams(name: '', onMessageReceived: (_) {}),
+        ),
+        throwsArgumentError,
+      );
+    });
+
     test(
       'addJavaScriptChannel add channel with same name should remove existing channel',
       () async {
