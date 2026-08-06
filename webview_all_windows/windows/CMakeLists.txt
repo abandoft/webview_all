@@ -66,7 +66,7 @@ add_library(${PLUGIN_NAME} SHARED ${PLUGIN_SOURCES})
 add_dependencies(${PLUGIN_NAME} ${DEPS_TARGET_NAME})
 
 if(MSVC)
-  target_compile_options(${PLUGIN_NAME} PRIVATE "/await")
+  target_compile_options(${PLUGIN_NAME} PRIVATE "/await:strict")
 endif()
 
 apply_standard_settings(${PLUGIN_NAME})
