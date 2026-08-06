@@ -81,7 +81,7 @@ export class WebViewHostApiImpl {
       webView.getController().loadData(data, mimeType, encoding, resolvedBaseUrl, resolvedHistoryUrl);
     } catch (err) {
       Log.e(TAG, 'loadDataWithBaseUrl failed: ' + err);
-      throw err;
+      throw new Error(String(err));
     }
   }
 
@@ -99,7 +99,7 @@ export class WebViewHostApiImpl {
       webView.setUrl(webView.getController().getUrl());
     } catch (err) {
       Log.e(TAG, 'loadUrl failed: ' + err);
-      throw err;
+      throw new Error(String(err));
     }
   }
 
@@ -110,7 +110,7 @@ export class WebViewHostApiImpl {
       webView.getController().postUrl(url, data.buffer);
     } catch (err) {
       Log.e(TAG, 'postUrl failed: ' + err);
-      throw err;
+      throw new Error(String(err));
     }
   }
 
@@ -231,7 +231,7 @@ export class WebViewHostApiImpl {
     const channelName = channel.getJavaScriptChannelName();
     webView.removeJavaScriptChannel(channelName);
     webView.getController().deleteJavaScriptRegister(channelName);
-    this.instanceManager.remove(javaScriptChannelInstanceId);
+    this.instanceManager.release(javaScriptChannelInstanceId);
   }
 
   setDownloadListener(instanceId: number, listenerInstanceId: number): void {

@@ -8,6 +8,6 @@ export class OhosObjectHostApiImpl {
   }
 
   dispose(identifier: number): void {
-    this.instanceManager.remove(identifier);
+    this.instanceManager.release(identifier);
   }
 }

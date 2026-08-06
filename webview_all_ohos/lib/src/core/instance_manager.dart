@@ -121,11 +121,16 @@ class InstanceManager {
   }
 
   int _nextUniqueIdentifier() {
-    late int identifier;
-    do {
-      identifier = _nextIdentifier;
+    for (int attempts = 0; attempts < _maxDartCreatedIdentifier; attempts++) {
+      final int identifier = _nextIdentifier;
       _nextIdentifier = (_nextIdentifier + 1) % _maxDartCreatedIdentifier;
-    } while (containsIdentifier(identifier));
-    return identifier;
+      if (!containsIdentifier(identifier)) {
+        return identifier;
+      }
+    }
+    throw StateError(
+      'No OHOS instance identifiers are available. Dispose unused objects '
+      'before creating more bridge objects.',
+    );
   }
 }

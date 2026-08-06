@@ -23,6 +23,13 @@ import 'core/instance_manager.dart';
 import 'ohos_platform_views.dart';
 import 'core/weak_reference.dart';
 
+void _reportOhosCallbackError(String callbackName, Object error) {
+  debugPrint(
+    'webview_all_ohos: $callbackName failed: '
+    '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
+  );
+}
+
 void _runOhosAsyncCallbackSafely(
   String callbackName,
   Future<void> Function() callback,
@@ -31,20 +38,14 @@ void _runOhosAsyncCallbackSafely(
   try {
     future = callback();
   } catch (error) {
-    debugPrint(
-      'webview_all_ohos: $callbackName failed: '
-      '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
-    );
+    _reportOhosCallbackError(callbackName, error);
     return;
   }
   unawaited(
     future.then<void>(
       (_) {},
       onError: (Object error, StackTrace stackTrace) {
-        debugPrint(
-          'webview_all_ohos: $callbackName failed: '
-          '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
-        );
+        _reportOhosCallbackError(callbackName, error);
       },
     ),
   );
@@ -244,7 +245,7 @@ class OhosWebViewController extends PlatformWebViewController {
         onScrollChanged: withWeakReferenceTo(this, (
           WeakReference<OhosWebViewController> weakReference,
         ) {
-          return (int left, int top, int oldLeft, int oldTop) async {
+          return (int left, int top, int oldLeft, int oldTop) {
             final void Function(ScrollPositionChange)? callback =
                 weakReference.target?._onScrollPositionChangedCallback;
             callback?.call(
@@ -309,13 +310,19 @@ class OhosWebViewController extends PlatformWebViewController {
       ) {
         final OhosWebViewController? webViewController = weakReference.target;
         if (webViewController == null) {
-          callback.onCustomViewHidden();
+          _runOhosAsyncCallbackSafely(
+            'custom view fallback',
+            callback.onCustomViewHidden,
+          );
           return;
         }
         final OnShowCustomWidgetCallback? onShowCallback =
             webViewController._onShowCustomWidgetCallback;
         if (onShowCallback == null) {
-          callback.onCustomViewHidden();
+          _runOhosAsyncCallbackSafely(
+            'custom view fallback',
+            callback.onCustomViewHidden,
+          );
           return;
         }
         onShowCallback(
@@ -323,7 +330,10 @@ class OhosWebViewController extends PlatformWebViewController {
             controller: webViewController,
             customView: view,
           ),
-          () => callback.onCustomViewHidden(),
+          () => _runOhosAsyncCallbackSafely(
+            'custom view dismissal',
+            callback.onCustomViewHidden,
+          ),
         );
       };
     }),
@@ -359,7 +369,7 @@ class OhosWebViewController extends PlatformWebViewController {
       return (
         ohos_webview.WebChromeClient webChromeClient,
         ohos_webview.ConsoleMessage consoleMessage,
-      ) async {
+      ) {
         final void Function(JavaScriptConsoleMessage)? callback =
             weakReference.target?._onConsoleLogCallback;
         if (callback != null) {
@@ -395,11 +405,15 @@ class OhosWebViewController extends PlatformWebViewController {
     onPermissionRequest: withWeakReferenceTo(this, (
       WeakReference<OhosWebViewController> weakReference,
     ) {
-      return (_, ohos_webview.PermissionRequest request) async {
+      return (_, ohos_webview.PermissionRequest request) {
         final void Function(PlatformWebViewPermissionRequest)? callback =
             weakReference.target?._onPermissionRequestCallback;
         if (callback == null) {
-          return request.deny();
+          _runOhosAsyncCallbackSafely(
+            'permission request fallback',
+            request.deny,
+          );
+          return;
         } else {
           final Set<WebViewPermissionResourceType> types = request.resources
               .map<WebViewPermissionResourceType?>((String type) {
@@ -423,7 +437,11 @@ class OhosWebViewController extends PlatformWebViewController {
           // If the request didn't contain any permissions recognized by the
           // implementation, deny by default.
           if (types.isEmpty) {
-            return request.deny();
+            _runOhosAsyncCallbackSafely(
+              'permission request fallback',
+              request.deny,
+            );
+            return;
           }
 
           callback(
@@ -478,7 +496,7 @@ class OhosWebViewController extends PlatformWebViewController {
           final String result = await callback.call(request);
           return result;
         }
-        return '';
+        return defaultValue;
       };
     }),
   );
@@ -686,6 +704,13 @@ class OhosWebViewController extends PlatformWebViewController {
   Future<void> addJavaScriptChannel(
     JavaScriptChannelParams javaScriptChannelParams,
   ) {
+    if (javaScriptChannelParams.name.isEmpty) {
+      throw ArgumentError.value(
+        javaScriptChannelParams.name,
+        'javaScriptChannelParams.name',
+        'JavaScript channel names must not be empty.',
+      );
+    }
     final OhosJavaScriptChannelParams ohosJavaScriptParams =
         javaScriptChannelParams is OhosJavaScriptChannelParams
         ? javaScriptChannelParams
@@ -1893,22 +1918,38 @@ class OhosNavigationDelegate extends PlatformNavigationDelegate {
       return;
     }
 
-    final FutureOr<NavigationDecision> returnValue = onNavigationRequest(
-      NavigationRequest(url: url, isMainFrame: isForMainFrame),
-    );
+    FutureOr<NavigationDecision> returnValue;
+    try {
+      returnValue = onNavigationRequest(
+        NavigationRequest(url: url, isMainFrame: isForMainFrame),
+      );
+    } catch (error) {
+      _reportOhosCallbackError('navigation request callback', error);
+      return;
+    }
 
-    if (returnValue is NavigationDecision &&
-        returnValue == NavigationDecision.navigate &&
-        isForMainFrame) {
-      onLoadRequest(LoadRequestParams(uri: Uri.parse(url), headers: headers));
-    } else if (returnValue is Future<NavigationDecision>) {
-      returnValue.then((NavigationDecision shouldLoadUrl) {
-        if (shouldLoadUrl == NavigationDecision.navigate && isForMainFrame) {
-          onLoadRequest(
+    void handleDecision(NavigationDecision decision) {
+      if (decision == NavigationDecision.navigate && isForMainFrame) {
+        _runOhosAsyncCallbackSafely(
+          'approved navigation load',
+          () => onLoadRequest(
             LoadRequestParams(uri: Uri.parse(url), headers: headers),
-          );
-        }
-      });
+          ),
+        );
+      }
+    }
+
+    if (returnValue is NavigationDecision) {
+      handleDecision(returnValue);
+    } else {
+      unawaited(
+        returnValue.then<void>(
+          handleDecision,
+          onError: (Object error, StackTrace stackTrace) {
+            _reportOhosCallbackError('navigation request callback', error);
+          },
+        ),
+      );
     }
   }
 

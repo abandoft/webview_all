@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -16,6 +17,10 @@ import 'core/instance_manager.dart';
 
 export 'channels/api_implementations.dart'
     show ConsoleMessage, ConsoleMessageLevel, FileChooserMode;
+
+String _singleLineOhosNativeLogValue(Object value) {
+  return value.toString().replaceAll(RegExp(r'[\r\n]+'), ' ');
+}
 
 /// Root of the OHOS WebView bridge object hierarchy.
 class OhosObject with Copyable {
@@ -38,10 +43,30 @@ class OhosObject with Copyable {
   static InstanceManager _initInstanceManager() {
     WidgetsFlutterBinding.ensureInitialized();
     // Clears the native `InstanceManager` on initial use of the Dart one.
-    InstanceManagerHostApi().clear();
+    unawaited(
+      InstanceManagerHostApi().clear().catchError((
+        Object error,
+        StackTrace stackTrace,
+      ) {
+        debugPrint(
+          'webview_all_ohos: failed to clear native instances: '
+          '${_singleLineOhosNativeLogValue(error)}',
+        );
+      }),
+    );
     return InstanceManager(
       onWeakReferenceRemoved: (int identifier) {
-        OhosObjectHostApiImpl().dispose(identifier);
+        unawaited(
+          OhosObjectHostApiImpl().dispose(identifier).catchError((
+            Object error,
+            StackTrace stackTrace,
+          ) {
+            debugPrint(
+              'webview_all_ohos: failed to release native instance '
+              '$identifier: ${_singleLineOhosNativeLogValue(error)}',
+            );
+          }),
+        );
       },
     );
   }
@@ -1622,6 +1647,14 @@ class HttpAuthHandler extends OhosObject {
   Future<bool> useHttpAuthUsernamePassword() {
     return api.useHttpAuthUsernamePasswordFromInstance(this);
   }
+
+  @override
+  HttpAuthHandler copy() {
+    return HttpAuthHandler(
+      binaryMessenger: _api.binaryMessenger,
+      instanceManager: _api.instanceManager,
+    );
+  }
 }
 
 /// Represents a request to recover from an SSL certificate error.
@@ -1648,5 +1681,13 @@ class SslAuthHandler extends OhosObject {
   /// This should only be used for controlled test environments.
   Future<void> proceed() {
     return api.proceedFromInstance(this);
+  }
+
+  @override
+  SslAuthHandler copy() {
+    return SslAuthHandler(
+      binaryMessenger: _api.binaryMessenger,
+      instanceManager: _api.instanceManager,
+    );
   }
 }

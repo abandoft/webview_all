@@ -21,6 +21,7 @@ export class InstanceManager {
 
   stopFinalizationListener(): void {
     this.stopped = true;
+    this.clear();
   }
 
   fHasFinalizationListenerStopped(): boolean {
@@ -68,6 +69,15 @@ export class InstanceManager {
       return null;
     }
     this.instances.delete(identifier);
+    this.identifiers.delete(instance);
+    return instance;
+  }
+
+  release(identifier: number): ESObject | null {
+    const instance: ESObject | null = this.remove(identifier);
+    if (instance != null && !this.stopped) {
+      this.finalizationListener.onFinalize(identifier);
+    }
     return instance;
   }
 

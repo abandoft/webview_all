@@ -374,6 +374,35 @@ void main() {
     expect(WebViewPlatform.instance, isA<OhosWebViewPlatform>());
   });
 
+  test('recreates typed OHOS authentication handler copies', () {
+    final List<int> releasedIdentifiers = <int>[];
+    final InstanceManager instanceManager = InstanceManager(
+      onWeakReferenceRemoved: releasedIdentifiers.add,
+    );
+    final ohos_webview.HttpAuthHandler httpAuthHandler =
+        ohos_webview.HttpAuthHandler(instanceManager: instanceManager);
+    final ohos_webview.SslAuthHandler sslAuthHandler =
+        ohos_webview.SslAuthHandler(instanceManager: instanceManager);
+    instanceManager.addHostCreatedInstance(httpAuthHandler, 65536);
+    instanceManager.addHostCreatedInstance(sslAuthHandler, 65537);
+
+    instanceManager.removeWeakReference(httpAuthHandler);
+    instanceManager.removeWeakReference(sslAuthHandler);
+
+    expect(
+      instanceManager
+          .getInstanceWithWeakReference<ohos_webview.HttpAuthHandler>(65536),
+      isA<ohos_webview.HttpAuthHandler>(),
+    );
+    expect(
+      instanceManager.getInstanceWithWeakReference<ohos_webview.SslAuthHandler>(
+        65537,
+      ),
+      isA<ohos_webview.SslAuthHandler>(),
+    );
+    expect(releasedIdentifiers, <int>[65536, 65537]);
+  });
+
   test('applies OHOS-specific settings from creation params', () {
     final InstanceManager instanceManager = InstanceManager(
       onWeakReferenceRemoved: (_) {},
@@ -1175,6 +1204,14 @@ void main() {
     final List<JavaScriptTextInputDialogRequest> promptRequests =
         <JavaScriptTextInputDialogRequest>[];
 
+    expect(
+      await webChromeClient.onJsPrompt!(
+        'https://example.test/prompt',
+        'name',
+        'default before handler',
+      ),
+      'default before handler',
+    );
     await controller.setOnJavaScriptAlertDialog((
       JavaScriptAlertDialogRequest request,
     ) async {

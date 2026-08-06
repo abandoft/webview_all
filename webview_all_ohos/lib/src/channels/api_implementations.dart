@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart' show BinaryMessenger, Uint8List;
 
 import 'callback_dispatcher.dart';
@@ -13,6 +15,86 @@ import 'types.dart';
 import '../core/instance_manager.dart';
 
 export 'types.dart' show ConsoleMessage, ConsoleMessageLevel, FileChooserMode;
+
+String _singleLineOhosLogValue(Object value) {
+  return value.toString().replaceAll(RegExp(r'[\r\n]+'), ' ');
+}
+
+void _reportOhosApiCallbackError(String description, Object error) {
+  debugPrint(
+    'webview_all_ohos: $description failed: '
+    '${_singleLineOhosLogValue(error)}',
+  );
+}
+
+T? _callbackInstance<T extends Copyable>(
+  InstanceManager instanceManager,
+  int identifier,
+  String type,
+) {
+  final T? instance = instanceManager.getInstanceWithWeakReference<T>(
+    identifier,
+  );
+  if (instance == null) {
+    debugPrint(
+      'webview_all_ohos: ignored stale $type callback for instance $identifier.',
+    );
+  }
+  return instance;
+}
+
+void _runCallbackFallback(
+  Future<void> Function() operation,
+  String description,
+) {
+  Future<void> future;
+  try {
+    future = operation();
+  } catch (error) {
+    _reportOhosApiCallbackError(description, error);
+    return;
+  }
+  unawaited(
+    future.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {
+        _reportOhosApiCallbackError(description, error);
+      },
+    ),
+  );
+}
+
+void _runOhosVoidCallbackSafely(String description, void Function() callback) {
+  try {
+    callback();
+  } catch (error) {
+    _reportOhosApiCallbackError(description, error);
+  }
+}
+
+void _runOhosAsyncCallbackWithFallback(
+  String description,
+  Future<void> Function() callback,
+  Future<void> Function() fallback,
+) {
+  Future<void> future;
+  try {
+    future = callback();
+  } catch (error) {
+    _reportOhosApiCallbackError(description, error);
+    _runCallbackFallback(fallback, '$description fallback');
+    return;
+  }
+  unawaited(
+    future.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {
+        _reportOhosApiCallbackError(description, error);
+        _runCallbackFallback(fallback, '$description fallback');
+      },
+    ),
+  );
+}
 
 /// Converts [WebResourceRequestData] to [WebResourceRequest]
 WebResourceRequest _toWebResourceRequest(WebResourceRequestData data) {
@@ -414,14 +496,17 @@ class WebViewFlutterApiImpl {
     int oldLeft,
     int oldTop,
   ) {
-    final WebView? webViewInstance =
-        instanceManager.getInstanceWithWeakReference(webViewInstanceId)
-            as WebView?;
-    assert(
-      webViewInstance != null,
-      'InstanceManager does not contain a WebView with instanceId: $webViewInstanceId',
+    final WebView? webViewInstance = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
     );
-    webViewInstance!.onScrollChanged?.call(left, top, oldLeft, oldTop);
+    if (webViewInstance != null) {
+      _runOhosVoidCallbackSafely(
+        'scroll callback',
+        () => webViewInstance.onScrollChanged?.call(left, top, oldLeft, oldTop),
+      );
+    }
   }
 }
 
@@ -614,14 +699,17 @@ class JavaScriptChannelFlutterApiImpl {
   /// Maintains instances stored to communicate with java objects.
   final InstanceManager instanceManager;
   void postMessage(int instanceId, String message) {
-    final JavaScriptChannel? instance =
-        instanceManager.getInstanceWithWeakReference(instanceId)
-            as JavaScriptChannel?;
-    assert(
-      instance != null,
-      'InstanceManager does not contain a JavaScriptChannel with instanceId: $instanceId',
+    final JavaScriptChannel? instance = _callbackInstance<JavaScriptChannel>(
+      instanceManager,
+      instanceId,
+      'JavaScriptChannel',
     );
-    instance!.postMessage(message);
+    if (instance != null) {
+      _runOhosVoidCallbackSafely(
+        'JavaScript channel callback',
+        () => instance.postMessage(message),
+      );
+    }
   }
 }
 
@@ -665,42 +753,40 @@ class WebViewClientFlutterApiImpl {
   /// Maintains instances stored to communicate with java objects.
   final InstanceManager instanceManager;
   void onPageFinished(int instanceId, int webViewInstanceId, String url) {
-    final WebViewClient? instance =
-        instanceManager.getInstanceWithWeakReference(instanceId)
-            as WebViewClient?;
-    final WebView? webViewInstance =
-        instanceManager.getInstanceWithWeakReference(webViewInstanceId)
-            as WebView?;
-    assert(
-      instance != null,
-      'InstanceManager does not contain a WebViewClient with instanceId: $instanceId',
+    final WebViewClient? instance = _callbackInstance<WebViewClient>(
+      instanceManager,
+      instanceId,
+      'WebViewClient',
     );
-    assert(
-      webViewInstance != null,
-      'InstanceManager does not contain a WebView with instanceId: $webViewInstanceId',
+    final WebView? webViewInstance = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
     );
-    if (instance!.onPageFinished != null) {
-      instance.onPageFinished!(webViewInstance!, url);
+    if (instance != null && webViewInstance != null) {
+      _runOhosVoidCallbackSafely(
+        'page finished callback',
+        () => instance.onPageFinished?.call(webViewInstance, url),
+      );
     }
   }
 
   void onPageStarted(int instanceId, int webViewInstanceId, String url) {
-    final WebViewClient? instance =
-        instanceManager.getInstanceWithWeakReference(instanceId)
-            as WebViewClient?;
-    final WebView? webViewInstance =
-        instanceManager.getInstanceWithWeakReference(webViewInstanceId)
-            as WebView?;
-    assert(
-      instance != null,
-      'InstanceManager does not contain a WebViewClient with instanceId: $instanceId',
+    final WebViewClient? instance = _callbackInstance<WebViewClient>(
+      instanceManager,
+      instanceId,
+      'WebViewClient',
     );
-    assert(
-      webViewInstance != null,
-      'InstanceManager does not contain a WebView with instanceId: $webViewInstanceId',
+    final WebView? webViewInstance = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
     );
-    if (instance!.onPageStarted != null) {
-      instance.onPageStarted!(webViewInstance!, url);
+    if (instance != null && webViewInstance != null) {
+      _runOhosVoidCallbackSafely(
+        'page started callback',
+        () => instance.onPageStarted?.call(webViewInstance, url),
+      );
     }
   }
 
@@ -711,28 +797,29 @@ class WebViewClientFlutterApiImpl {
     String description,
     String failingUrl,
   ) {
-    final WebViewClient? instance =
-        instanceManager.getInstanceWithWeakReference(instanceId)
-            as WebViewClient?;
-    final WebView? webViewInstance =
-        instanceManager.getInstanceWithWeakReference(webViewInstanceId)
-            as WebView?;
-    assert(
-      instance != null,
-      'InstanceManager does not contain a WebViewClient with instanceId: $instanceId',
+    final WebViewClient? instance = _callbackInstance<WebViewClient>(
+      instanceManager,
+      instanceId,
+      'WebViewClient',
     );
-    assert(
-      webViewInstance != null,
-      'InstanceManager does not contain a WebView with instanceId: $webViewInstanceId',
+    final WebView? webViewInstance = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
     );
-    // ignore: deprecated_member_use_from_same_package
-    if (instance!.onReceivedError != null) {
-      // ignore: deprecated_member_use_from_same_package
-      instance.onReceivedError!(
-        webViewInstance!,
-        errorCode,
-        description,
-        failingUrl,
+    if (instance != null &&
+        webViewInstance != null &&
+        // ignore: deprecated_member_use_from_same_package
+        instance.onReceivedError != null) {
+      _runOhosVoidCallbackSafely(
+        'resource error callback',
+        // ignore: deprecated_member_use_from_same_package
+        () => instance.onReceivedError!(
+          webViewInstance,
+          errorCode,
+          description,
+          failingUrl,
+        ),
       );
     }
   }
@@ -743,25 +830,26 @@ class WebViewClientFlutterApiImpl {
     WebResourceRequestData request,
     WebResourceErrorData error,
   ) {
-    final WebViewClient? instance =
-        instanceManager.getInstanceWithWeakReference(instanceId)
-            as WebViewClient?;
-    final WebView? webViewInstance =
-        instanceManager.getInstanceWithWeakReference(webViewInstanceId)
-            as WebView?;
-    assert(
-      instance != null,
-      'InstanceManager does not contain a WebViewClient with instanceId: $instanceId',
+    final WebViewClient? instance = _callbackInstance<WebViewClient>(
+      instanceManager,
+      instanceId,
+      'WebViewClient',
     );
-    assert(
-      webViewInstance != null,
-      'InstanceManager does not contain a WebView with instanceId: $webViewInstanceId',
+    final WebView? webViewInstance = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
     );
-    if (instance!.onReceivedRequestError != null) {
-      instance.onReceivedRequestError!(
-        webViewInstance!,
-        _toWebResourceRequest(request),
-        _toWebResourceError(error),
+    if (instance != null &&
+        webViewInstance != null &&
+        instance.onReceivedRequestError != null) {
+      _runOhosVoidCallbackSafely(
+        'request error callback',
+        () => instance.onReceivedRequestError!(
+          webViewInstance,
+          _toWebResourceRequest(request),
+          _toWebResourceError(error),
+        ),
       );
     }
   }
@@ -772,25 +860,26 @@ class WebViewClientFlutterApiImpl {
     WebResourceRequestData request,
     WebResourceResponseData response,
   ) {
-    final WebViewClient? instance =
-        instanceManager.getInstanceWithWeakReference(instanceId)
-            as WebViewClient?;
-    final WebView? webViewInstance =
-        instanceManager.getInstanceWithWeakReference(webViewInstanceId)
-            as WebView?;
-    assert(
-      instance != null,
-      'InstanceManager does not contain a WebViewClient with instanceId: $instanceId',
+    final WebViewClient? instance = _callbackInstance<WebViewClient>(
+      instanceManager,
+      instanceId,
+      'WebViewClient',
     );
-    assert(
-      webViewInstance != null,
-      'InstanceManager does not contain a WebView with instanceId: $webViewInstanceId',
+    final WebView? webViewInstance = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
     );
-    if (instance!.onReceivedHttpError != null) {
-      instance.onReceivedHttpError!(
-        webViewInstance!,
-        _toWebResourceRequest(request),
-        _toWebResourceResponse(response),
+    if (instance != null &&
+        webViewInstance != null &&
+        instance.onReceivedHttpError != null) {
+      _runOhosVoidCallbackSafely(
+        'HTTP error callback',
+        () => instance.onReceivedHttpError!(
+          webViewInstance,
+          _toWebResourceRequest(request),
+          _toWebResourceResponse(response),
+        ),
       );
     }
   }
@@ -800,45 +889,45 @@ class WebViewClientFlutterApiImpl {
     int webViewInstanceId,
     WebResourceRequestData request,
   ) {
-    final WebViewClient? instance =
-        instanceManager.getInstanceWithWeakReference(instanceId)
-            as WebViewClient?;
-    final WebView? webViewInstance =
-        instanceManager.getInstanceWithWeakReference(webViewInstanceId)
-            as WebView?;
-    assert(
-      instance != null,
-      'InstanceManager does not contain a WebViewClient with instanceId: $instanceId',
+    final WebViewClient? instance = _callbackInstance<WebViewClient>(
+      instanceManager,
+      instanceId,
+      'WebViewClient',
     );
-    assert(
-      webViewInstance != null,
-      'InstanceManager does not contain a WebView with instanceId: $webViewInstanceId',
+    final WebView? webViewInstance = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
     );
-    if (instance!.requestLoading != null) {
-      instance.requestLoading!(
-        webViewInstance!,
-        _toWebResourceRequest(request),
+    if (instance != null &&
+        webViewInstance != null &&
+        instance.requestLoading != null) {
+      _runOhosVoidCallbackSafely(
+        'request loading callback',
+        () => instance.requestLoading!(
+          webViewInstance,
+          _toWebResourceRequest(request),
+        ),
       );
     }
   }
 
   void urlLoading(int instanceId, int webViewInstanceId, String url) {
-    final WebViewClient? instance =
-        instanceManager.getInstanceWithWeakReference(instanceId)
-            as WebViewClient?;
-    final WebView? webViewInstance =
-        instanceManager.getInstanceWithWeakReference(webViewInstanceId)
-            as WebView?;
-    assert(
-      instance != null,
-      'InstanceManager does not contain a WebViewClient with instanceId: $instanceId',
+    final WebViewClient? instance = _callbackInstance<WebViewClient>(
+      instanceManager,
+      instanceId,
+      'WebViewClient',
     );
-    assert(
-      webViewInstance != null,
-      'InstanceManager does not contain a WebView with instanceId: $webViewInstanceId',
+    final WebView? webViewInstance = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
     );
-    if (instance!.urlLoading != null) {
-      instance.urlLoading!(webViewInstance!, url);
+    if (instance != null && webViewInstance != null) {
+      _runOhosVoidCallbackSafely(
+        'URL loading callback',
+        () => instance.urlLoading?.call(webViewInstance, url),
+      );
     }
   }
 
@@ -848,22 +937,25 @@ class WebViewClientFlutterApiImpl {
     String url,
     bool isReload,
   ) {
-    final WebViewClient? instance =
-        instanceManager.getInstanceWithWeakReference(instanceId)
-            as WebViewClient?;
-    final WebView? webViewInstance =
-        instanceManager.getInstanceWithWeakReference(webViewInstanceId)
-            as WebView?;
-    assert(
-      instance != null,
-      'InstanceManager does not contain a WebViewClient with instanceId: $instanceId',
+    final WebViewClient? instance = _callbackInstance<WebViewClient>(
+      instanceManager,
+      instanceId,
+      'WebViewClient',
     );
-    assert(
-      webViewInstance != null,
-      'InstanceManager does not contain a WebView with instanceId: $webViewInstanceId',
+    final WebView? webViewInstance = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
     );
-    if (instance!.doUpdateVisitedHistory != null) {
-      instance.doUpdateVisitedHistory!(webViewInstance!, url, isReload);
+    if (instance != null && webViewInstance != null) {
+      _runOhosVoidCallbackSafely(
+        'visited history callback',
+        () => instance.doUpdateVisitedHistory?.call(
+          webViewInstance,
+          url,
+          isReload,
+        ),
+      );
     }
   }
 
@@ -874,33 +966,48 @@ class WebViewClientFlutterApiImpl {
     String host,
     String realm,
   ) {
-    final WebViewClient? instance =
-        instanceManager.getInstanceWithWeakReference(instanceId)
-            as WebViewClient?;
-    final WebView? webViewInstance =
-        instanceManager.getInstanceWithWeakReference(webViewInstanceId)
-            as WebView?;
+    final WebViewClient? instance = _callbackInstance<WebViewClient>(
+      instanceManager,
+      instanceId,
+      'WebViewClient',
+    );
+    final WebView? webViewInstance = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
+    );
     final HttpAuthHandler? httpAuthHandlerInstance =
-        instanceManager.getInstanceWithWeakReference(httpAuthHandlerInstanceId)
-            as HttpAuthHandler?;
-    assert(
-      instance != null,
-      'InstanceManager does not contain a WebViewClient with instanceId: $instanceId',
-    );
-    assert(
-      webViewInstance != null,
-      'InstanceManager does not contain a WebView with instanceId: $webViewInstanceId',
-    );
-    assert(
-      httpAuthHandlerInstance != null,
-      'InstanceManager does not contain a HttpAuthHandler with instanceId: $httpAuthHandlerInstanceId',
-    );
-    if (instance!.onReceivedHttpAuthRequest != null) {
-      return instance.onReceivedHttpAuthRequest!(
-        webViewInstance!,
-        httpAuthHandlerInstance!,
-        host,
-        realm,
+        _callbackInstance<HttpAuthHandler>(
+          instanceManager,
+          httpAuthHandlerInstanceId,
+          'HttpAuthHandler',
+        );
+    if (httpAuthHandlerInstance == null) {
+      return;
+    }
+    if (instance == null || webViewInstance == null) {
+      _runCallbackFallback(
+        () => httpAuthHandlerInstance.cancel(),
+        'HTTP authentication fallback',
+      );
+      return;
+    }
+    final void Function(WebView, HttpAuthHandler, String, String)? callback =
+        instance.onReceivedHttpAuthRequest;
+    if (callback == null) {
+      _runCallbackFallback(
+        () => httpAuthHandlerInstance.cancel(),
+        'HTTP authentication fallback',
+      );
+      return;
+    }
+    try {
+      callback(webViewInstance, httpAuthHandlerInstance, host, realm);
+    } catch (error) {
+      _reportOhosApiCallbackError('HTTP authentication callback', error);
+      _runCallbackFallback(
+        () => httpAuthHandlerInstance.cancel(),
+        'HTTP authentication fallback',
       );
     }
   }
@@ -913,34 +1020,54 @@ class WebViewClientFlutterApiImpl {
     int errorCode,
     String description,
   ) {
-    final WebViewClient? instance =
-        instanceManager.getInstanceWithWeakReference(instanceId)
-            as WebViewClient?;
-    final WebView? webViewInstance =
-        instanceManager.getInstanceWithWeakReference(webViewInstanceId)
-            as WebView?;
+    final WebViewClient? instance = _callbackInstance<WebViewClient>(
+      instanceManager,
+      instanceId,
+      'WebViewClient',
+    );
+    final WebView? webViewInstance = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
+    );
     final SslAuthHandler? sslAuthHandlerInstance =
-        instanceManager.getInstanceWithWeakReference(sslAuthHandlerInstanceId)
-            as SslAuthHandler?;
-    assert(
-      instance != null,
-      'InstanceManager does not contain a WebViewClient with instanceId: $instanceId',
-    );
-    assert(
-      webViewInstance != null,
-      'InstanceManager does not contain a WebView with instanceId: $webViewInstanceId',
-    );
-    assert(
-      sslAuthHandlerInstance != null,
-      'InstanceManager does not contain a SslAuthHandler with instanceId: $sslAuthHandlerInstanceId',
-    );
-    if (instance!.onReceivedSslAuthError != null) {
-      return instance.onReceivedSslAuthError!(
-        webViewInstance!,
-        sslAuthHandlerInstance!,
+        _callbackInstance<SslAuthHandler>(
+          instanceManager,
+          sslAuthHandlerInstanceId,
+          'SslAuthHandler',
+        );
+    if (sslAuthHandlerInstance == null) {
+      return;
+    }
+    if (instance == null || webViewInstance == null) {
+      _runCallbackFallback(
+        () => sslAuthHandlerInstance.cancel(),
+        'SSL authentication fallback',
+      );
+      return;
+    }
+    final void Function(WebView, SslAuthHandler, String, int, String)?
+    callback = instance.onReceivedSslAuthError;
+    if (callback == null) {
+      _runCallbackFallback(
+        () => sslAuthHandlerInstance.cancel(),
+        'SSL authentication fallback',
+      );
+      return;
+    }
+    try {
+      callback(
+        webViewInstance,
+        sslAuthHandlerInstance,
         url,
         errorCode,
         description,
+      );
+    } catch (error) {
+      _reportOhosApiCallbackError('SSL authentication callback', error);
+      _runCallbackFallback(
+        () => sslAuthHandlerInstance.cancel(),
+        'SSL authentication fallback',
       );
     }
   }
@@ -982,20 +1109,23 @@ class DownloadListenerFlutterApiImpl {
     String mimetype,
     int contentLength,
   ) {
-    final DownloadListener? instance =
-        instanceManager.getInstanceWithWeakReference(instanceId)
-            as DownloadListener?;
-    assert(
-      instance != null,
-      'InstanceManager does not contain a DownloadListener with instanceId: $instanceId',
+    final DownloadListener? instance = _callbackInstance<DownloadListener>(
+      instanceManager,
+      instanceId,
+      'DownloadListener',
     );
-    instance!.onDownloadStart(
-      url,
-      userAgent,
-      contentDisposition,
-      mimetype,
-      contentLength,
-    );
+    if (instance != null) {
+      _runOhosVoidCallbackSafely(
+        'download callback',
+        () => instance.onDownloadStart(
+          url,
+          userAgent,
+          contentDisposition,
+          mimetype,
+          contentLength,
+        ),
+      );
+    }
   }
 }
 
@@ -1083,22 +1213,21 @@ class WebChromeClientFlutterApiImpl {
   /// Maintains instances stored to communicate with java objects.
   final InstanceManager instanceManager;
   void onProgressChanged(int instanceId, int webViewInstanceId, int progress) {
-    final WebChromeClient? instance =
-        instanceManager.getInstanceWithWeakReference(instanceId)
-            as WebChromeClient?;
-    final WebView? webViewInstance =
-        instanceManager.getInstanceWithWeakReference(webViewInstanceId)
-            as WebView?;
-    assert(
-      instance != null,
-      'InstanceManager does not contain a WebChromeClient with instanceId: $instanceId',
+    final WebChromeClient? instance = _callbackInstance<WebChromeClient>(
+      instanceManager,
+      instanceId,
+      'WebChromeClient',
     );
-    assert(
-      webViewInstance != null,
-      'InstanceManager does not contain a WebView with instanceId: $webViewInstanceId',
+    final WebView? webViewInstance = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
     );
-    if (instance!.onProgressChanged != null) {
-      instance.onProgressChanged!(webViewInstance!, progress);
+    if (instance != null && webViewInstance != null) {
+      _runOhosVoidCallbackSafely(
+        'progress callback',
+        () => instance.onProgressChanged?.call(webViewInstance, progress),
+      );
     }
   }
 
@@ -1106,19 +1235,34 @@ class WebChromeClientFlutterApiImpl {
     int instanceId,
     int webViewInstanceId,
     int paramsInstanceId,
-  ) {
-    final WebChromeClient instance = instanceManager
-        .getInstanceWithWeakReference(instanceId)!;
-    if (instance.onShowFileChooser != null) {
-      return instance.onShowFileChooser!(
-        instanceManager.getInstanceWithWeakReference(webViewInstanceId)!
-            as WebView,
-        instanceManager.getInstanceWithWeakReference(paramsInstanceId)!
-            as FileChooserParams,
-      );
+  ) async {
+    final WebChromeClient? instance = _callbackInstance<WebChromeClient>(
+      instanceManager,
+      instanceId,
+      'WebChromeClient',
+    );
+    final WebView? webViewInstance = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
+    );
+    final FileChooserParams? params = _callbackInstance<FileChooserParams>(
+      instanceManager,
+      paramsInstanceId,
+      'FileChooserParams',
+    );
+    if (instance != null &&
+        webViewInstance != null &&
+        params != null &&
+        instance.onShowFileChooser != null) {
+      try {
+        return await instance.onShowFileChooser!(webViewInstance, params);
+      } catch (error) {
+        _reportOhosApiCallbackError('file chooser callback', error);
+      }
     }
 
-    return Future<List<String>>.value(const <String>[]);
+    return const <String?>[];
   }
 
   void onGeolocationPermissionsShowPrompt(
@@ -1126,43 +1270,75 @@ class WebChromeClientFlutterApiImpl {
     int paramsInstanceId,
     String origin,
   ) {
-    final WebChromeClient instance = instanceManager
-        .getInstanceWithWeakReference(instanceId)!;
-    final GeolocationPermissionsCallback callback =
-        instanceManager.getInstanceWithWeakReference(paramsInstanceId)!
-            as GeolocationPermissionsCallback;
+    final WebChromeClient? instance = _callbackInstance<WebChromeClient>(
+      instanceManager,
+      instanceId,
+      'WebChromeClient',
+    );
+    final GeolocationPermissionsCallback? callback =
+        _callbackInstance<GeolocationPermissionsCallback>(
+          instanceManager,
+          paramsInstanceId,
+          'GeolocationPermissionsCallback',
+        );
+    if (callback == null) {
+      return;
+    }
     final GeolocationPermissionsShowPrompt? onShowPrompt =
-        instance.onGeolocationPermissionsShowPrompt;
-    if (onShowPrompt != null) {
-      onShowPrompt(origin, callback);
+        instance?.onGeolocationPermissionsShowPrompt;
+    if (onShowPrompt == null) {
+      _runCallbackFallback(
+        () => callback.invoke(origin, false, false),
+        'geolocation permission fallback',
+      );
+    } else {
+      _runOhosAsyncCallbackWithFallback(
+        'geolocation permission callback',
+        () => onShowPrompt(origin, callback),
+        () => callback.invoke(origin, false, false),
+      );
     }
   }
 
   void onGeolocationPermissionsHidePrompt(int identifier) {
-    final WebChromeClient instance = instanceManager
-        .getInstanceWithWeakReference(identifier)!;
+    final WebChromeClient? instance = _callbackInstance<WebChromeClient>(
+      instanceManager,
+      identifier,
+      'WebChromeClient',
+    );
     final GeolocationPermissionsHidePrompt? onHidePrompt =
-        instance.onGeolocationPermissionsHidePrompt;
+        instance?.onGeolocationPermissionsHidePrompt;
     if (onHidePrompt != null) {
-      return onHidePrompt(instance);
+      _runOhosVoidCallbackSafely(
+        'geolocation hide prompt callback',
+        () => onHidePrompt(instance!),
+      );
     }
   }
 
   void onPermissionRequest(int instanceId, int requestInstanceId) {
-    final WebChromeClient instance = instanceManager
-        .getInstanceWithWeakReference(instanceId)!;
-    if (instance.onPermissionRequest != null) {
-      instance.onPermissionRequest!(
-        instance,
-        instanceManager.getInstanceWithWeakReference(requestInstanceId)!,
-      );
-    } else {
-      // The method requires calling grant or deny if the native method is
-      // overridden, so this calls deny by default if `onPermissionRequest` is
-      // null.
-      final PermissionRequest request = instanceManager
-          .getInstanceWithWeakReference(requestInstanceId)!;
-      request.deny();
+    final WebChromeClient? instance = _callbackInstance<WebChromeClient>(
+      instanceManager,
+      instanceId,
+      'WebChromeClient',
+    );
+    final PermissionRequest? request = _callbackInstance<PermissionRequest>(
+      instanceManager,
+      requestInstanceId,
+      'PermissionRequest',
+    );
+    if (request == null) {
+      return;
+    }
+    if (instance?.onPermissionRequest == null) {
+      _runCallbackFallback(() => request.deny(), 'permission request fallback');
+      return;
+    }
+    try {
+      instance!.onPermissionRequest!(instance, request);
+    } catch (error) {
+      _reportOhosApiCallbackError('permission request callback', error);
+      _runCallbackFallback(() => request.deny(), 'permission request fallback');
     }
   }
 
@@ -1171,43 +1347,92 @@ class WebChromeClientFlutterApiImpl {
     int viewIdentifier,
     int callbackIdentifier,
   ) {
-    final WebChromeClient instance = instanceManager
-        .getInstanceWithWeakReference(instanceId)!;
-    if (instance.onShowCustomView != null) {
-      return instance.onShowCustomView!(
-        instance,
-        instanceManager.getInstanceWithWeakReference(viewIdentifier)!,
-        instanceManager.getInstanceWithWeakReference(callbackIdentifier)!,
+    final WebChromeClient? instance = _callbackInstance<WebChromeClient>(
+      instanceManager,
+      instanceId,
+      'WebChromeClient',
+    );
+    final View? view = _callbackInstance<View>(
+      instanceManager,
+      viewIdentifier,
+      'View',
+    );
+    final CustomViewCallback? callback = _callbackInstance<CustomViewCallback>(
+      instanceManager,
+      callbackIdentifier,
+      'CustomViewCallback',
+    );
+    if (instance?.onShowCustomView != null &&
+        view != null &&
+        callback != null) {
+      try {
+        instance!.onShowCustomView!(instance, view, callback);
+        return;
+      } catch (error) {
+        _reportOhosApiCallbackError('custom view callback', error);
+      }
+    }
+    if (callback != null) {
+      _runCallbackFallback(
+        () => callback.onCustomViewHidden(),
+        'custom view fallback',
       );
     }
   }
 
   void onHideCustomView(int instanceId) {
-    final WebChromeClient instance = instanceManager
-        .getInstanceWithWeakReference(instanceId)!;
-    if (instance.onHideCustomView != null) {
-      return instance.onHideCustomView!(instance);
+    final WebChromeClient? instance = _callbackInstance<WebChromeClient>(
+      instanceManager,
+      instanceId,
+      'WebChromeClient',
+    );
+    if (instance?.onHideCustomView != null) {
+      _runOhosVoidCallbackSafely(
+        'hide custom view callback',
+        () => instance!.onHideCustomView!(instance),
+      );
     }
   }
 
   void onConsoleMessage(int instanceId, ConsoleMessage message) {
-    final WebChromeClient instance = instanceManager
-        .getInstanceWithWeakReference(instanceId)!;
-    instance.onConsoleMessage?.call(instance, message);
+    final WebChromeClient? instance = _callbackInstance<WebChromeClient>(
+      instanceManager,
+      instanceId,
+      'WebChromeClient',
+    );
+    if (instance != null) {
+      _runOhosVoidCallbackSafely(
+        'console message callback',
+        () => instance.onConsoleMessage?.call(instance, message),
+      );
+    }
   }
 
-  Future<void> onJsAlert(int instanceId, String url, String message) {
-    final WebChromeClient instance = instanceManager
-        .getInstanceWithWeakReference(instanceId)!;
-
-    return instance.onJsAlert!(url, message);
+  Future<void> onJsAlert(int instanceId, String url, String message) async {
+    final WebChromeClient? instance = _callbackInstance<WebChromeClient>(
+      instanceManager,
+      instanceId,
+      'WebChromeClient',
+    );
+    try {
+      await instance?.onJsAlert?.call(url, message);
+    } catch (error) {
+      _reportOhosApiCallbackError('JavaScript alert callback', error);
+    }
   }
 
-  Future<bool> onJsConfirm(int instanceId, String url, String message) {
-    final WebChromeClient instance = instanceManager
-        .getInstanceWithWeakReference(instanceId)!;
-
-    return instance.onJsConfirm!(url, message);
+  Future<bool> onJsConfirm(int instanceId, String url, String message) async {
+    final WebChromeClient? instance = _callbackInstance<WebChromeClient>(
+      instanceManager,
+      instanceId,
+      'WebChromeClient',
+    );
+    try {
+      return await instance?.onJsConfirm?.call(url, message) ?? false;
+    } catch (error) {
+      _reportOhosApiCallbackError('JavaScript confirm callback', error);
+      return false;
+    }
   }
 
   Future<String> onJsPrompt(
@@ -1215,11 +1440,19 @@ class WebChromeClientFlutterApiImpl {
     String url,
     String message,
     String defaultValue,
-  ) {
-    final WebChromeClient instance = instanceManager
-        .getInstanceWithWeakReference(instanceId)!;
-
-    return instance.onJsPrompt!(url, message, defaultValue);
+  ) async {
+    final WebChromeClient? instance = _callbackInstance<WebChromeClient>(
+      instanceManager,
+      instanceId,
+      'WebChromeClient',
+    );
+    try {
+      return await instance?.onJsPrompt?.call(url, message, defaultValue) ??
+          defaultValue;
+    } catch (error) {
+      _reportOhosApiCallbackError('JavaScript prompt callback', error);
+      return defaultValue;
+    }
   }
 }
 
