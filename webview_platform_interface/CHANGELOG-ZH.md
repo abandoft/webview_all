@@ -1,5 +1,6 @@
 ## 1.3.4
 
+* Linux 媒体手势设置同时应用于新版 WebKitGTK 自动播放策略，页面请求的新窗口可稳定在当前 WebView 中打开。
 * Windows 导航策略覆盖页面触发的主 frame 加载和同窗口 popup，同时保留 controller 请求的 method、headers 和 body。
 * Windows 本地文件和 asset 使用每个 controller 独立的私有 host，拒绝不安全路径并清理过期映射，同时提高 WebView2 决策和下载回调的可靠性。
 * Web 保留响应的原始二进制字节和 redirect 后的最终 URL，并按条目数与总大小共同限制响应 history。

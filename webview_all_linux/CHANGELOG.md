@@ -1,5 +1,6 @@
 ## 1.3.4
 
+* Apply Linux media gesture settings to modern WebKitGTK autoplay policies and reliably open page-requested windows in the current WebView.
 * Apply Windows navigation decisions to page-initiated main-frame loads and same-window popups while preserving controller request methods, headers, and bodies.
 * Isolate Windows local files and assets behind private per-controller hosts, reject unsafe paths, clear stale mappings, and improve WebView2 decision and download callback reliability.
 * Preserve exact binary response bytes and final redirect URLs on Web, and bound retained response history by both entry count and total size.
