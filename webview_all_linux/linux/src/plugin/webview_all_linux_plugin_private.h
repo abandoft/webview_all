@@ -42,6 +42,7 @@ typedef struct {
   gboolean vertical_scrollbar_enabled;
   gboolean horizontal_scrollbar_enabled;
   gboolean zoom_enabled;
+  gint media_playback_requires_user_gesture;
   const gchar *over_scroll_behavior;
   gint frame_x;
   gint frame_y;

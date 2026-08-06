@@ -9,6 +9,8 @@ void emit_url_change(LinuxWebView *webview);
 void emit_title_change(LinuxWebView *webview);
 void emit_load_error(LinuxWebView *webview, GError *error,
                      const gchar *failing_url);
+void use_navigation_decision(LinuxWebView *webview,
+                             WebKitPolicyDecision *decision);
 void evaluate_javascript(WebKitWebView *web_view, const gchar *script,
                          FlMethodCall *method_call);
 gchar *build_scrollbar_style_script(LinuxWebView *webview);

@@ -217,6 +217,35 @@ static void resolve_all_pending_requests(LinuxWebView *webview) {
   g_hash_table_remove_all(webview->pending_tls_errors);
 }
 
+void use_navigation_decision(LinuxWebView *webview,
+                             WebKitPolicyDecision *decision) {
+  if (webview->media_playback_requires_user_gesture < 0) {
+    webkit_policy_decision_use(decision);
+    return;
+  }
+
+  const WebKitAutoplayPolicy autoplay_policy =
+      webview->media_playback_requires_user_gesture ? WEBKIT_AUTOPLAY_DENY
+                                                    : WEBKIT_AUTOPLAY_ALLOW;
+  WebKitWebsitePolicies *policies = webkit_website_policies_new_with_policies(
+      "autoplay", autoplay_policy, nullptr);
+  webkit_policy_decision_use_with_policies(decision, policies);
+  g_object_unref(policies);
+}
+
+static WebKitWebView *
+create_web_view_cb(WebKitWebView *widget,
+                   WebKitNavigationAction *navigation_action, gpointer) {
+  WebKitURIRequest *request =
+      webkit_navigation_action_get_request(navigation_action);
+  const gchar *uri =
+      request == nullptr ? nullptr : webkit_uri_request_get_uri(request);
+  if (uri != nullptr && *uri != '\0') {
+    webkit_web_view_load_uri(widget, uri);
+  }
+  return nullptr;
+}
+
 static gboolean decide_policy_cb(WebKitWebView *widget,
                                  WebKitPolicyDecision *decision,
                                  WebKitPolicyDecisionType type,
@@ -246,6 +275,10 @@ static gboolean decide_policy_cb(WebKitWebView *widget,
     return FALSE;
   }
   if (!webview->event_listening) {
+    if (webview->media_playback_requires_user_gesture >= 0) {
+      use_navigation_decision(webview, decision);
+      return TRUE;
+    }
     return FALSE;
   }
 
@@ -742,6 +775,7 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
   webview->vertical_scrollbar_enabled = TRUE;
   webview->horizontal_scrollbar_enabled = TRUE;
   webview->zoom_enabled = TRUE;
+  webview->media_playback_requires_user_gesture = -1;
   webview->over_scroll_behavior = "";
 
   gchar *method_name =
@@ -778,6 +812,8 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
 
   g_signal_connect(webview->web_view, "decide-policy",
                    G_CALLBACK(decide_policy_cb), webview);
+  g_signal_connect(webview->web_view, "create", G_CALLBACK(create_web_view_cb),
+                   webview);
   g_signal_connect(webview->web_view, "load-changed",
                    G_CALLBACK(load_changed_cb), webview);
   g_signal_connect(webview->web_view, "notify::estimated-load-progress",

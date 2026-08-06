@@ -85,6 +85,8 @@ void apply_webkit_settings(LinuxWebView *webview, FlValue *args) {
 
   value = map_lookup(args, "mediaPlaybackRequiresUserGesture");
   if (value != nullptr && fl_value_get_type(value) == FL_VALUE_TYPE_BOOL) {
+    webview->media_playback_requires_user_gesture =
+        fl_value_get_bool(value) ? 1 : 0;
     webkit_settings_set_media_playback_requires_user_gesture(
         settings, fl_value_get_bool(value));
   }
@@ -615,8 +617,9 @@ void instance_method_call_cb(FlMethodChannel *channel,
 
   if (strcmp(method, "setMediaPlaybackRequiresUserGesture") == 0) {
     WebKitSettings *settings = webkit_web_view_get_settings(webview->web_view);
-    webkit_settings_set_media_playback_requires_user_gesture(
-        settings, map_lookup_bool(args, "require", FALSE));
+    const gboolean require = map_lookup_bool(args, "require", FALSE);
+    webview->media_playback_requires_user_gesture = require ? 1 : 0;
+    webkit_settings_set_media_playback_requires_user_gesture(settings, require);
     respond(method_call, success_response());
     return;
   }
@@ -761,7 +764,7 @@ void instance_method_call_cb(FlMethodChannel *channel,
           webkit_web_view_load_uri(webview->web_view, pending->uri);
           webkit_policy_decision_ignore(pending->decision);
         } else {
-          webkit_policy_decision_use(pending->decision);
+          use_navigation_decision(webview, pending->decision);
         }
       } else {
         webkit_policy_decision_ignore(pending->decision);
