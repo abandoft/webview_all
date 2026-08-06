@@ -113,6 +113,7 @@ blocked.
 ## Known Limits
 
 - The WebView is a native GTK widget, not a Flutter texture. Layering and clipping follow GTK overlay behavior.
+- Local files must use absolute paths and are canonicalized before loading. Flutter asset keys containing traversal, absolute paths, or symlink escapes outside the asset bundle are rejected.
 - File URL universal access is powerful and should stay disabled for untrusted local content.
 - Distribution WebKitGTK versions differ; test media, permissions, and dialog flows on your target Linux distribution.
 - Frame updates are asynchronous and failure-isolated; stale widget teardown

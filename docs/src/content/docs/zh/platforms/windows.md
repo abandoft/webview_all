@@ -56,6 +56,10 @@ final params = const WindowsWebViewControllerCreationParams(
 | `setZoomFactor` | 设置 WebView2 缩放因子。 |
 | `setCacheDisabled` | 控制请求是否绕过 cache。 |
 
+`onNavigationRequest` 会覆盖 controller 加载以及页面内容触发的 WebView2 主 frame 导航，包括 redirect 和 `sameWindow` popup。controller 请求在原生分发前完成判断，因此会保留自定义 method、headers 和 body；页面导航通过取消后等待异步 Dart 决策、放行后重放来实现，策略性取消不会触发 `onWebResourceError`。
+
+本地文件和 Flutter asset 会使用每个 controller 独立的随机 HTTPS host。路径会先规范化，asset 路径穿越和逃出 bundle 的符号链接会被拒绝，跨 origin 访问默认禁止，切换到无关的远程或 inline 内容前会清理映射。
+
 ## 完整 Cookie
 
 ```dart

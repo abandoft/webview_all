@@ -54,7 +54,7 @@ flutter:
 await controller.loadFlutterAsset('assets/help/index.html');
 ```
 
-Windows 会把 asset 目录映射到内部 HTTPS host；Web 会解析为生成后的 `assets/` 路径。
+Windows 会为每个 controller 使用随机私有 HTTPS host 映射规范化后的 asset 目录，拒绝跨 origin 访问，并随导航替换或清理映射。Linux 只接受绝对文件路径，并会在加载前将其规范化；两者都会拒绝路径穿越和逃出 Flutter asset 目录的符号链接。Web 会解析为生成后的 `assets/` 路径。
 
 ## 内联 HTML
 
@@ -82,7 +82,7 @@ await controller.loadRequest(
 | --- | --- |
 | Android | POST + 自定义 headers 不支持。 |
 | OHOS | POST + 自定义 headers 不支持，会抛 `UnsupportedError`。 |
-| Web | 非简单请求通过 `fetch`，需要服务端 CORS 允许。 |
+| Web | 非简单请求通过 `fetch`，需要服务端 CORS 允许；响应保留原始二进制字节，并使用 redirect 后的最终 URL。 |
 | Windows/Linux/iOS/macOS | 支持 method、headers 和 body。 |
 
 不支持的平台可用 app HTTP client 手动请求，再用 `loadHtmlString` 加载响应 HTML；但这不等价于浏览器原生导航，cookie、redirect、service worker 等语义会不同。

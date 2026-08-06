@@ -55,16 +55,18 @@ await controller.loadRequest(
 );
 ```
 
-跨域 fetch 需要服务端 CORS 允许。
-响应会按 `Content-Type` 声明的 charset 解码，支持带引号和扩展参数的
-header；实现还会注入 `<base>` 来保持相对 URL 的解析语义。
+跨域 fetch 需要服务端 CORS 允许。HTML 响应会按 `Content-Type` 声明的
+charset 解码，支持带引号和扩展参数的 header；非 HTML 响应保留原始字节。
+redirect 后的最终响应 URL 会再次经过 `onNavigationRequest` 检查，放行后才会成为
+逻辑 URL 和 HTML `<base>` URL。
 
 ## History
 
-控制器最多保存 100 条带类型的 history，分别记录直接 URL、inline HTML 和
-fetch 响应。前进/后退会按原始类型恢复内容，并清除过期的 `src` 或 `srcdoc`。
+控制器保存带类型的 history，分别记录直接 URL、inline HTML 和 fetch 响应，
+在始终保留当前条目的前提下，同时限制为最多 100 条和 32 MiB 内容。前进/后退会
+按原始类型恢复内容，并清除过期的 `src` 或 `srcdoc`。
 
-POST 或带自定义 header 的 fetch 加载会保存响应快照；前进/后退不会重放请求，
+POST 或带自定义 header 的 fetch 加载会保存响应字节和元数据；前进/后退不会重放请求，
 显式 `reload()` 才会重新发起请求并替换当前快照。并发 fetch 使用代际校验，
 较早返回的响应不会覆盖较新的导航。
 

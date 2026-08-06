@@ -88,6 +88,10 @@ final widget = WebViewWidget.fromPlatformCreationParams(
 
 Common APIs implemented on Windows include request loading with method, headers, and body; JavaScript execution; JavaScript channels; console messages; JavaScript dialogs; permission requests; HTTP errors; HTTP auth; SSL auth; scroll position; scrollbars; background color; user agent override; and overscroll styling.
 
+`onNavigationRequest` covers controller loads and WebView2 main-frame navigations initiated by page content, including redirects and popups opened with `sameWindow`. Controller loads are approved before native dispatch so custom methods, headers, and bodies are preserved. Page-initiated navigations wait for the asynchronous Dart policy through cancel-and-replay, and the intentional cancellation is suppressed from `onWebResourceError`.
+
+Local files and Flutter assets use private randomized HTTPS hosts per controller. Paths are canonicalized, asset traversal and symlink escapes are rejected, cross-origin access is denied, and mappings are cleared before unrelated remote or inline navigation.
+
 ## Cookies
 
 Windows exposes extended WebView2 cookie metadata:

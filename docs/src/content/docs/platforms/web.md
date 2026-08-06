@@ -72,17 +72,20 @@ await controller.loadRequest(
 
 Fetch-backed loads require server CORS approval for cross-origin requests.
 HTML response bytes are decoded using the declared `Content-Type` charset,
-including quoted and extension parameters. A `<base>` element preserves
-relative URL resolution.
+including quoted and extension parameters. Non-HTML responses retain their
+exact bytes. The final response URL after redirects is checked by
+`onNavigationRequest`, then becomes the logical URL and the HTML `<base>` URL
+when approved.
 
 ## History
 
-The controller keeps up to 100 typed history entries for direct URLs, inline
-HTML, and fetch-backed responses. Back/forward navigation restores the matching
-content type and removes stale `src` or `srcdoc` state.
+The controller keeps typed history entries for direct URLs, inline HTML, and
+fetch-backed responses, limited to both 100 entries and 32 MiB of retained
+content while always preserving the active entry. Back/forward navigation
+restores the matching content type and removes stale `src` or `srcdoc` state.
 
-For fetch-backed POST or custom-header requests, history stores the decoded
-response snapshot. Going back and forward does not replay the request. An
+For fetch-backed POST or custom-header requests, history stores the response
+bytes and metadata. Going back and forward does not replay the request. An
 explicit `reload()` performs the request again and replaces the active
 snapshot. Concurrent fetches are generation-checked, so an older response
 cannot overwrite a newer navigation.

@@ -44,6 +44,8 @@ onNavigationRequest: (NavigationRequest request) async {
 
 Some platforms also invoke the callback for controller-initiated loads. Treat it as a central policy hook.
 
+On Windows, controller-initiated requests are checked before WebView2 receives them, so an approved request keeps its method, headers, and body. Main-frame navigations initiated by page content, redirects, and `sameWindow` popups are canceled while an asynchronous decision is pending and replayed only when approved. These policy cancellations are not reported as load errors.
+
 ## Page Lifecycle
 
 | Callback | Meaning |

@@ -68,6 +68,7 @@ event channel 关闭，导航会拒绝，认证/dialog/TLS 会取消，权限会
 ## 限制
 
 - WebView 是 GTK 原生 widget，层叠和裁剪遵循 GTK overlay 行为。
+- 本地文件必须使用绝对路径，并会在加载前规范化；Flutter asset 中的路径穿越、绝对路径和逃出 asset bundle 的符号链接会被拒绝。
 - 不可信本地文件不要启用 universal file URL access。
 - 不同发行版 WebKitGTK 版本差异明显，媒体、权限和 dialog 需要在目标发行版验证。
 - frame 更新是异步且错误隔离的，组件销毁阶段不会泄漏未处理异常。

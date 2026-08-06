@@ -40,6 +40,8 @@ onNavigationRequest: (NavigationRequest request) {
 
 部分平台也会对 controller 主动发起的加载触发该回调，因此可以把它作为统一导航策略。
 
+Windows 会在请求交给 WebView2 前检查 controller 主动发起的加载，因此放行后仍会保留 method、headers 和 body。页面内容触发的主 frame 导航、redirect 和 `sameWindow` popup 会在等待异步决策时先取消，只在放行后重放；这种策略性取消不会误报为加载错误。
+
 ## 页面生命周期
 
 | 回调 | 含义 |

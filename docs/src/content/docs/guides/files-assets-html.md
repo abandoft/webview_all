@@ -60,7 +60,7 @@ Load it:
 await controller.loadFlutterAsset('assets/help/index.html');
 ```
 
-On Windows, the implementation maps the asset directory to an internal HTTPS host. On web, it resolves the asset under the app's generated `assets/` path.
+On Windows, each controller maps the canonical asset directory to a private randomized HTTPS host with cross-origin access denied. Mappings are replaced or cleared as navigation changes. Linux requires absolute file paths and canonicalizes them before loading. Both implementations reject traversal and symlink escapes outside the Flutter asset bundle. On web, assets resolve under the app's generated `assets/` path.
 
 ## Inline HTML
 
@@ -90,7 +90,7 @@ Check platform support before relying on custom requests:
 | --- | --- |
 | Android | POST with custom headers is not supported by Android WebView `postUrl`. |
 | OHOS | POST with custom headers is not supported by ArkWeb `postUrl`; `webview_all_ohos` throws `UnsupportedError`. |
-| Web | Non-simple requests use `fetch` and require CORS approval from the server. |
+| Web | Non-simple requests use `fetch`, require CORS approval, preserve binary response bytes, and use the final redirect URL as the logical URL. |
 | Windows/Linux/iOS/macOS | Support method, headers, and body through native request APIs. |
 
 ## Recommended Fallback for Unsupported POST Headers
