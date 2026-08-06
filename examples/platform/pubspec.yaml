@@ -14,6 +14,8 @@ dependencies:
     path: ../../webview_all
   webview_all_android:
     path: ../../webview_all_android
+  webview_all_linux:
+    path: ../../webview_all_linux
   webview_all_wkwebview:
     path: ../../webview_all_wkwebview
 

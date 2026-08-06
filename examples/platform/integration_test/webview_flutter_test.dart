@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:webview_all/webview_all.dart';
 import 'package:webview_all_android/webview_all_android.dart';
+import 'package:webview_all_linux/webview_all_linux.dart';
 import 'package:webview_all_wkwebview/webview_all_wkwebview.dart';
 
 Future<void> main() async {
@@ -240,6 +241,9 @@ Future<void> main() async {
         if (controller.platform is AndroidWebViewController) {
           await (controller.platform as AndroidWebViewController)
               .setMediaPlaybackRequiresUserGesture(false);
+        } else if (controller.platform is LinuxWebViewController) {
+          await (controller.platform as LinuxWebViewController)
+              .setMediaPlaybackRequiresUserGesture(false);
         }
 
         await controller.loadRequest(
@@ -251,6 +255,12 @@ Future<void> main() async {
         await tester.pumpAndSettle();
 
         await pageLoaded.future;
+        await _waitForCondition(
+          () async =>
+              await controller.runJavaScriptReturningResult('isPaused();') ==
+              false,
+          reason: 'Media playback did not start after disabling the gesture.',
+        );
 
         var isPaused =
             await controller.runJavaScriptReturningResult('isPaused();')
@@ -315,6 +325,9 @@ Future<void> main() async {
 
         if (controller.platform is AndroidWebViewController) {
           await (controller.platform as AndroidWebViewController)
+              .setMediaPlaybackRequiresUserGesture(false);
+        } else if (controller.platform is LinuxWebViewController) {
+          await (controller.platform as LinuxWebViewController)
               .setMediaPlaybackRequiresUserGesture(false);
         }
 
@@ -397,6 +410,9 @@ Future<void> main() async {
         if (controller.platform is AndroidWebViewController) {
           await (controller.platform as AndroidWebViewController)
               .setMediaPlaybackRequiresUserGesture(false);
+        } else if (controller.platform is LinuxWebViewController) {
+          await (controller.platform as LinuxWebViewController)
+              .setMediaPlaybackRequiresUserGesture(false);
         }
 
         await controller.loadRequest(
@@ -407,6 +423,12 @@ Future<void> main() async {
         await tester.pumpAndSettle();
 
         await pageLoaded.future;
+        await _waitForCondition(
+          () async =>
+              await controller.runJavaScriptReturningResult('isPaused();') ==
+              false,
+          reason: 'Audio playback did not start after disabling the gesture.',
+        );
 
         var isPaused =
             await controller.runJavaScriptReturningResult('isPaused();')
@@ -419,6 +441,10 @@ Future<void> main() async {
         await controller.setNavigationDelegate(
           NavigationDelegate(onPageFinished: (_) => pageLoaded.complete()),
         );
+        if (controller.platform is LinuxWebViewController) {
+          await (controller.platform as LinuxWebViewController)
+              .setMediaPlaybackRequiresUserGesture(true);
+        }
 
         await controller.loadRequest(
           Uri.parse('data:text/html;charset=utf-8;base64,$audioTestBase64'),
@@ -435,9 +461,9 @@ Future<void> main() async {
         expect(isPaused, true);
       });
     },
-    // OGG playback is not supported on macOS, so the test data would need
-    // to be changed to support macOS.
-    skip: Platform.isMacOS,
+    // OGG playback is not supported on macOS. WebView2 does not expose the
+    // per-controller user-gesture setting exercised by this test.
+    skip: Platform.isMacOS || Platform.isWindows,
   );
 
   testWidgets('getTitle', (WidgetTester tester) async {
@@ -548,6 +574,11 @@ Future<void> main() async {
         scrollPos = await controller.getScrollPosition();
         expect(scrollPos.dx, xScroll);
         expect(scrollPos.dy, yScroll);
+        await _waitForCondition(
+          () =>
+              recordedPosition?.x == xScroll && recordedPosition?.y == yScroll,
+          reason: 'The scrollTo callback did not report the final position.',
+        );
         expect(recordedPosition?.x, xScroll);
         expect(recordedPosition?.y, yScroll);
 
@@ -556,6 +587,12 @@ Future<void> main() async {
         scrollPos = await controller.getScrollPosition();
         expect(scrollPos.dx, xScroll * 2);
         expect(scrollPos.dy, yScroll * 2);
+        await _waitForCondition(
+          () =>
+              recordedPosition?.x == xScroll * 2 &&
+              recordedPosition?.y == yScroll * 2,
+          reason: 'The scrollBy callback did not report the final position.',
+        );
         expect(recordedPosition?.x, xScroll * 2);
         expect(recordedPosition?.y, yScroll * 2);
       });
@@ -792,7 +829,9 @@ Future<void> main() async {
       await controller.setNavigationDelegate(
         NavigationDelegate(
           onUrlChange: (UrlChange change) {
-            urlChangeCompleter.complete(change.url);
+            if (change.url == primaryUrl && !urlChangeCompleter.isCompleted) {
+              urlChangeCompleter.complete(change.url);
+            }
           },
         ),
       );
@@ -824,7 +863,9 @@ Future<void> main() async {
       await controller.setNavigationDelegate(
         NavigationDelegate(
           onUrlChange: (UrlChange change) {
-            urlChangeCompleter.complete(change.url);
+            if (change.url == secondaryUrl && !urlChangeCompleter.isCompleted) {
+              urlChangeCompleter.complete(change.url);
+            }
           },
         ),
       );
@@ -862,13 +903,13 @@ Future<void> main() async {
       final controller = WebViewController();
       final pageFinished = Completer<void>();
 
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
       await controller.setNavigationDelegate(
         NavigationDelegate(
           onHttpAuthRequest: (HttpAuthRequest request) => request.onProceed(
             const WebViewCredential(user: 'user', password: 'password'),
           ),
           onPageFinished: (_) => pageFinished.complete(),
-          onWebResourceError: (_) => fail('Authentication failed'),
         ),
       );
 
@@ -877,6 +918,16 @@ Future<void> main() async {
       await controller.loadRequest(Uri.parse(basicAuthUrl));
 
       await expectLater(pageFinished.future, completes);
+      await _waitForCondition(() async {
+        try {
+          return await controller.runJavaScriptReturningResult(
+                'document.body.innerText.includes("Authorized")',
+              ) ==
+              true;
+        } on PlatformException {
+          return false;
+        }
+      }, reason: 'The authenticated page did not finish loading.');
     });
   });
 
@@ -887,6 +938,10 @@ Future<void> main() async {
 
     final controller = WebViewController();
     await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    if (controller.platform is LinuxWebViewController) {
+      await (controller.platform as LinuxWebViewController)
+          .setJavaScriptCanOpenWindowsAutomatically(true);
+    }
     await controller.setNavigationDelegate(
       NavigationDelegate(onPageFinished: (_) => pageLoaded.complete()),
     );
@@ -900,29 +955,41 @@ Future<void> main() async {
   });
 
   testWidgets('can open new window and go back', (WidgetTester tester) async {
-    var pageLoaded = Completer<void>();
+    final pageLoads = StreamController<String>.broadcast();
+    addTearDown(pageLoads.close);
 
     final controller = WebViewController();
     await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    if (controller.platform is LinuxWebViewController) {
+      await (controller.platform as LinuxWebViewController)
+          .setJavaScriptCanOpenWindowsAutomatically(true);
+    }
     await controller.setNavigationDelegate(
-      NavigationDelegate(onPageFinished: (_) => pageLoaded.complete()),
+      NavigationDelegate(onPageFinished: pageLoads.add),
+    );
+    final primaryLoaded = pageLoads.stream.firstWhere(
+      (String url) => url == primaryUrl,
     );
     await controller.loadRequest(Uri.parse(primaryUrl));
 
     await tester.pumpWidget(WebViewWidget(controller: controller));
 
-    expect(controller.currentUrl(), completion(primaryUrl));
-    await pageLoaded.future;
-    pageLoaded = Completer<void>();
+    await primaryLoaded;
+    await expectLater(controller.currentUrl(), completion(primaryUrl));
 
+    final secondaryLoaded = pageLoads.stream.firstWhere(
+      (String url) => url == secondaryUrl,
+    );
     await controller.runJavaScript('window.open("$secondaryUrl")');
-    await pageLoaded.future;
-    pageLoaded = Completer<void>();
-    expect(controller.currentUrl(), completion(secondaryUrl));
+    await secondaryLoaded;
+    await expectLater(controller.currentUrl(), completion(secondaryUrl));
 
-    expect(controller.canGoBack(), completion(true));
+    await expectLater(controller.canGoBack(), completion(true));
+    final primaryReloaded = pageLoads.stream.firstWhere(
+      (String url) => url == primaryUrl,
+    );
     await controller.goBack();
-    await pageLoaded.future;
+    await primaryReloaded;
     await expectLater(controller.currentUrl(), completion(primaryUrl));
   });
 
@@ -955,20 +1022,19 @@ Future<void> main() async {
     await controller.reload();
     await pageLoadCompleter.future;
 
-    late final String? nullItem;
+    String? nullItem;
     try {
       nullItem =
           await controller.runJavaScriptReturningResult(
                 'localStorage.getItem("myCat");',
               )
               as String;
-    } catch (exception) {
-      if (_isWKWebView() &&
-          exception is ArgumentError &&
-          (exception.message as String).contains(
-            'Result of JavaScript execution returned a `null` value.',
-          )) {
+    } on ArgumentError catch (exception) {
+      if (_usesDecodedJavaScriptResults() &&
+          exception.message.toString().toLowerCase().contains('null')) {
         nullItem = '<null>';
+      } else {
+        rethrow;
       }
     }
     expect(nullItem, _webViewNull());
@@ -978,7 +1044,7 @@ Future<void> main() async {
 // JavaScript `null` evaluate to different string values per platform.
 // This utility method returns the string boolean value of the current platform.
 String _webViewNull() {
-  if (_isWKWebView()) {
+  if (_usesDecodedJavaScriptResults()) {
     return '<null>';
   }
   return 'null';
@@ -987,15 +1053,36 @@ String _webViewNull() {
 // JavaScript String evaluates to different strings depending on the platform.
 // This utility method returns the string boolean value of the current platform.
 String _webViewString(String value) {
-  if (_isWKWebView()) {
+  if (_usesDecodedJavaScriptResults()) {
     return value;
   }
   return '"$value"';
 }
 
+bool _usesDecodedJavaScriptResults() {
+  return _isWKWebView() ||
+      defaultTargetPlatform == TargetPlatform.linux ||
+      defaultTargetPlatform == TargetPlatform.windows;
+}
+
 bool _isWKWebView() {
   return defaultTargetPlatform == TargetPlatform.iOS ||
       defaultTargetPlatform == TargetPlatform.macOS;
+}
+
+Future<void> _waitForCondition(
+  FutureOr<bool> Function() condition, {
+  required String reason,
+  Duration timeout = const Duration(seconds: 10),
+}) async {
+  final stopwatch = Stopwatch()..start();
+  while (stopwatch.elapsed < timeout) {
+    if (await condition()) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
+  fail(reason);
 }
 
 class ResizableWebView extends StatefulWidget {
