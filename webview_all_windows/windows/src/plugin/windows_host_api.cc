@@ -3,9 +3,11 @@
 #include <shellapi.h>
 #include <windows.h>
 
-#include <format>
+#include <cstdint>
 #include <functional>
+#include <iomanip>
 #include <optional>
+#include <sstream>
 #include <string>
 
 #include "util/string_converter.h"
@@ -28,6 +30,14 @@ constexpr auto kErrorUnsupportedPlatform = "unsupported_platform";
 constexpr auto kErrorMethodFailed = "method_failed";
 constexpr auto kErrorNotSupported = "not_supported";
 constexpr auto kErrorScriptFailed = "script_failed";
+
+std::string FormatWebviewCreationError(const WebviewCreationError &error) {
+  std::ostringstream message;
+  message << "Creating the webview failed: " << error.message << " (HRESULT: 0x"
+          << std::hex << std::setw(8) << std::setfill('0')
+          << static_cast<uint32_t>(error.hr) << ')';
+  return message.str();
+}
 
 } // namespace
 
@@ -100,11 +110,11 @@ WindowsHostApi::InitializeEnvironment(
 
 webview_all_windows::ErrorOr<std::optional<std::string>>
 WindowsHostApi::GetWebViewVersion() {
-  LPWSTR version_info = nullptr;
+  wil::unique_cotaskmem_string version_info;
   auto hr =
       GetAvailableCoreWebView2BrowserVersionString(nullptr, &version_info);
   if (SUCCEEDED(hr) && version_info != nullptr) {
-    return std::optional<std::string>(util::Utf8FromUtf16(version_info));
+    return std::optional<std::string>(util::Utf8FromUtf16(version_info.get()));
   }
   return std::optional<std::string>();
 }
@@ -156,9 +166,7 @@ void WindowsHostApi::CreateWebView(
           if (error) {
             return result(webview_all_windows::FlutterError(
                 kErrorCodeWebviewCreationFailed,
-                std::format(
-                    "Creating the webview failed: {} (HRESULT: {:#010x})",
-                    error->message, error->hr)));
+                FormatWebviewCreationError(*error)));
           }
           return result(webview_all_windows::FlutterError(
               kErrorCodeWebviewCreationFailed, "Creating the webview failed."));
@@ -623,6 +631,17 @@ WindowsHostApi::SetPopupWindowPolicy(int64_t texture_id, int64_t policy) {
     return InvalidIdError();
   }
   bridge->SetPopupWindowPolicy(policy);
+  return std::nullopt;
+}
+
+std::optional<webview_all_windows::FlutterError>
+WindowsHostApi::SetNavigationRequestCallbacksEnabled(int64_t texture_id,
+                                                     bool enabled) {
+  auto bridge = FindBridge(texture_id);
+  if (!bridge) {
+    return InvalidIdError();
+  }
+  bridge->SetNavigationRequestCallbacksEnabled(enabled);
   return std::nullopt;
 }
 

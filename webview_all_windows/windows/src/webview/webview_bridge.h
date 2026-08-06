@@ -87,6 +87,7 @@ public:
   void ClearLocalStorage(Webview::OperationCompletedCallback callback);
   bool SetCacheDisabled(bool disabled);
   void SetPopupWindowPolicy(int64_t policy);
+  void SetNavigationRequestCallbacksEnabled(bool enabled);
   void SetFpsLimit(int64_t max_fps);
 
 private:
@@ -115,6 +116,10 @@ private:
                         WebviewPermissionKind permissionKind,
                         bool is_user_initiated,
                         Webview::WebviewPermissionRequestedCompleter completer);
+  void
+  OnNavigationRequested(const std::string &url, bool is_user_initiated,
+                        bool is_redirected,
+                        Webview::WebviewNavigationRequestedCompleter completer);
   void
   OnHttpAuthRequested(const WebviewHttpAuthRequest &request,
                       Webview::WebviewHttpAuthRequestedCompleter completer);

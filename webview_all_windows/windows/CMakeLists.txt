@@ -65,13 +65,7 @@ set(PLUGIN_SOURCES
 add_library(${PLUGIN_NAME} SHARED ${PLUGIN_SOURCES})
 add_dependencies(${PLUGIN_NAME} ${DEPS_TARGET_NAME})
 
-if(MSVC)
-  target_compile_options(${PLUGIN_NAME} PRIVATE "/await:strict")
-endif()
-
 apply_standard_settings(${PLUGIN_NAME})
-
-target_compile_features(${PLUGIN_NAME} PUBLIC cxx_std_20)
 
 set_target_properties(${PLUGIN_NAME} PROPERTIES
   CXX_VISIBILITY_PRESET hidden
@@ -82,6 +76,7 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE
   ${CMAKE_BINARY_DIR}/packages/Microsoft.Windows.ImplementationLibrary/build/native/Microsoft.Windows.ImplementationLibrary.targets
   flutter
   flutter_wrapper_plugin
+  runtimeobject
 )
 
 target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)

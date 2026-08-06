@@ -199,6 +199,8 @@ abstract class WindowsWebViewHostApi {
 
   void setPopupWindowPolicy(int textureId, int policy);
 
+  void setNavigationRequestCallbacksEnabled(int textureId, bool enabled);
+
   void setJavaScriptDialogCallbacksEnabled(
     int textureId,
     bool alert,

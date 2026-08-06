@@ -5,6 +5,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
@@ -17,6 +18,16 @@ const Duration _pendingWebView2RequestTimeout = Duration(seconds: 30);
 
 String _singleLineWindowsLogValue(Object value) {
   return value.toString().replaceAll(RegExp(r'[\r\n]+'), ' ');
+}
+
+String _createWindowsVirtualHost(String prefix) {
+  final Random random = Random.secure();
+  final String token = List<String>.generate(
+    16,
+    (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    growable: false,
+  ).join();
+  return '$prefix-$token.webview.invalid';
 }
 
 Future<void> _disposeFinalizedWindowsWebView(
@@ -144,6 +155,9 @@ class WindowsWebViewController extends PlatformWebViewController {
 
   Future<void>? _initializationFuture;
   WindowsNavigationDelegate? _currentNavigationDelegate;
+  Future<void> Function(bool enabled)? _navigationRequestListener;
+  final String _fileVirtualHost = _createWindowsVirtualHost('app-file');
+  final String _assetVirtualHost = _createWindowsVirtualHost('flutter-assets');
   String? _currentUrl;
   String? _pageStartedUrl;
   String? _title;
@@ -225,6 +239,13 @@ class WindowsWebViewController extends PlatformWebViewController {
     WeakReference<WindowsWebViewController> weakThis,
   ) async {
     await _webviewController.initialize();
+    _webviewController.setNavigationRequestedDelegate((
+      String url,
+      bool isUserInitiated,
+      bool isRedirected,
+    ) async {
+      return weakThis.target?._shouldNavigate(url) ?? false;
+    });
     _webviewController.setJavaScriptDialogRequestedDelegate((
       String dialogType,
       String url,
@@ -656,6 +677,13 @@ class WindowsWebViewController extends PlatformWebViewController {
   @override
   Future<void> loadFile(String absoluteFilePath) async {
     await _ensureInitialized();
+    if (!path.isAbsolute(absoluteFilePath)) {
+      throw ArgumentError.value(
+        absoluteFilePath,
+        'absoluteFilePath',
+        'File path must be absolute.',
+      );
+    }
     final file = File(absoluteFilePath);
     if (!file.existsSync()) {
       throw ArgumentError.value(
@@ -665,14 +693,18 @@ class WindowsWebViewController extends PlatformWebViewController {
       );
     }
 
-    final folderPath = path.dirname(file.absolute.path);
-    final fileName = path.basename(file.path);
-    const host = 'app-file.webview.flutter.dev';
-    final url = Uri.https(host, '/$fileName').toString();
+    final String resolvedFilePath = file.resolveSymbolicLinksSync();
+    final folderPath = path.dirname(resolvedFilePath);
+    final fileName = path.basename(resolvedFilePath);
+    final url = Uri(
+      scheme: 'https',
+      host: _fileVirtualHost,
+      pathSegments: <String>[fileName],
+    ).toString();
     if (!await _shouldNavigate(url)) {
       return;
     }
-    await _setVirtualHostMapping(host, folderPath);
+    await _setVirtualHostMapping(_fileVirtualHost, folderPath);
     await _webviewController.loadUrl(url);
   }
 
@@ -684,26 +716,42 @@ class WindowsWebViewController extends PlatformWebViewController {
   @override
   Future<void> loadFlutterAsset(String key) async {
     await _ensureInitialized();
-    final assetPath = _resolveFlutterAssetPath(key);
+    final List<String> assetSegments = _validateFlutterAssetKey(key);
+    final String assetRootPath = _flutterAssetsRootPath();
+    final assetPath = path.joinAll(<String>[assetRootPath, ...assetSegments]);
     final file = File(assetPath);
     if (!file.existsSync()) {
       throw ArgumentError.value(key, 'key', 'Asset for key "$key" not found.');
     }
 
-    final folderPath = path.dirname(assetPath);
-    final fileName = path.basename(assetPath);
-    const host = 'flutter-assets.webview.flutter.dev';
-    final url = Uri.https(host, '/$fileName').toString();
+    final String resolvedRootPath = Directory(
+      assetRootPath,
+    ).resolveSymbolicLinksSync();
+    final String resolvedAssetPath = file.resolveSymbolicLinksSync();
+    if (!path.isWithin(resolvedRootPath, resolvedAssetPath)) {
+      throw ArgumentError.value(
+        key,
+        'key',
+        'Asset path resolves outside the Flutter asset bundle.',
+      );
+    }
+
+    final url = Uri(
+      scheme: 'https',
+      host: _assetVirtualHost,
+      pathSegments: assetSegments,
+    ).toString();
     if (!await _shouldNavigate(url)) {
       return;
     }
-    await _setVirtualHostMapping(host, folderPath);
+    await _setVirtualHostMapping(_assetVirtualHost, resolvedRootPath);
     await _webviewController.loadUrl(url);
   }
 
   @override
   Future<void> loadHtmlString(String html, {String? baseUrl}) async {
     await _ensureInitialized();
+    await _clearManagedVirtualHostMappings();
     final content = baseUrl == null ? html : _injectBaseUrl(html, baseUrl);
     await _webviewController.loadStringContent(content);
   }
@@ -782,7 +830,41 @@ class WindowsWebViewController extends PlatformWebViewController {
     PlatformNavigationDelegate handler,
   ) async {
     await _ensureInitialized();
-    _currentNavigationDelegate = handler as WindowsNavigationDelegate;
+    final WindowsNavigationDelegate delegate =
+        handler as WindowsNavigationDelegate;
+    final Future<void> Function(bool enabled)? previousListener =
+        _navigationRequestListener;
+    if (previousListener != null) {
+      _currentNavigationDelegate?._removeNavigationRequestListener(
+        previousListener,
+      );
+    }
+
+    _currentNavigationDelegate = delegate;
+    final WeakReference<WindowsWebViewController> weakThis =
+        WeakReference<WindowsWebViewController>(this);
+    final Future<void> Function(bool enabled) listener = (bool enabled) async {
+      final WindowsWebViewController? target = weakThis.target;
+      if (target == null) {
+        return;
+      }
+      try {
+        await target._webviewController.setNavigationRequestCallbacksEnabled(
+          enabled,
+        );
+      } catch (error) {
+        debugPrint(
+          'webview_all_windows: failed to update navigation request '
+          'callbacks: ${_singleLineWindowsLogValue(error)}',
+        );
+        rethrow;
+      }
+    };
+    _navigationRequestListener = listener;
+    delegate._addNavigationRequestListener(listener);
+    await _webviewController.setNavigationRequestCallbacksEnabled(
+      delegate._onNavigationRequest != null,
+    );
   }
 
   @override
@@ -809,6 +891,13 @@ class WindowsWebViewController extends PlatformWebViewController {
   ) async {
     await _ensureInitialized();
     final name = javaScriptChannelParams.name;
+    if (name.isEmpty) {
+      throw ArgumentError.value(
+        name,
+        'javaScriptChannelParams.name',
+        'JavaScript channel name must not be empty.',
+      );
+    }
     if (_javaScriptChannelParams.containsKey(name)) {
       throw ArgumentError(
         'A JavaScriptChannel with name `$name` already exists.',
@@ -816,23 +905,28 @@ class WindowsWebViewController extends PlatformWebViewController {
     }
 
     _javaScriptChannelParams[name] = javaScriptChannelParams;
-    final script =
+    final String encodedName = jsonEncode(name);
+    final String script =
         '''
-      window.$name = {
+      (function() {
+      const channelName = $encodedName;
+      window[channelName] = {
         postMessage: function(message) {
           window.chrome.webview.postMessage({
-            "$_channelMessageType": "$_javaScriptChannelMessageType",
-            "channelName": "$name",
+            ${jsonEncode(_channelMessageType)}: ${jsonEncode(_javaScriptChannelMessageType)},
+            "channelName": channelName,
             "message": String(message)
           });
         }
       };
+      })();
     ''';
     final scriptId = await _webviewController
         .addScriptToExecuteOnDocumentCreated(script);
     if (scriptId != null) {
       _javaScriptChannelScriptIds[name] = scriptId;
     }
+    await _executeScriptBestEffort('JavaScript channel "$name"', script);
   }
 
   @override
@@ -843,6 +937,10 @@ class WindowsWebViewController extends PlatformWebViewController {
     if (scriptId != null) {
       await _webviewController.removeScriptToExecuteOnDocumentCreated(scriptId);
     }
+    await _executeScriptBestEffort(
+      'JavaScript channel "$javaScriptChannelName" removal',
+      'delete window[${jsonEncode(javaScriptChannelName)}];',
+    );
   }
 
   @override
@@ -1157,24 +1255,120 @@ class WindowsWebViewController extends PlatformWebViewController {
       return;
     }
 
-    _virtualHostMappings[host] = normalizedPath;
+    if (_virtualHostMappings.containsKey(host)) {
+      await _webviewController.removeVirtualHostNameMapping(host);
+      _virtualHostMappings.remove(host);
+    }
     await _webviewController.addVirtualHostNameMapping(
       host,
       normalizedPath,
-      native_types.WebviewHostResourceAccessKind.allow,
+      native_types.WebviewHostResourceAccessKind.deny,
     );
+    _virtualHostMappings[host] = normalizedPath;
+  }
+
+  Future<void> _clearManagedVirtualHostMappings() async {
+    for (final String host in _virtualHostMappings.keys.toList()) {
+      await _webviewController.removeVirtualHostNameMapping(host);
+      _virtualHostMappings.remove(host);
+    }
+  }
+
+  bool _isManagedVirtualHost(String url) {
+    final Uri? uri = Uri.tryParse(url);
+    return uri != null &&
+        (uri.host == _fileVirtualHost || uri.host == _assetVirtualHost);
   }
 
   Future<bool> _shouldNavigate(String url) async {
     final callback = _currentNavigationDelegate?._onNavigationRequest;
-    if (callback == null) {
-      return true;
+    final bool shouldNavigate = callback == null
+        ? true
+        : await _awaitPendingRequest<bool>(
+            () async {
+              final NavigationDecision decision = await callback(
+                NavigationRequest(url: url, isMainFrame: true),
+              );
+              return decision == NavigationDecision.navigate;
+            },
+            fallback: false,
+            requestName: 'navigation request',
+          );
+    if (shouldNavigate && !_isManagedVirtualHost(url)) {
+      await _clearManagedVirtualHostMappings();
     }
+    return shouldNavigate;
+  }
 
-    final decision = await callback(
-      NavigationRequest(url: url, isMainFrame: true),
-    );
-    return decision == NavigationDecision.navigate;
+  Future<void> _executeScriptBestEffort(String operation, String script) async {
+    try {
+      await _webviewController.executeScript(script);
+    } catch (error) {
+      debugPrint(
+        'webview_all_windows: failed to apply $operation to the current '
+        'document: ${_singleLineWindowsLogValue(error)}',
+      );
+    }
+  }
+
+  List<String> _validateFlutterAssetKey(String key) {
+    final List<String> segments = key.split(RegExp(r'[/\\]'));
+    if (key.isEmpty ||
+        path.isAbsolute(key) ||
+        segments.any(
+          (String segment) =>
+              segment.isEmpty || segment == '.' || segment == '..',
+        )) {
+      throw ArgumentError.value(
+        key,
+        'key',
+        'Asset key must be a non-empty relative path without traversal.',
+      );
+    }
+    return segments;
+  }
+
+  String _flutterAssetsRootPath() {
+    return path.joinAll(<String>[
+      path.dirname(Platform.resolvedExecutable),
+      'data',
+      'flutter_assets',
+    ]);
+  }
+
+  String _escapeHtmlAttribute(String value) {
+    return const HtmlEscape(HtmlEscapeMode.attribute).convert(value);
+  }
+
+  String _injectBaseUrl(String html, String baseUrl) {
+    final baseTag = '<base href="${_escapeHtmlAttribute(baseUrl)}">';
+    final headExp = RegExp(r'<head[^>]*>', caseSensitive: false);
+    final match = headExp.firstMatch(html);
+    if (match != null) {
+      return html.replaceRange(match.end, match.end, baseTag);
+    }
+    return '<head>$baseTag</head>$html';
+  }
+
+  Set<WebViewPermissionResourceType> _toPermissionTypes(
+    native_types.WebviewPermissionKind permissionKind,
+  ) {
+    switch (permissionKind) {
+      case native_types.WebviewPermissionKind.camera:
+        return <WebViewPermissionResourceType>{
+          WebViewPermissionResourceType.camera,
+        };
+      case native_types.WebviewPermissionKind.microphone:
+        return <WebViewPermissionResourceType>{
+          WebViewPermissionResourceType.microphone,
+        };
+      case native_types.WebviewPermissionKind.otherSensors:
+      case native_types.WebviewPermissionKind.clipboardRead:
+      case native_types.WebviewPermissionKind.geoLocation:
+      case native_types.WebviewPermissionKind.notifications:
+      case native_types.WebviewPermissionKind.unknown:
+        return const <WebViewPermissionResourceType>{};
+    }
   }
 
   String _serializeRequestHeaders(Map<String, String> headers) {
@@ -1288,42 +1482,6 @@ class WindowsWebViewController extends PlatformWebViewController {
             'html, body { overscroll-behavior: ' + value + ' !important; }';
       })();
       ''';
-  }
-
-  String _injectBaseUrl(String html, String baseUrl) {
-    final baseTag = '<base href="$baseUrl">';
-    final headExp = RegExp(r'<head[^>]*>', caseSensitive: false);
-    final match = headExp.firstMatch(html);
-    if (match != null) {
-      return html.replaceRange(match.end, match.end, baseTag);
-    }
-    return '<head>$baseTag</head>$html';
-  }
-
-  String _resolveFlutterAssetPath(String key) {
-    return path.joinAll(<String>[
-      path.dirname(Platform.resolvedExecutable),
-      'data',
-      'flutter_assets',
-      ...key.split('/'),
-    ]);
-  }
-
-  Set<WebViewPermissionResourceType> _toPermissionTypes(
-    native_types.WebviewPermissionKind permissionKind,
-  ) {
-    switch (permissionKind) {
-      case native_types.WebviewPermissionKind.camera:
-        return <WebViewPermissionResourceType>{
-          WebViewPermissionResourceType.camera,
-        };
-      case native_types.WebviewPermissionKind.microphone:
-        return <WebViewPermissionResourceType>{
-          WebViewPermissionResourceType.microphone,
-        };
-      default:
-        return const <WebViewPermissionResourceType>{};
-    }
   }
 }
 
@@ -1481,12 +1639,31 @@ class WindowsNavigationDelegate extends PlatformNavigationDelegate {
   SslAuthErrorCallback? _onSslAuthError;
   NavigationRequestCallback? _onNavigationRequest;
   UrlChangeCallback? _onUrlChange;
+  final Set<Future<void> Function(bool enabled)> _navigationRequestListeners =
+      <Future<void> Function(bool enabled)>{};
+
+  void _addNavigationRequestListener(
+    Future<void> Function(bool enabled) listener,
+  ) {
+    _navigationRequestListeners.add(listener);
+  }
+
+  void _removeNavigationRequestListener(
+    Future<void> Function(bool enabled) listener,
+  ) {
+    _navigationRequestListeners.remove(listener);
+  }
 
   @override
   Future<void> setOnNavigationRequest(
     NavigationRequestCallback onNavigationRequest,
   ) async {
     _onNavigationRequest = onNavigationRequest;
+    await Future.wait<void>(
+      _navigationRequestListeners.toList().map(
+        (Future<void> Function(bool enabled) listener) => listener(true),
+      ),
+    );
   }
 
   @override

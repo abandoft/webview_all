@@ -520,6 +520,8 @@ public:
   virtual std::optional<FlutterError> SetPopupWindowPolicy(int64_t texture_id,
                                                            int64_t policy) = 0;
   virtual std::optional<FlutterError>
+  SetNavigationRequestCallbacksEnabled(int64_t texture_id, bool enabled) = 0;
+  virtual std::optional<FlutterError>
   SetJavaScriptDialogCallbacksEnabled(int64_t texture_id, bool alert,
                                       bool confirm, bool prompt) = 0;
   virtual std::optional<FlutterError> Suspend(int64_t texture_id) = 0;

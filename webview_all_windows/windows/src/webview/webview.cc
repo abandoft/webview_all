@@ -4,11 +4,12 @@
 
 #include <algorithm>
 #include <cmath>
-#include <format>
 #include <limits>
 #include <map>
 #include <memory>
 #include <utility>
+
+#include <winrt/Windows.Foundation.h>
 
 #include "util/composition.desktop.interop.h"
 #include "util/logging.h"
@@ -185,6 +186,15 @@ bool CreateNativeCookie(ICoreWebView2CookieManager *cookie_manager,
   return ApplyCookieProperties(native_cookie.get(), cookie);
 }
 
+std::string CanonicalizeNavigationUrl(const std::string &url) {
+  try {
+    const winrt::Windows::Foundation::Uri uri(winrt::to_hstring(url));
+    return winrt::to_string(uri.AbsoluteCanonicalUri());
+  } catch (...) {
+    return url;
+  }
+}
+
 } // namespace
 
 Webview::Webview(
@@ -192,6 +202,7 @@ Webview::Webview(
     WebviewHost *host, HWND hwnd, bool owns_window, bool offscreen_only)
     : composition_controller_(std::move(composition_controller)), host_(host),
       hwnd_(hwnd), owns_window_(owns_window) {
+  lifetime_state_->owner = this;
   webview_controller_ =
       composition_controller_.try_query<ICoreWebView2Controller3>();
 
@@ -230,6 +241,10 @@ Webview::Webview(
 }
 
 Webview::~Webview() {
+  InvalidatePendingNavigationRequests();
+  lifetime_state_->owner = nullptr;
+  navigation_requested_callback_ = nullptr;
+  download_event_callback_ = nullptr;
   if (owns_window_) {
     DestroyWindow(hwnd_);
   }
@@ -288,8 +303,8 @@ bool Webview::CreateSurface(
   winrt::com_ptr<ABI::Windows::UI::Composition::IVisualCollection> children;
   if (FAILED(root->get_Children(children.put())) || !children ||
       FAILED(children->InsertAtTop(webview_visual.get())) ||
-      FAILED(
-          composition_controller_->put_RootVisualTarget(webview_visual2.get())) ||
+      FAILED(composition_controller_->put_RootVisualTarget(
+          webview_visual2.get())) ||
       FAILED(webview_controller_->put_IsVisible(true))) {
     return false;
   }
@@ -328,6 +343,59 @@ void Webview::RegisterEventHandlers() {
     return;
   }
 
+  webview_->add_NavigationStarting(
+      Callback<ICoreWebView2NavigationStartingEventHandler>(
+          [this](ICoreWebView2 *sender,
+                 ICoreWebView2NavigationStartingEventArgs *args) -> HRESULT {
+            if (!args) {
+              return S_OK;
+            }
+
+            wil::unique_cotaskmem_string wuri;
+            if (FAILED(args->get_Uri(&wuri)) || wuri == nullptr) {
+              return S_OK;
+            }
+            const std::string url = util::Utf8FromUtf16(wuri.get());
+
+            if (ConsumeApprovedNavigation(url) ||
+                !navigation_request_callbacks_enabled_ ||
+                !navigation_requested_callback_) {
+              return S_OK;
+            }
+
+            if (FAILED(args->put_Cancel(TRUE))) {
+              return S_OK;
+            }
+
+            UINT64 navigation_id = 0;
+            if (SUCCEEDED(args->get_NavigationId(&navigation_id))) {
+              policy_cancelled_navigation_ids_.insert(navigation_id);
+            }
+
+            BOOL is_user_initiated = FALSE;
+            BOOL is_redirected = FALSE;
+            args->get_IsUserInitiated(&is_user_initiated);
+            args->get_IsRedirected(&is_redirected);
+
+            const uint64_t request_id = ++latest_navigation_request_id_;
+            const std::weak_ptr<LifetimeState> weak_state = lifetime_state_;
+            navigation_requested_callback_(
+                url, is_user_initiated == TRUE, is_redirected == TRUE,
+                [weak_state, request_id, url](bool allow) {
+                  if (!allow) {
+                    return;
+                  }
+                  const std::shared_ptr<LifetimeState> state =
+                      weak_state.lock();
+                  if (state && state->owner) {
+                    state->owner->ResumeNavigation(request_id, url);
+                  }
+                });
+            return S_OK;
+          })
+          .Get(),
+      &event_registrations_.navigation_starting_token_);
+
   webview_->add_ContentLoading(
       Callback<ICoreWebView2ContentLoadingEventHandler>(
           [this](ICoreWebView2 *sender, IUnknown *args) -> HRESULT {
@@ -344,6 +412,12 @@ void Webview::RegisterEventHandlers() {
       Callback<ICoreWebView2NavigationCompletedEventHandler>(
           [this](ICoreWebView2 *sender,
                  ICoreWebView2NavigationCompletedEventArgs *args) -> HRESULT {
+            UINT64 navigation_id = 0;
+            if (SUCCEEDED(args->get_NavigationId(&navigation_id)) &&
+                policy_cancelled_navigation_ids_.erase(navigation_id) > 0) {
+              return S_OK;
+            }
+
             BOOL is_success;
             args->get_IsSuccess(&is_success);
             if (!is_success && on_load_error_callback_) {
@@ -458,9 +532,10 @@ void Webview::RegisterEventHandlers() {
   webview_->add_SourceChanged(
       Callback<ICoreWebView2SourceChangedEventHandler>(
           [this](ICoreWebView2 *sender, IUnknown *args) -> HRESULT {
-            LPWSTR wurl;
-            if (url_changed_callback_ && webview_->get_Source(&wurl) == S_OK) {
-              std::string url = util::Utf8FromUtf16(wurl);
+            wil::unique_cotaskmem_string wurl;
+            if (url_changed_callback_ &&
+                SUCCEEDED(webview_->get_Source(&wurl)) && wurl != nullptr) {
+              std::string url = util::Utf8FromUtf16(wurl.get());
               url_changed_callback_(url);
             }
 
@@ -472,10 +547,11 @@ void Webview::RegisterEventHandlers() {
   webview_->add_DocumentTitleChanged(
       Callback<ICoreWebView2DocumentTitleChangedEventHandler>(
           [this](ICoreWebView2 *sender, IUnknown *args) -> HRESULT {
-            LPWSTR wtitle;
+            wil::unique_cotaskmem_string wtitle;
             if (document_title_changed_callback_ &&
-                webview_->get_DocumentTitle(&wtitle) == S_OK) {
-              std::string title = util::Utf8FromUtf16(wtitle);
+                SUCCEEDED(webview_->get_DocumentTitle(&wtitle)) &&
+                wtitle != nullptr) {
+              std::string title = util::Utf8FromUtf16(wtitle.get());
               document_title_changed_callback_(title);
             }
 
@@ -558,12 +634,17 @@ void Webview::RegisterEventHandlers() {
               }
 
               const std::string uri = util::Utf8FromUtf16(wuri.get());
+              wil::com_ptr<ICoreWebView2PermissionRequestedEventArgs>
+                  permission_args;
+              args->AddRef();
+              permission_args.attach(args);
               permission_requested_callback_(
                   uri, CW2PermissionKindToPermissionKind(kind),
                   is_user_initiated == TRUE,
                   [deferral = std::move(deferral),
-                   args = std::move(args)](WebviewPermissionState state) {
-                    args->put_State(
+                   permission_args = std::move(permission_args)](
+                      WebviewPermissionState state) {
+                    permission_args->put_State(
                         WebViewPermissionStateToCW2PermissionState(state));
                     deferral->Complete();
                   });
@@ -737,7 +818,9 @@ void Webview::RegisterEventHandlers() {
             }
 
             wil::com_ptr<ICoreWebView2Deferral> deferral;
-            args->GetDeferral(deferral.put());
+            if (FAILED(args->GetDeferral(deferral.put())) || !deferral) {
+              return S_OK;
+            }
 
             wil::com_ptr<ICoreWebView2ScriptDialogOpeningEventArgs> dialog_args;
             args->AddRef();
@@ -771,9 +854,15 @@ void Webview::RegisterEventHandlers() {
             case WebviewPopupWindowPolicy::Deny:
               args->put_Handled(TRUE);
               break;
-            case WebviewPopupWindowPolicy::ShowInSameWindow:
-              args->put_NewWindow(webview_.get());
-              args->put_Handled(TRUE);
+            case WebviewPopupWindowPolicy::ShowInSameWindow: {
+              wil::unique_cotaskmem_string wuri;
+              if (SUCCEEDED(args->get_Uri(&wuri)) && wuri != nullptr) {
+                args->put_Handled(TRUE);
+                webview_->Navigate(wuri.get());
+              }
+              break;
+            }
+            case WebviewPopupWindowPolicy::Allow:
               break;
             }
 
@@ -801,9 +890,6 @@ void Webview::RegisterEventHandlers() {
         Callback<ICoreWebView2DownloadStartingEventHandler>(
             [this](ICoreWebView2 *sender,
                    ICoreWebView2DownloadStartingEventArgs *args) -> HRESULT {
-              wil::com_ptr<ICoreWebView2Deferral> deferral;
-              args->GetDeferral(&deferral);
-
               args->put_Handled(TRUE);
 
               wil::com_ptr<ICoreWebView2DownloadOperation> download;
@@ -1132,7 +1218,8 @@ bool Webview::SetCacheDisabled(bool disabled) {
   if (!IsValid()) {
     return false;
   }
-  std::string json = std::format("{{\"disableCache\":{}}}", disabled);
+  const std::string json =
+      disabled ? R"({"disableCache":true})" : R"({"disableCache":false})";
   return webview_->CallDevToolsProtocolMethod(L"Network.setCacheDisabled",
                                               util::Utf16FromUtf8(json).c_str(),
                                               nullptr) == S_OK;
@@ -1142,11 +1229,51 @@ void Webview::SetPopupWindowPolicy(WebviewPopupWindowPolicy policy) {
   popup_window_policy_ = policy;
 }
 
+void Webview::SetNavigationRequestCallbacksEnabled(bool enabled) {
+  navigation_request_callbacks_enabled_ = enabled;
+  InvalidatePendingNavigationRequests();
+}
+
 void Webview::SetJavaScriptDialogCallbacksEnabled(bool alert, bool confirm,
                                                   bool prompt) {
   java_script_alert_dialog_enabled_ = alert;
   java_script_confirm_dialog_enabled_ = confirm;
   java_script_prompt_dialog_enabled_ = prompt;
+}
+
+void Webview::InvalidatePendingNavigationRequests() {
+  ++latest_navigation_request_id_;
+  approved_navigation_urls_.clear();
+  bypass_next_navigation_count_ = 0;
+}
+
+void Webview::MarkNavigationApproved(const std::string &url) {
+  approved_navigation_urls_.insert(CanonicalizeNavigationUrl(url));
+}
+
+bool Webview::ConsumeApprovedNavigation(const std::string &url) {
+  const auto approved =
+      approved_navigation_urls_.find(CanonicalizeNavigationUrl(url));
+  if (approved != approved_navigation_urls_.end()) {
+    approved_navigation_urls_.erase(approved);
+    return true;
+  }
+  if (bypass_next_navigation_count_ > 0) {
+    --bypass_next_navigation_count_;
+    return true;
+  }
+  return false;
+}
+
+void Webview::ResumeNavigation(uint64_t request_id, const std::string &url) {
+  if (!IsValid() || request_id != latest_navigation_request_id_) {
+    return;
+  }
+
+  MarkNavigationApproved(url);
+  if (FAILED(webview_->Navigate(util::Utf16FromUtf8(url).c_str()))) {
+    ConsumeApprovedNavigation(url);
+  }
 }
 
 bool Webview::SetUserAgent(const std::string *user_agent) {
@@ -1368,7 +1495,11 @@ void Webview::SetScrollDelta(double delta_x, double delta_y) {
 
 void Webview::LoadUrl(const std::string &url) {
   if (IsValid()) {
-    webview_->Navigate(util::Utf16FromUtf8(url).c_str());
+    InvalidatePendingNavigationRequests();
+    MarkNavigationApproved(url);
+    if (FAILED(webview_->Navigate(util::Utf16FromUtf8(url).c_str()))) {
+      ConsumeApprovedNavigation(url);
+    }
   }
 }
 
@@ -1390,12 +1521,24 @@ bool Webview::LoadRequest(const std::string &url, const std::string &method,
     return false;
   }
 
-  return SUCCEEDED(webview2->NavigateWithWebResourceRequest(request.get()));
+  InvalidatePendingNavigationRequests();
+  MarkNavigationApproved(url);
+  if (FAILED(webview2->NavigateWithWebResourceRequest(request.get()))) {
+    ConsumeApprovedNavigation(url);
+    return false;
+  }
+  return true;
 }
 
 void Webview::LoadStringContent(const std::string &content) {
   if (IsValid()) {
-    webview_->NavigateToString(util::Utf16FromUtf8(content).c_str());
+    InvalidatePendingNavigationRequests();
+    constexpr auto kStringContentNavigationUrl = "about:blank";
+    MarkNavigationApproved(kStringContentNavigationUrl);
+    if (FAILED(
+            webview_->NavigateToString(util::Utf16FromUtf8(content).c_str()))) {
+      ConsumeApprovedNavigation(kStringContentNavigationUrl);
+    }
   }
 }
 
@@ -1411,21 +1554,48 @@ bool Webview::Reload() {
   if (!IsValid()) {
     return false;
   }
-  return SUCCEEDED(webview_->Reload());
+  InvalidatePendingNavigationRequests();
+  ++bypass_next_navigation_count_;
+  if (FAILED(webview_->Reload())) {
+    --bypass_next_navigation_count_;
+    return false;
+  }
+  return true;
 }
 
 bool Webview::GoBack() {
   if (!IsValid()) {
     return false;
   }
-  return SUCCEEDED(webview_->GoBack());
+  BOOL can_go_back = FALSE;
+  if (FAILED(webview_->get_CanGoBack(&can_go_back)) || can_go_back != TRUE) {
+    return false;
+  }
+  InvalidatePendingNavigationRequests();
+  ++bypass_next_navigation_count_;
+  if (FAILED(webview_->GoBack())) {
+    --bypass_next_navigation_count_;
+    return false;
+  }
+  return true;
 }
 
 bool Webview::GoForward() {
   if (!IsValid()) {
     return false;
   }
-  return SUCCEEDED(webview_->GoForward());
+  BOOL can_go_forward = FALSE;
+  if (FAILED(webview_->get_CanGoForward(&can_go_forward)) ||
+      can_go_forward != TRUE) {
+    return false;
+  }
+  InvalidatePendingNavigationRequests();
+  ++bypass_next_navigation_count_;
+  if (FAILED(webview_->GoForward())) {
+    --bypass_next_navigation_count_;
+    return false;
+  }
+  return true;
 }
 
 void Webview::AddScriptToExecuteOnDocumentCreated(
@@ -1566,11 +1736,19 @@ bool Webview::ClearVirtualHostNameMapping(const std::string &hostName) {
 }
 
 void Webview::UpdateDownloadProgress(ICoreWebView2DownloadOperation *download) {
+  if (!download) {
+    return;
+  }
+
+  const std::weak_ptr<LifetimeState> weak_state = lifetime_state_;
+  EventRegistrationToken bytes_received_token{};
   download->add_BytesReceivedChanged(
       Callback<ICoreWebView2BytesReceivedChangedEventHandler>(
-          [this](ICoreWebView2DownloadOperation *download,
-                 IUnknown *args) -> HRESULT {
-            if (download_event_callback_) {
+          [weak_state](ICoreWebView2DownloadOperation *download,
+                       IUnknown *args) -> HRESULT {
+            const std::shared_ptr<LifetimeState> state = weak_state.lock();
+            if (state && state->owner &&
+                state->owner->download_event_callback_) {
               INT64 recvd = 0;
               download->get_BytesReceived(&recvd);
               INT64 total = 0;
@@ -1580,7 +1758,7 @@ void Webview::UpdateDownloadProgress(ICoreWebView2DownloadOperation *download) {
               download->get_Uri(&uri);
               wil::unique_cotaskmem_string resultFilePath;
               download->get_ResultFilePath(&resultFilePath);
-              download_event_callback_(
+              state->owner->download_event_callback_(
                   {WebviewDownloadEventKind::DownloadProgress,
                    util::Utf8FromUtf16(uri.get()),
                    util::Utf8FromUtf16(resultFilePath.get()), recvd, total});
@@ -1588,12 +1766,13 @@ void Webview::UpdateDownloadProgress(ICoreWebView2DownloadOperation *download) {
             return S_OK;
           })
           .Get(),
-      &event_registrations_.download_bytes_received_token_);
+      &bytes_received_token);
 
+  EventRegistrationToken state_changed_token{};
   download->add_StateChanged(
       Callback<ICoreWebView2StateChangedEventHandler>(
-          [this](ICoreWebView2DownloadOperation *download,
-                 IUnknown *args) -> HRESULT {
+          [weak_state](ICoreWebView2DownloadOperation *download,
+                       IUnknown *args) -> HRESULT {
             COREWEBVIEW2_DOWNLOAD_STATE state;
             download->get_State(&state);
             switch (state) {
@@ -1604,8 +1783,10 @@ void Webview::UpdateDownloadProgress(ICoreWebView2DownloadOperation *download) {
               // `download->InterruptReason`. For example, show an error
               // message to the end user.
               break;
-            case COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED:
-              if (download_event_callback_) {
+            case COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED: {
+              const std::shared_ptr<LifetimeState> lifetime = weak_state.lock();
+              if (lifetime && lifetime->owner &&
+                  lifetime->owner->download_event_callback_) {
                 wil::unique_cotaskmem_string uri;
                 download->get_Uri(&uri);
                 wil::unique_cotaskmem_string resultFilePath;
@@ -1614,17 +1795,18 @@ void Webview::UpdateDownloadProgress(ICoreWebView2DownloadOperation *download) {
                 download->get_BytesReceived(&recvd);
                 INT64 total = 0;
                 download->get_TotalBytesToReceive(&total);
-                download_event_callback_(
+                lifetime->owner->download_event_callback_(
                     {WebviewDownloadEventKind::DownloadCompleted,
                      util::Utf8FromUtf16(uri.get()),
                      util::Utf8FromUtf16(resultFilePath.get()), recvd, total});
               }
               break;
             }
+            }
             return S_OK;
           })
           .Get(),
-      &event_registrations_.download_state_changed_token_);
+      &state_changed_token);
 }
 
 } // namespace webview_all_windows

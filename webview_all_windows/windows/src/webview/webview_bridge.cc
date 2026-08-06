@@ -3,10 +3,10 @@
 #include <flutter/event_stream_handler_functions.h>
 #include <flutter/method_result_functions.h>
 
-#include <format>
 #include <map>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "rendering/texture_bridge_gpu.h"
 
@@ -127,15 +127,14 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
   //  webview_->SetSurfaceSize(size.width, size.height);
   //});
 
-  const auto method_channel_name =
-      std::format("{}/{}", kChannelPrefix, texture_id_);
+  const std::string channel_name =
+      std::string(kChannelPrefix) + "/" + std::to_string(texture_id_);
   method_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
-          messenger, method_channel_name,
+          messenger, channel_name,
           &flutter::StandardMethodCodec::GetInstance());
 
-  const auto event_channel_name =
-      std::format("{}/{}/events", kChannelPrefix, texture_id_);
+  const std::string event_channel_name = channel_name + "/events";
   event_channel_ =
       std::make_unique<flutter::EventChannel<flutter::EncodableValue>>(
           messenger, event_channel_name,
@@ -308,6 +307,13 @@ void WebviewBridge::RegisterEventHandlers() {
         OnPermissionRequested(url, kind, is_user_initiated, completer);
       });
 
+  webview_->OnNavigationRequested(
+      [this](const std::string &url, bool is_user_initiated, bool is_redirected,
+             Webview::WebviewNavigationRequestedCompleter completer) {
+        OnNavigationRequested(url, is_user_initiated, is_redirected,
+                              std::move(completer));
+      });
+
   webview_->OnHttpAuthRequested(
       [this](const WebviewHttpAuthRequest &request,
              Webview::WebviewHttpAuthRequestedCompleter completer) {
@@ -335,6 +341,31 @@ void WebviewBridge::RegisterEventHandlers() {
              contains_fullscreen_element}});
         EmitEvent(event);
       });
+}
+
+void WebviewBridge::OnNavigationRequested(
+    const std::string &url, bool is_user_initiated, bool is_redirected,
+    Webview::WebviewNavigationRequestedCompleter completer) {
+  auto args = std::make_unique<flutter::EncodableValue>(flutter::EncodableMap{
+      {"url", url},
+      {"isUserInitiated", is_user_initiated},
+      {"isRedirected", is_redirected},
+  });
+
+  method_channel_->InvokeMethod(
+      "navigationRequested", std::move(args),
+      std::make_unique<flutter::MethodResultFunctions<flutter::EncodableValue>>(
+          [completer](const flutter::EncodableValue *result) {
+            const bool *allow =
+                result == nullptr ? nullptr : std::get_if<bool>(result);
+            completer(allow != nullptr && *allow);
+          },
+          [completer](const std::string &error_code,
+                      const std::string &error_message,
+                      const flutter::EncodableValue *error_details) {
+            completer(false);
+          },
+          [completer]() { completer(false); }));
 }
 
 void WebviewBridge::OnPermissionRequested(
@@ -688,6 +719,10 @@ void WebviewBridge::SetPopupWindowPolicy(int64_t policy) {
     webview_->SetPopupWindowPolicy(WebviewPopupWindowPolicy::Allow);
     break;
   }
+}
+
+void WebviewBridge::SetNavigationRequestCallbacksEnabled(bool enabled) {
+  webview_->SetNavigationRequestCallbacksEnabled(enabled);
 }
 
 void WebviewBridge::SetFpsLimit(int64_t max_fps) {

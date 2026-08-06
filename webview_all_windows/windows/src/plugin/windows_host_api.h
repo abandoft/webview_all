@@ -101,6 +101,9 @@ private:
   std::optional<FlutterError> SetPopupWindowPolicy(int64_t texture_id,
                                                    int64_t policy) override;
   std::optional<FlutterError>
+  SetNavigationRequestCallbacksEnabled(int64_t texture_id,
+                                       bool enabled) override;
+  std::optional<FlutterError>
   SetJavaScriptDialogCallbacksEnabled(int64_t texture_id, bool alert,
                                       bool confirm, bool prompt) override;
   std::optional<FlutterError> Suspend(int64_t texture_id) override;

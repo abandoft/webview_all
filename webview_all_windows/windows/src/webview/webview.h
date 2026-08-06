@@ -8,8 +8,10 @@
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace webview_all_windows {
@@ -136,6 +138,7 @@ private:
 struct EventRegistrations {
   EventRegistrationToken source_changed_token_{};
   EventRegistrationToken content_loading_token_{};
+  EventRegistrationToken navigation_starting_token_{};
   EventRegistrationToken navigation_completed_token_{};
   EventRegistrationToken history_changed_token_{};
   EventRegistrationToken document_title_changed_token_{};
@@ -152,8 +155,6 @@ struct EventRegistrations {
   EventRegistrationToken new_windows_requested_token_{};
   EventRegistrationToken contains_fullscreen_element_changed_token_{};
   EventRegistrationToken download_starting_token_{};
-  EventRegistrationToken download_bytes_received_token_{};
-  EventRegistrationToken download_state_changed_token_{};
 };
 
 class Webview {
@@ -181,6 +182,11 @@ public:
   typedef std::function<void(const std::string &)> WebMessageReceivedCallback;
   typedef std::function<void(WebviewPermissionState state)>
       WebviewPermissionRequestedCompleter;
+  typedef std::function<void(bool allow)> WebviewNavigationRequestedCompleter;
+  typedef std::function<void(const std::string &url, bool is_user_initiated,
+                             bool is_redirected,
+                             WebviewNavigationRequestedCompleter completer)>
+      NavigationRequestedCallback;
   typedef std::function<void(bool accepted, const std::string &user,
                              const std::string &password)>
       WebviewHttpAuthRequestedCompleter;
@@ -252,6 +258,7 @@ public:
   void ClearLocalStorage(OperationCompletedCallback callback);
   bool SetCacheDisabled(bool disabled);
   void SetPopupWindowPolicy(WebviewPopupWindowPolicy policy);
+  void SetNavigationRequestCallbacksEnabled(bool enabled);
   bool SetUserAgent(const std::string *user_agent);
   std::optional<std::string> GetUserAgent();
   bool SetJavaScriptEnabled(bool enabled);
@@ -319,6 +326,10 @@ public:
     permission_requested_callback_ = std::move(callback);
   }
 
+  void OnNavigationRequested(NavigationRequestedCallback callback) {
+    navigation_requested_callback_ = std::move(callback);
+  }
+
   void OnHttpAuthRequested(HttpAuthRequestedCallback callback) {
     http_auth_requested_callback_ = std::move(callback);
   }
@@ -341,6 +352,10 @@ public:
   }
 
 private:
+  struct LifetimeState {
+    Webview *owner = nullptr;
+  };
+
   HWND hwnd_;
   bool owns_window_;
   bool is_valid_ = false;
@@ -360,8 +375,15 @@ private:
   bool java_script_alert_dialog_enabled_ = false;
   bool java_script_confirm_dialog_enabled_ = false;
   bool java_script_prompt_dialog_enabled_ = false;
+  bool navigation_request_callbacks_enabled_ = false;
+  uint64_t latest_navigation_request_id_ = 0;
+  size_t bypass_next_navigation_count_ = 0;
+  std::unordered_multiset<std::string> approved_navigation_urls_;
+  std::unordered_set<uint64_t> policy_cancelled_navigation_ids_;
   double horizontal_scroll_remainder_ = 0.0;
   double vertical_scroll_remainder_ = 0.0;
+  std::shared_ptr<LifetimeState> lifetime_state_ =
+      std::make_shared<LifetimeState>();
 
   winrt::com_ptr<ABI::Windows::UI::Composition::IVisual> surface_;
   winrt::com_ptr<ABI::Windows::UI::Composition::Desktop::IDesktopWindowTarget>
@@ -382,6 +404,7 @@ private:
   FocusChangedCallback focus_changed_callback_;
   WebMessageReceivedCallback web_message_received_callback_;
   PermissionRequestedCallback permission_requested_callback_;
+  NavigationRequestedCallback navigation_requested_callback_;
   HttpAuthRequestedCallback http_auth_requested_callback_;
   SslAuthErrorCallback ssl_auth_error_callback_;
   JavaScriptDialogRequestedCallback java_script_dialog_requested_callback_;
@@ -397,6 +420,10 @@ private:
       winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor,
       HWND hwnd, bool offscreen_only);
   void RegisterEventHandlers();
+  void InvalidatePendingNavigationRequests();
+  void MarkNavigationApproved(const std::string &url);
+  bool ConsumeApprovedNavigation(const std::string &url);
+  void ResumeNavigation(uint64_t request_id, const std::string &url);
   void EnableSecurityUpdates();
   void SendScroll(double offset, bool horizontal);
   wil::com_ptr<ICoreWebView2CookieManager> GetCookieManager();

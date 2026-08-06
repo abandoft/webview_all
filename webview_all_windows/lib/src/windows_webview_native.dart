@@ -69,6 +69,13 @@ typedef PermissionRequestedDelegate =
       bool isUserInitiated,
     );
 
+typedef NavigationRequestedDelegate =
+    FutureOr<bool> Function(
+      String url,
+      bool isUserInitiated,
+      bool isRedirected,
+    );
+
 typedef JavaScriptDialogRequestedDelegate =
     FutureOr<Map<String, Object?>?> Function(
       String dialogType,
@@ -166,6 +173,7 @@ class WebviewController extends ValueNotifier<WebviewValue> {
       );
 
   PermissionRequestedDelegate? _permissionRequested;
+  NavigationRequestedDelegate? _navigationRequested;
   JavaScriptDialogRequestedDelegate? _javaScriptDialogRequested;
   HttpAuthRequestedDelegate? _httpAuthRequested;
   SslAuthErrorRequestedDelegate? _sslAuthErrorRequested;
@@ -174,6 +182,12 @@ class WebviewController extends ValueNotifier<WebviewValue> {
     PermissionRequestedDelegate? permissionRequested,
   ) {
     _permissionRequested = permissionRequested;
+  }
+
+  void setNavigationRequestedDelegate(
+    NavigationRequestedDelegate? navigationRequested,
+  ) {
+    _navigationRequested = navigationRequested;
   }
 
   void setJavaScriptDialogRequestedDelegate(
@@ -380,6 +394,11 @@ class WebviewController extends ValueNotifier<WebviewValue> {
         if (call.method == 'sslAuthError') {
           return _onSslAuthError(call.arguments as Map<dynamic, dynamic>);
         }
+        if (call.method == 'navigationRequested') {
+          return _onNavigationRequested(
+            call.arguments as Map<dynamic, dynamic>,
+          );
+        }
 
         throw MissingPluginException('Unknown method ${call.method}');
       });
@@ -437,6 +456,20 @@ class WebviewController extends ValueNotifier<WebviewValue> {
     }
 
     return null;
+  }
+
+  Future<bool> _onNavigationRequested(Map<dynamic, dynamic> args) async {
+    final callback = _navigationRequested;
+    final url = args['url'] as String?;
+    final isUserInitiated = args['isUserInitiated'] as bool?;
+    final isRedirected = args['isRedirected'] as bool?;
+    if (callback == null ||
+        url == null ||
+        isUserInitiated == null ||
+        isRedirected == null) {
+      return false;
+    }
+    return callback(url, isUserInitiated, isRedirected);
   }
 
   WebviewPermissionKind? _webviewPermissionKindFromIndex(int index) {
@@ -525,6 +558,7 @@ class WebviewController extends ValueNotifier<WebviewValue> {
       disposalStackTrace ??= stackTrace;
     }
     _permissionRequested = null;
+    _navigationRequested = null;
     _javaScriptDialogRequested = null;
     _httpAuthRequested = null;
     _sslAuthErrorRequested = null;
@@ -757,6 +791,14 @@ class WebviewController extends ValueNotifier<WebviewValue> {
     }
     assert(value.isInitialized);
     return _hostApi.setJavaScriptEnabled(_textureId, enabled);
+  }
+
+  Future<void> setNavigationRequestCallbacksEnabled(bool enabled) async {
+    if (_isDisposed) {
+      return;
+    }
+    assert(value.isInitialized);
+    return _hostApi.setNavigationRequestCallbacksEnabled(_textureId, enabled);
   }
 
   /// Clears browser cookies.

@@ -510,12 +510,16 @@ void main() {
     );
 
     expect(mappings, hasLength(1));
-    expect(mappings.single.hostName, 'app-file.webview.flutter.dev');
-    expect(mappings.single.path, file.parent.absolute.path);
-    expect(mappings.single.accessKind, 1);
-    expect(loadUrls, <String>[
-      Uri.https('app-file.webview.flutter.dev', '/index.html').toString(),
-    ]);
+    expect(mappings.single.hostName, startsWith('app-file-'));
+    expect(mappings.single.hostName, endsWith('.webview.invalid'));
+    expect(
+      mappings.single.path,
+      File(file.resolveSymbolicLinksSync()).parent.path,
+    );
+    expect(mappings.single.accessKind, 0);
+    expect(loadUrls, hasLength(1));
+    expect(Uri.parse(loadUrls.single).host, mappings.single.hostName);
+    expect(Uri.parse(loadUrls.single).path, '/index.html');
   });
 
   test('rejects malformed request headers before native navigation', () async {
@@ -1181,6 +1185,208 @@ void main() {
     expect(executedScripts.last, contains('const value = ""'));
     expect(executedScripts.last, contains('style.remove()'));
   });
+
+  test('intercepts WebView-initiated navigation with safe decisions', () async {
+    final callbackStates = <bool>[];
+    _mockWindowsWebViewCreation(
+      onSetNavigationRequestCallbacksEnabled: callbackStates.add,
+    );
+    final controller = WindowsWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final delegate = WindowsNavigationDelegate(
+      const PlatformNavigationDelegateCreationParams(),
+    );
+    final requests = <NavigationRequest>[];
+
+    await controller.setPlatformNavigationDelegate(delegate);
+    expect(callbackStates, <bool>[false]);
+
+    await delegate.setOnNavigationRequest((NavigationRequest request) {
+      requests.add(request);
+      return request.url.endsWith('/allowed')
+          ? NavigationDecision.navigate
+          : NavigationDecision.prevent;
+    });
+    await _flushAsyncEvents();
+    expect(callbackStates, <bool>[false, true]);
+
+    expect(
+      await _invokeWindowsWebViewMethod(
+        'navigationRequested',
+        <String, Object?>{
+          'url': 'https://example.test/allowed',
+          'isUserInitiated': true,
+          'isRedirected': false,
+        },
+      ),
+      isTrue,
+    );
+    expect(
+      await _invokeWindowsWebViewMethod(
+        'navigationRequested',
+        <String, Object?>{
+          'url': 'https://example.test/blocked',
+          'isUserInitiated': false,
+          'isRedirected': true,
+        },
+      ),
+      isFalse,
+    );
+    expect(requests.map((NavigationRequest request) => request.url), <String>[
+      'https://example.test/allowed',
+      'https://example.test/blocked',
+    ]);
+    expect(
+      requests.every((NavigationRequest request) => request.isMainFrame),
+      isTrue,
+    );
+  });
+
+  test(
+    'denies WebView navigation when the application callback fails',
+    () async {
+      final List<String> messages = <String>[];
+      final DebugPrintCallback previousDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) {
+          messages.add(message);
+        }
+      };
+      addTearDown(() {
+        debugPrint = previousDebugPrint;
+      });
+
+      final controller = WindowsWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final delegate = WindowsNavigationDelegate(
+        const PlatformNavigationDelegateCreationParams(),
+      );
+      await delegate.setOnNavigationRequest((_) {
+        throw StateError('navigation failed\nsecond line');
+      });
+      await controller.setPlatformNavigationDelegate(delegate);
+
+      expect(
+        await _invokeWindowsWebViewMethod(
+          'navigationRequested',
+          <String, Object?>{
+            'url': 'https://example.test/failing',
+            'isUserInitiated': true,
+            'isRedirected': false,
+          },
+        ),
+        isFalse,
+      );
+      expect(messages, hasLength(1));
+      expect(messages.single, contains('navigation request failed'));
+      expect(messages.single, isNot(contains('\n')));
+    },
+  );
+
+  test(
+    'uses encoded JavaScript channel names in the current document',
+    () async {
+      final addedScripts = <String>[];
+      final removedScripts = <String>[];
+      final executedScripts = <String>[];
+      _mockWindowsWebViewCreation(
+        onAddScript: (String script) {
+          addedScripts.add(script);
+          return 'channel-script';
+        },
+        onRemoveScript: removedScripts.add,
+        onExecuteScript: (String script) {
+          executedScripts.add(script);
+          return 'null';
+        },
+      );
+      final controller = WindowsWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      const String channelName = 'channel-name"\\line';
+
+      await controller.addJavaScriptChannel(
+        JavaScriptChannelParams(name: channelName, onMessageReceived: (_) {}),
+      );
+
+      expect(addedScripts, hasLength(1));
+      expect(addedScripts.single, contains('window[channelName]'));
+      expect(addedScripts.single, contains(jsonEncode(channelName)));
+      expect(addedScripts.single, isNot(contains('window.$channelName')));
+      expect(executedScripts.single, addedScripts.single);
+
+      await controller.removeJavaScriptChannel(channelName);
+      expect(removedScripts, <String>['channel-script']);
+      expect(
+        executedScripts.last,
+        'delete window[${jsonEncode(channelName)}];',
+      );
+    },
+  );
+
+  test('escapes base URLs inserted into HTML', () async {
+    final contents = <String>[];
+    _mockWindowsWebViewCreation(onLoadStringContent: contents.add);
+    final controller = WindowsWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+
+    await controller.loadHtmlString(
+      '<html><head></head><body></body></html>',
+      baseUrl: 'https://example.test/?q="x"&next=<value>',
+    );
+
+    expect(contents, hasLength(1));
+    expect(
+      contents.single,
+      contains(
+        '<base href="https://example.test/?q=&quot;x&quot;&amp;next=&lt;value&gt;">',
+      ),
+    );
+  });
+
+  test('clears managed local mappings before remote navigation', () async {
+    final mappings = <WindowsVirtualHostMappingData>[];
+    final clearedHosts = <String>[];
+    _mockWindowsWebViewCreation(
+      onSetVirtualHostNameMapping: mappings.add,
+      onClearVirtualHostNameMapping: clearedHosts.add,
+    );
+    final Directory tempDir = Directory.systemTemp.createTempSync(
+      'webview_all_windows_mapping_test_',
+    );
+    addTearDown(() => tempDir.deleteSync(recursive: true));
+    final File file = File('${tempDir.path}/index.html')
+      ..writeAsStringSync('<html></html>');
+    final controller = WindowsWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+
+    await controller.loadFile(file.absolute.path);
+    await controller.loadRequest(
+      LoadRequestParams(uri: Uri.parse('https://example.test/remote')),
+    );
+
+    expect(mappings, hasLength(1));
+    expect(clearedHosts, <String>[mappings.single.hostName]);
+  });
+
+  test('rejects relative file paths and traversing asset keys', () async {
+    final controller = WindowsWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+
+    await expectLater(
+      () => controller.loadFile('relative.html'),
+      throwsArgumentError,
+    );
+    await expectLater(
+      () => controller.loadFlutterAsset('../outside.html'),
+      throwsArgumentError,
+    );
+  });
 }
 
 void _mockWindowsWebViewCreation({
@@ -1188,8 +1394,10 @@ void _mockWindowsWebViewCreation({
   void Function()? onOpenWebView2DownloadPage,
   void Function(WindowsLoadRequestData request)? onLoadRequest,
   void Function(String url)? onLoadUrl,
+  void Function(String content)? onLoadStringContent,
   void Function(WindowsVirtualHostMappingData mapping)?
   onSetVirtualHostNameMapping,
+  void Function(String hostName)? onClearVirtualHostNameMapping,
   String? Function(String script)? onAddScript,
   void Function(String scriptId)? onRemoveScript,
   String Function(String script)? onExecuteScript,
@@ -1198,6 +1406,7 @@ void _mockWindowsWebViewCreation({
   void Function()? onClearLocalStorage,
   void Function(bool enabled)? onSetJavaScriptEnabled,
   void Function(bool enabled)? onSetZoomControlEnabled,
+  void Function(bool enabled)? onSetNavigationRequestCallbacksEnabled,
   void Function()? onDisposeWebView,
   void Function({
     required bool alert,
@@ -1235,6 +1444,14 @@ void _mockWindowsWebViewCreation({
   ) async {
     return _encodePigeonSuccess();
   });
+  messenger.setMockMessageHandler(
+    _hostApiChannel('setNavigationRequestCallbacksEnabled'),
+    (ByteData? message) async {
+      final args = _decodePigeonArgs(message);
+      onSetNavigationRequestCallbacksEnabled?.call(args[1]! as bool);
+      return _encodePigeonSuccess();
+    },
+  );
   messenger.setMockMessageHandler(_hostApiChannel('loadRequest'), (
     ByteData? message,
   ) async {
@@ -1249,6 +1466,13 @@ void _mockWindowsWebViewCreation({
     onLoadUrl?.call(args[1]! as String);
     return _encodePigeonSuccess();
   });
+  messenger.setMockMessageHandler(_hostApiChannel('loadStringContent'), (
+    ByteData? message,
+  ) async {
+    final args = _decodePigeonArgs(message);
+    onLoadStringContent?.call(args[1]! as String);
+    return _encodePigeonSuccess();
+  });
   messenger.setMockMessageHandler(
     _hostApiChannel('setVirtualHostNameMapping'),
     (ByteData? message) async {
@@ -1256,6 +1480,14 @@ void _mockWindowsWebViewCreation({
       onSetVirtualHostNameMapping?.call(
         args[1]! as WindowsVirtualHostMappingData,
       );
+      return _encodePigeonSuccess();
+    },
+  );
+  messenger.setMockMessageHandler(
+    _hostApiChannel('clearVirtualHostNameMapping'),
+    (ByteData? message) async {
+      final args = _decodePigeonArgs(message);
+      onClearVirtualHostNameMapping?.call(args[1]! as String);
       return _encodePigeonSuccess();
     },
   );
@@ -1360,10 +1592,19 @@ void _clearWindowsWebViewCreationMock() {
     _hostApiChannel('setPopupWindowPolicy'),
     null,
   );
+  messenger.setMockMessageHandler(
+    _hostApiChannel('setNavigationRequestCallbacksEnabled'),
+    null,
+  );
   messenger.setMockMessageHandler(_hostApiChannel('loadRequest'), null);
   messenger.setMockMessageHandler(_hostApiChannel('loadUrl'), null);
+  messenger.setMockMessageHandler(_hostApiChannel('loadStringContent'), null);
   messenger.setMockMessageHandler(
     _hostApiChannel('setVirtualHostNameMapping'),
+    null,
+  );
+  messenger.setMockMessageHandler(
+    _hostApiChannel('clearVirtualHostNameMapping'),
     null,
   );
   messenger.setMockMessageHandler(
