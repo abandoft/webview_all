@@ -71,11 +71,13 @@ await WindowsWebViewController.initializeEnvironment(
 sudo apt install libwebkit2gtk-4.1-dev
 ```
 
-Linux平台需要修改代码使得 `WebViewWidget` 能在 `GtkOverlay` 正确加载。
+`webview_all` 1.2.x 的 Linux runner 需要提供 `GtkOverlay`，以便
+`WebViewWidget` 正确加载。1.3 及更高版本不再需要手动修改 runner。
 
-编辑您项目里的 `linux/runner/my_application.cc` 即可：
+编辑应用项目中的 `linux/runner/my_application.cc`：
 
-1. 在靠前的位置添加函数:
+1. 确保文件靠前的位置存在以下回调。如果生成的 runner 已经包含该回调，
+   不要重复添加：
 
 ```cpp
 static void first_frame_cb(MyApplication* self, FlView* view) {
@@ -83,7 +85,7 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
 }
 ```
 
-2. 找到以下代码:
+2. 在 `my_application_activate` 中找到以下代码：
 
 ```cpp
   g_autoptr(FlDartProject) project = fl_dart_project_new();
@@ -99,7 +101,10 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 ```
 
-替换为:
+不同 Flutter 版本生成的 runner 可能会在 `fl_view_new` 后包含背景色或尺寸
+设置；替换时应保留这些附加设置。
+
+3. 将该段代码替换为：
 
 ```cpp
   g_autoptr(FlDartProject) project = fl_dart_project_new();
@@ -119,6 +124,9 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 ```
+
+如果生成的 runner 已经连接了 `"first-frame"` 信号或调用了
+`gtk_widget_realize`，每项只保留一处。
 
 ## OHOS
 

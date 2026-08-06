@@ -74,9 +74,15 @@ Install WebKitGTK 4.1 development/runtime packages for your distribution. On Ubu
 sudo apt-get install libwebkit2gtk-4.1-dev
 ```
 
-The Linux implementation positions a native WebKitGTK widget above the Flutter view. The runner must use a `GtkOverlay` so Flutter and the native view can share the window.
+The Linux implementation positions a native WebKitGTK widget above the Flutter
+view. In `webview_all` 1.2.x, the runner must provide a `GtkOverlay` so Flutter
+and the native view can share the window. This manual runner change is not
+required in 1.3 or later.
 
-Add this callback near the top of `linux/runner/my_application.cc`:
+Edit your application's `linux/runner/my_application.cc`.
+
+1. Ensure that this callback exists near the top of the file. Do not add a
+   second copy if the generated runner already contains it:
 
 ```cpp
 static void first_frame_cb(MyApplication* self, FlView* view) {
@@ -84,22 +90,48 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
 }
 ```
 
-Replace the default view/window attachment with:
+2. In `my_application_activate`, find the following block:
 
 ```cpp
-FlView* view = fl_view_new(project);
-gtk_widget_show(GTK_WIDGET(view));
+  g_autoptr(FlDartProject) project = fl_dart_project_new();
+  fl_dart_project_set_dart_entrypoint_arguments(
+      project, self->dart_entrypoint_arguments);
 
-GtkWidget* overlay = gtk_overlay_new();
-gtk_widget_show(overlay);
-gtk_container_add(GTK_CONTAINER(overlay), GTK_WIDGET(view));
-gtk_container_add(GTK_CONTAINER(window), overlay);
+  gtk_widget_show(GTK_WIDGET(window));
 
-g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb), self);
-gtk_widget_realize(GTK_WIDGET(view));
+  FlView* view = fl_view_new(project);
+  gtk_widget_show(GTK_WIDGET(view));
+  gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
-fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+  fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 ```
+
+Flutter runner templates can include extra background-color or sizing calls
+after `fl_view_new`. Keep those calls when applying the replacement.
+
+3. Replace that block with:
+
+```cpp
+  g_autoptr(FlDartProject) project = fl_dart_project_new();
+  fl_dart_project_set_dart_entrypoint_arguments(
+      project, self->dart_entrypoint_arguments);
+
+  FlView* view = fl_view_new(project);
+  gtk_widget_show(GTK_WIDGET(view));
+
+  GtkWidget* overlay = gtk_overlay_new();
+  gtk_widget_show(overlay);
+  gtk_container_add(GTK_CONTAINER(overlay), GTK_WIDGET(view));
+  gtk_container_add(GTK_CONTAINER(window), overlay);
+
+  g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb), self);
+  gtk_widget_realize(GTK_WIDGET(view));
+
+  fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+```
+
+If the generated runner already connects the `"first-frame"` signal or calls
+`gtk_widget_realize`, keep only one copy of each statement.
 
 ## OHOS
 
