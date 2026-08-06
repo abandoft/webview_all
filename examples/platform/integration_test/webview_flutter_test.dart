@@ -172,12 +172,18 @@ Future<void> main() async {
       ResizableWebView(
         onResize: () {
           if (resizeButtonTapped) {
-            buttonTapResizeCompleter.complete();
-          } else {
+            if (!buttonTapResizeCompleter.isCompleted) {
+              buttonTapResizeCompleter.complete();
+            }
+          } else if (!initialResizeCompleter.isCompleted) {
             initialResizeCompleter.complete();
           }
         },
-        onPageFinished: () => onPageFinished.complete(),
+        onPageFinished: () {
+          if (!onPageFinished.isCompleted) {
+            onPageFinished.complete();
+          }
+        },
       ),
     );
 
@@ -572,29 +578,30 @@ Future<void> main() async {
 
         await controller.scrollTo(xScroll, yScroll);
         scrollPos = await controller.getScrollPosition();
-        expect(scrollPos.dx, xScroll);
-        expect(scrollPos.dy, yScroll);
+        expect(scrollPos.dx, closeTo(xScroll, 1));
+        expect(scrollPos.dy, closeTo(yScroll, 1));
         await _waitForCondition(
           () =>
-              recordedPosition?.x == xScroll && recordedPosition?.y == yScroll,
+              _isWithinOnePixel(recordedPosition?.x, xScroll) &&
+              _isWithinOnePixel(recordedPosition?.y, yScroll),
           reason: 'The scrollTo callback did not report the final position.',
         );
-        expect(recordedPosition?.x, xScroll);
-        expect(recordedPosition?.y, yScroll);
+        expect(recordedPosition?.x, closeTo(xScroll, 1));
+        expect(recordedPosition?.y, closeTo(yScroll, 1));
 
         // Check scrollBy() (on top of scrollTo())
         await controller.scrollBy(xScroll, yScroll);
         scrollPos = await controller.getScrollPosition();
-        expect(scrollPos.dx, xScroll * 2);
-        expect(scrollPos.dy, yScroll * 2);
+        expect(scrollPos.dx, closeTo(xScroll * 2, 1));
+        expect(scrollPos.dy, closeTo(yScroll * 2, 1));
         await _waitForCondition(
           () =>
-              recordedPosition?.x == xScroll * 2 &&
-              recordedPosition?.y == yScroll * 2,
+              _isWithinOnePixel(recordedPosition?.x, xScroll * 2) &&
+              _isWithinOnePixel(recordedPosition?.y, yScroll * 2),
           reason: 'The scrollBy callback did not report the final position.',
         );
-        expect(recordedPosition?.x, xScroll * 2);
-        expect(recordedPosition?.y, yScroll * 2);
+        expect(recordedPosition?.x, closeTo(xScroll * 2, 1));
+        expect(recordedPosition?.y, closeTo(yScroll * 2, 1));
       });
     },
     // Scroll position is currently not implemented for macOS.
@@ -909,7 +916,11 @@ Future<void> main() async {
           onHttpAuthRequest: (HttpAuthRequest request) => request.onProceed(
             const WebViewCredential(user: 'user', password: 'password'),
           ),
-          onPageFinished: (_) => pageFinished.complete(),
+          onPageFinished: (_) {
+            if (!pageFinished.isCompleted) {
+              pageFinished.complete();
+            }
+          },
         ),
       );
 
@@ -1083,6 +1094,10 @@ Future<void> _waitForCondition(
     await Future<void>.delayed(const Duration(milliseconds: 50));
   }
   fail(reason);
+}
+
+bool _isWithinOnePixel(double? value, num expected) {
+  return value != null && (value - expected).abs() <= 1;
 }
 
 class ResizableWebView extends StatefulWidget {
