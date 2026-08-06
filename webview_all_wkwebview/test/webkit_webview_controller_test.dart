@@ -1235,8 +1235,61 @@ void main() {
                 mockUserContentController.addUserScript(captureAny),
               ).captured.single
               as WKUserScript;
-      expect(userScript.source, 'window.name = webkit.messageHandlers.name;');
+      expect(
+        userScript.source,
+        'window["name"] = window.webkit.messageHandlers["name"];',
+      );
       expect(userScript.injectionTime, UserScriptInjectionTime.atDocumentStart);
+    });
+
+    test('addJavaScriptChannel safely encodes arbitrary names', () async {
+      PigeonOverrides.wKScriptMessageHandler_new =
+          ({
+            required void Function(
+              WKScriptMessageHandler,
+              WKUserContentController,
+              WKScriptMessage,
+            )
+            didReceiveScriptMessage,
+            dynamic observeValue,
+          }) {
+            return WKScriptMessageHandler.pigeon_detached(
+              didReceiveScriptMessage: didReceiveScriptMessage,
+            );
+          };
+      final mockUserContentController = MockWKUserContentController();
+      final WebKitWebViewController controller = createControllerWithMocks(
+        mockUserContentController: mockUserContentController,
+      );
+
+      await controller.addJavaScriptChannel(
+        JavaScriptChannelParams(
+          name: 'channel-name',
+          onMessageReceived: (_) {},
+        ),
+      );
+
+      final WKUserScript userScript =
+          verify(
+                mockUserContentController.addUserScript(captureAny),
+              ).captured.single
+              as WKUserScript;
+      expect(
+        userScript.source,
+        'window["channel-name"] = '
+        'window.webkit.messageHandlers["channel-name"];',
+      );
+    });
+
+    test('addJavaScriptChannel rejects an empty name', () async {
+      final WebKitWebViewController controller = createControllerWithMocks();
+
+      await expectLater(
+        controller.addJavaScriptChannel(
+          JavaScriptChannelParams(name: '', onMessageReceived: (_) {}),
+        ),
+        throwsArgumentError,
+      );
     });
 
     test('addJavaScriptChannel requires channel with a unique name', () async {
@@ -1436,7 +1489,10 @@ void main() {
                 mockUserContentController.addUserScript(captureAny),
               ).captured.single
               as WKUserScript;
-      expect(userScript.source, 'window.name2 = webkit.messageHandlers.name2;');
+      expect(
+        userScript.source,
+        'window["name2"] = window.webkit.messageHandlers["name2"];',
+      );
       expect(userScript.injectionTime, UserScriptInjectionTime.atDocumentStart);
 
       await controller.removeJavaScriptChannel('name2');
@@ -2074,7 +2130,8 @@ void main() {
           );
           expect(
             messageHandlerScript.source,
-            'window.fltConsoleMessage = webkit.messageHandlers.fltConsoleMessage;',
+            'window["fltConsoleMessage"] = '
+            'window.webkit.messageHandlers["fltConsoleMessage"];',
           );
 
           expect(overrideConsoleScript.isForMainFrameOnly, isTrue);

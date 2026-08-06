@@ -534,6 +534,13 @@ class WebKitWebViewController extends PlatformWebViewController {
     JavaScriptChannelParams javaScriptChannelParams,
   ) async {
     final String channelName = javaScriptChannelParams.name;
+    if (channelName.isEmpty) {
+      throw ArgumentError.value(
+        channelName,
+        'javaScriptChannelParams.name',
+        'JavaScript channel names must not be empty.',
+      );
+    }
     if (_javaScriptChannelParams.containsKey(channelName)) {
       throw ArgumentError(
         'A JavaScriptChannel with name `$channelName` already exists.',
@@ -549,8 +556,9 @@ class WebKitWebViewController extends PlatformWebViewController {
 
     _javaScriptChannelParams[webKitParams.name] = webKitParams;
 
+    final String encodedName = jsonEncode(webKitParams.name);
     final wrapperSource =
-        'window.${webKitParams.name} = webkit.messageHandlers.${webKitParams.name};';
+        'window[$encodedName] = window.webkit.messageHandlers[$encodedName];';
     final wrapperScript = WKUserScript(
       source: wrapperSource,
       injectionTime: UserScriptInjectionTime.atDocumentStart,
