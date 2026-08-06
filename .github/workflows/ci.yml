@@ -1,9 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
   workflow_dispatch:
 
@@ -225,8 +222,14 @@ jobs:
           flutter test integration_test/webview_flutter_test.dart -d macos
 
   linux:
-    name: Linux native build
+    name: Linux native build and integration (${{ matrix.flutter }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter:
+          - 3.35.7
+          - 3.44.x
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -234,12 +237,12 @@ jobs:
       - name: Install native dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libgtk-3-dev libwebkit2gtk-4.1-dev ninja-build
+          sudo apt-get install --yes libgtk-3-dev libwebkit2gtk-4.1-dev ninja-build xvfb
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.35.7
+          flutter-version: ${{ matrix.flutter }}
           channel: stable
           cache: true
 
@@ -250,9 +253,22 @@ jobs:
           flutter pub get
           flutter build linux --debug
 
+      - name: Run Linux integration tests
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: |
+          xvfb-run -a env WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+            flutter test integration_test/webview_flutter_test.dart -d linux
+
   windows:
-    name: Windows native build
+    name: Windows native build and integration (${{ matrix.flutter }})
     runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter:
+          - 3.35.7
+          - 3.44.x
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -260,7 +276,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.35.7
+          flutter-version: ${{ matrix.flutter }}
           channel: stable
           cache: true
 
@@ -270,3 +286,8 @@ jobs:
           flutter config --enable-windows-desktop
           flutter pub get
           flutter build windows --debug
+
+      - name: Run Windows integration tests
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_flutter_test.dart -d windows
