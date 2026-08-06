@@ -386,8 +386,27 @@ void main() {
     expect(calls, hasLength(1));
     expect(calls.single.method, 'loadFile');
     expect(calls.single.arguments, <String, Object?>{
-      'path': file.absolute.path,
+      'path': file.resolveSymbolicLinksSync(),
     });
+  });
+
+  test('rejects relative files and traversing asset keys', () async {
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+
+    await expectLater(
+      controller.loadFile('relative/index.html'),
+      throwsArgumentError,
+    );
+    for (final String key in <String>[
+      '../pubspec.yaml',
+      'docs/../../pubspec.yaml',
+      '/absolute.html',
+      r'docs\index.html',
+    ]) {
+      await expectLater(controller.loadFlutterAsset(key), throwsArgumentError);
+    }
   });
 
   test('clears local storage through the native WebKit data manager', () async {

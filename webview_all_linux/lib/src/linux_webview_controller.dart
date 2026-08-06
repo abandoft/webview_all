@@ -200,6 +200,13 @@ class LinuxWebViewController extends PlatformWebViewController {
 
   @override
   Future<void> loadFile(String absoluteFilePath) async {
+    if (!path.isAbsolute(absoluteFilePath)) {
+      throw ArgumentError.value(
+        absoluteFilePath,
+        'absoluteFilePath',
+        'Path must be absolute.',
+      );
+    }
     final File file = File(absoluteFilePath);
     if (!file.existsSync()) {
       throw ArgumentError.value(
@@ -208,10 +215,9 @@ class LinuxWebViewController extends PlatformWebViewController {
         'File does not exist.',
       );
     }
+    final String canonicalPath = file.resolveSymbolicLinksSync();
 
-    await _invoke<void>('loadFile', <String, Object?>{
-      'path': file.absolute.path,
-    });
+    await _invoke<void>('loadFile', <String, Object?>{'path': canonicalPath});
   }
 
   @override
@@ -227,7 +233,19 @@ class LinuxWebViewController extends PlatformWebViewController {
       throw ArgumentError.value(key, 'key', 'Asset for key "$key" not found.');
     }
 
-    await loadFile(assetPath);
+    final String assetRoot = Directory(
+      _flutterAssetsRootPath,
+    ).resolveSymbolicLinksSync();
+    final String canonicalAssetPath = file.resolveSymbolicLinksSync();
+    if (!path.isWithin(assetRoot, canonicalAssetPath)) {
+      throw ArgumentError.value(
+        key,
+        'key',
+        'Asset resolves outside the Flutter asset directory.',
+      );
+    }
+
+    await loadFile(canonicalAssetPath);
   }
 
   @override
@@ -652,13 +670,30 @@ class LinuxWebViewController extends PlatformWebViewController {
     }
   }
 
-  String _resolveFlutterAssetPath(String key) {
+  String get _flutterAssetsRootPath {
     return path.joinAll(<String>[
       path.dirname(Platform.resolvedExecutable),
       'data',
       'flutter_assets',
-      ...key.split('/'),
     ]);
+  }
+
+  String _resolveFlutterAssetPath(String key) {
+    final List<String> segments = key.split('/');
+    if (key.isEmpty ||
+        key.startsWith('/') ||
+        key.contains(r'\') ||
+        segments.any(
+          (String segment) =>
+              segment.isEmpty || segment == '.' || segment == '..',
+        )) {
+      throw ArgumentError.value(
+        key,
+        'key',
+        'Asset key must be a normalized relative path.',
+      );
+    }
+    return path.joinAll(<String>[_flutterAssetsRootPath, ...segments]);
   }
 }
 
