@@ -1,3 +1,12 @@
+## 1.3.4
+
+* Apply Windows navigation decisions to page-initiated main-frame loads and same-window popups while preserving controller request methods, headers, and bodies.
+* Isolate Windows local files and assets behind private per-controller hosts, reject unsafe paths, clear stale mappings, and improve WebView2 decision and download callback reliability.
+* Preserve exact binary response bytes and final redirect URLs on Web, and bound retained response history by both entry count and total size.
+* Complete OHOS bridge object release handshakes and safely finish stale permission, authentication, dialog, and custom-view callbacks instead of leaking or crashing.
+* Contain Android and OHOS navigation callback failures, harden JavaScript channel names on supported platforms, and reject unsafe Linux file and asset paths.
+* Keep Windows native builds on C++17 without imposing C++20 or legacy coroutine flags on applications.
+
 ## 1.3.3
 
 * Prevent Windows WebView2 from blocking when application callbacks fail or do not complete, using safe defaults to keep the WebView running.

@@ -1,3 +1,12 @@
+## 1.3.4
+
+* Windows 导航策略覆盖页面触发的主 frame 加载和同窗口 popup，同时保留 controller 请求的 method、headers 和 body。
+* Windows 本地文件和 asset 使用每个 controller 独立的私有 host，拒绝不安全路径并清理过期映射，同时提高 WebView2 决策和下载回调的可靠性。
+* Web 保留响应的原始二进制字节和 redirect 后的最终 URL，并按条目数与总大小共同限制响应 history。
+* 补齐 OHOS bridge 对象释放确认，过期的权限、认证、对话框和自定义视图回调会安全结束，不再泄漏或崩溃。
+* 隔离 Android 与 OHOS 导航回调失败，加强各平台 JavaScript channel 名称安全，并拒绝 Linux 不安全的文件和 asset 路径。
+* Windows 原生构建保持使用 C++17，不再要求应用支持 C++20 或旧式协程参数。
+
 ## 1.3.3
 
 * 避免 Windows WebView2 在应用回调失败或未完成时长期阻塞，并使用安全默认行为保持 WebView 运行。
