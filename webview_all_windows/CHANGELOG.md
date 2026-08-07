@@ -1,3 +1,7 @@
+## 1.3.5
+
+* Refine documentation details.
+
 ## 1.3.4
 
 * Apply Linux media gesture settings to modern WebKitGTK autoplay policies and reliably open page-requested windows in the current WebView.
