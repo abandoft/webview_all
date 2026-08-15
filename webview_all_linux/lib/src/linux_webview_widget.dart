@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
@@ -39,17 +38,40 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
     with WidgetsBindingObserver {
   Rect _lastRect = Rect.zero;
   bool _attached = false;
+  bool _applicationVisible = true;
+  bool _visibilityCheckScheduled = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _applicationVisible = _isApplicationVisible(
+      WidgetsBinding.instance.lifecycleState,
+    );
   }
 
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
-    _setFrameSafely(widget.controller, _lastRect, visible: _attached);
+    _markGeometryNeedsUpdate();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    final bool applicationVisible = _isApplicationVisible(state);
+    if (_applicationVisible == applicationVisible) {
+      return;
+    }
+    _applicationVisible = applicationVisible;
+    if (applicationVisible) {
+      // Keep the native view hidden until Flutter paints its current geometry.
+      // The window may have moved or resized while the app was suspended.
+      _attached = false;
+      _markGeometryNeedsUpdate();
+    } else {
+      _syncFrame(widget.controller);
+    }
   }
 
   @override
@@ -60,12 +82,11 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
     }
 
     final Rect currentRect = _lastRect;
-    final bool isVisible = _attached;
     _setFrameSafely(oldWidget.controller, Rect.zero, visible: false);
     _setFrameSafely(
       widget.controller,
-      isVisible ? currentRect : Rect.zero,
-      visible: isVisible,
+      _attached && _applicationVisible ? currentRect : Rect.zero,
+      visible: _attached && _applicationVisible,
     );
   }
 
@@ -79,7 +100,55 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
   void _pushRect(Rect rect, {required bool visible}) {
     _lastRect = rect;
     _attached = visible;
-    _setFrameSafely(widget.controller, rect, visible: visible);
+    _syncFrame(widget.controller);
+    if (visible) {
+      _scheduleVisibilityCheck();
+    }
+  }
+
+  void _syncFrame(LinuxWebViewController controller) {
+    final bool visible = _attached && _applicationVisible;
+    _setFrameSafely(
+      controller,
+      visible ? _lastRect : Rect.zero,
+      visible: visible,
+    );
+  }
+
+  void _markGeometryNeedsUpdate() {
+    if (!mounted) {
+      return;
+    }
+    context.findRenderObject()?.markNeedsPaint();
+    // A lifecycle transition does not guarantee another Flutter frame. Make
+    // sure the native view is restored without waiting for unrelated UI work.
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  void _scheduleVisibilityCheck() {
+    if (_visibilityCheckScheduled || !_attached || !_applicationVisible) {
+      return;
+    }
+    _visibilityCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      _visibilityCheckScheduled = false;
+      if (!mounted || !_attached || !_applicationVisible) {
+        return;
+      }
+      final RenderObject? renderObject = context.findRenderObject();
+      if (renderObject is _LinuxGeometryRenderBox &&
+          !renderObject.isEffectivelyPainted) {
+        _pushRect(Rect.zero, visible: false);
+        return;
+      }
+      _scheduleVisibilityCheck();
+    });
+  }
+
+  static bool _isApplicationVisible(AppLifecycleState? state) {
+    return state == null ||
+        state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive;
   }
 
   void _setFrameSafely(
@@ -165,6 +234,30 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
 
   ValueChanged<Rect> _onGeometryChanged;
   VoidCallback _onDetached;
+  bool _reportedUnsupportedTransform = false;
+
+  bool get isEffectivelyPainted {
+    RenderObject child = this;
+    RenderObject? ancestor = parent;
+    while (ancestor != null) {
+      if (!ancestor.paintsChild(child)) {
+        return false;
+      }
+      child = ancestor;
+      ancestor = ancestor.parent;
+    }
+    return true;
+  }
+
+  RenderView? get _renderView {
+    RenderObject root = this;
+    RenderObject? ancestor = parent;
+    while (ancestor != null) {
+      root = ancestor;
+      ancestor = ancestor.parent;
+    }
+    return root is RenderView ? root : null;
+  }
 
   set onGeometryChanged(ValueChanged<Rect> value) {
     _onGeometryChanged = value;
@@ -186,18 +279,55 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
     if (!attached) {
       return;
     }
-    final Matrix4 transform = getTransformTo(null);
+    if (!isEffectivelyPainted) {
+      _onGeometryChanged(Rect.zero);
+      return;
+    }
+    final RenderView? renderView = _renderView;
+    final RenderBox? renderRoot = renderView?.child;
+    if (renderView == null || renderRoot == null) {
+      _onGeometryChanged(Rect.zero);
+      return;
+    }
+    // GTK and RenderView layout both use logical pixels. Targeting the
+    // RenderView child deliberately excludes RenderView's root DPR transform.
+    final Matrix4 transform = getTransformTo(renderRoot);
     final Offset topLeft = MatrixUtils.transformPoint(transform, Offset.zero);
+    final Offset topRight = MatrixUtils.transformPoint(
+      transform,
+      Offset(size.width, 0),
+    );
+    final Offset bottomLeft = MatrixUtils.transformPoint(
+      transform,
+      Offset(0, size.height),
+    );
     final Offset bottomRight = MatrixUtils.transformPoint(
       transform,
       Offset(size.width, size.height),
     );
-    final Rect rect = Rect.fromLTRB(
-      math.min(topLeft.dx, bottomRight.dx),
-      math.min(topLeft.dy, bottomRight.dy),
-      math.max(topLeft.dx, bottomRight.dx),
-      math.max(topLeft.dy, bottomRight.dy),
-    );
-    _onGeometryChanged(rect);
+    const double epsilon = 0.000001;
+    final bool translationOnly =
+        (topLeft.dy - topRight.dy).abs() <= epsilon &&
+        (topLeft.dx - bottomLeft.dx).abs() <= epsilon &&
+        (topRight.dx - bottomRight.dx).abs() <= epsilon &&
+        (bottomLeft.dy - bottomRight.dy).abs() <= epsilon &&
+        ((topRight.dx - topLeft.dx) - size.width).abs() <= epsilon &&
+        ((bottomLeft.dy - topLeft.dy) - size.height).abs() <= epsilon;
+    if (!translationOnly) {
+      if (!_reportedUnsupportedTransform) {
+        debugPrint(
+          'webview_all_linux: scaled, rotated, skewed, perspective, and '
+          'mirrored WebViewWidget transforms cannot be represented by a '
+          'native GTK overlay; the native WebView was hidden.',
+        );
+        _reportedUnsupportedTransform = true;
+      }
+      _onGeometryChanged(Rect.zero);
+      return;
+    }
+
+    final Rect rect = Rect.fromPoints(topLeft, bottomRight);
+    final Rect viewport = Offset.zero & renderView.size;
+    _onGeometryChanged(rect.overlaps(viewport) ? rect : Rect.zero);
   }
 }

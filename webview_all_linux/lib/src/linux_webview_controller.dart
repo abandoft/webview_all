@@ -65,6 +65,7 @@ class LinuxWebViewController extends PlatformWebViewController {
   bool _canGoBack = false;
   bool _canGoForward = false;
   bool _disposed = false;
+  int _frameSequence = 0;
   Future<void>? _disposeFuture;
 
   void Function(JavaScriptConsoleMessage consoleMessage)? _onConsoleMessage;
@@ -538,12 +539,14 @@ class LinuxWebViewController extends PlatformWebViewController {
   }
 
   Future<void> setFrame(Rect rect, {required bool visible}) {
+    final int sequence = ++_frameSequence;
     return _invoke<void>('setFrame', <String, Object?>{
       'x': rect.left,
       'y': rect.top,
       'width': rect.width,
       'height': rect.height,
       'visible': visible,
+      'sequence': sequence,
     });
   }
 

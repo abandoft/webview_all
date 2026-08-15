@@ -3,12 +3,12 @@
 
 #include <libsoup/soup.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace {
-
-constexpr const gchar *kLinuxWebViewInstanceKey = "webview_all_linux_instance";
 
 typedef struct {
   WebKitWebView *web_view;
@@ -17,6 +17,31 @@ typedef struct {
   SoupMessage *message;
   gchar *url;
 } PendingSoupLoadRequest;
+
+double clamp_double(double value, double minimum, double maximum) {
+  return std::max(minimum, std::min(value, maximum));
+}
+
+gint floor_to_gint(double value) {
+  if (!std::isfinite(value)) {
+    return 0;
+  }
+  const double minimum = static_cast<double>(std::numeric_limits<gint>::min());
+  const double maximum = static_cast<double>(std::numeric_limits<gint>::max());
+  return static_cast<gint>(std::floor(clamp_double(value, minimum, maximum)));
+}
+
+gint frame_extent(double origin, double extent, gint rounded_origin) {
+  if (!std::isfinite(origin) || !std::isfinite(extent) || extent <= 0) {
+    return 0;
+  }
+  const double maximum = static_cast<double>(std::numeric_limits<gint>::max());
+  const double rounded_edge =
+      std::ceil(clamp_double(origin + extent, -maximum, maximum));
+  const double rounded_extent =
+      rounded_edge - static_cast<double>(rounded_origin);
+  return static_cast<gint>(clamp_double(rounded_extent, 0.0, maximum));
+}
 
 void append_header_to_map(const char *name, const char *value,
                           gpointer user_data) {
@@ -315,31 +340,37 @@ void instance_method_call_cb(FlMethodChannel *channel,
 
   if (strcmp(method, "setFrame") == 0) {
     GtkWidget *widget = GTK_WIDGET(webview->web_view);
+    const gint64 frame_sequence =
+        map_lookup_int(args, "sequence", webview->frame_sequence + 1);
+    if (frame_sequence <= webview->frame_sequence) {
+      respond(method_call, success_response());
+      return;
+    }
+    webview->frame_sequence = frame_sequence;
     const double x = map_lookup_double(args, "x", 0);
     const double y = map_lookup_double(args, "y", 0);
     const double width = map_lookup_double(args, "width", 0);
     const double height = map_lookup_double(args, "height", 0);
-    webview->frame_x = std::isfinite(x) ? static_cast<gint>(x) : 0;
-    webview->frame_y = std::isfinite(y) ? static_cast<gint>(y) : 0;
-    webview->frame_width =
-        std::isfinite(width) && width > 0 ? static_cast<gint>(width) : 0;
-    webview->frame_height =
-        std::isfinite(height) && height > 0 ? static_cast<gint>(height) : 0;
+    webview->frame_x = floor_to_gint(x);
+    webview->frame_y = floor_to_gint(y);
+    webview->frame_width = frame_extent(x, width, webview->frame_x);
+    webview->frame_height = frame_extent(y, height, webview->frame_y);
     webview->visible = map_lookup_bool(args, "visible", TRUE) &&
                        webview->frame_width > 0 && webview->frame_height > 0;
     gtk_widget_set_halign(widget, GTK_ALIGN_START);
     gtk_widget_set_valign(widget, GTK_ALIGN_START);
-    gtk_widget_set_margin_start(widget, webview->frame_x);
-    gtk_widget_set_margin_top(widget, webview->frame_y);
     gtk_widget_set_size_request(widget, webview->frame_width,
                                 webview->frame_height);
+    if (webview->plugin->overlay != nullptr) {
+      gtk_widget_queue_resize(GTK_WIDGET(webview->plugin->overlay));
+    }
     if (webview->visible) {
       gtk_widget_show(widget);
-      gtk_widget_grab_focus(widget);
     } else {
+      release_linux_webview_focus(webview);
       gtk_widget_hide(widget);
     }
-    update_flutter_view_input_region(webview->plugin);
+    schedule_flutter_view_input_region_update(webview->plugin);
     respond(method_call, success_response());
     return;
   }
@@ -880,9 +911,10 @@ void instance_method_call_cb(FlMethodChannel *channel,
   }
 
   if (strcmp(method, "dispose") == 0) {
-    gtk_widget_hide(GTK_WIDGET(webview->web_view));
     webview->visible = FALSE;
-    update_flutter_view_input_region(webview->plugin);
+    release_linux_webview_focus(webview);
+    gtk_widget_hide(GTK_WIDGET(webview->web_view));
+    schedule_flutter_view_input_region_update(webview->plugin);
     WebviewAllLinuxPlugin *plugin = webview->plugin;
     const gint identifier = webview->id;
     respond(method_call, success_response());
