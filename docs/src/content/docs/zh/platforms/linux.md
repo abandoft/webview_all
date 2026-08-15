@@ -3,7 +3,7 @@ title: Linux
 description: WebKitGTK 实现、自动 GtkOverlay 集成、API 和限制。
 ---
 
-Linux 由 `webview_all_linux 1.3.3` 提供，底层使用 WebKitGTK。
+Linux 由 `webview_all_linux 1.3.6` 提供，底层使用 WebKitGTK。
 
 | 项 | 值 |
 | --- | --- |
@@ -67,7 +67,12 @@ event channel 关闭，导航会拒绝，认证/dialog/TLS 会取消，权限会
 
 ## 限制
 
-- WebView 是 GTK 原生 widget，层叠和裁剪遵循 GTK overlay 行为。
+- WebView 是 GTK 原生 widget，而非 Flutter texture。它会跟随 Flutter
+  的逻辑位置和尺寸，并在 Flutter 视口边界裁剪；但 `GtkOverlay` 无法复现任意
+  Flutter 图层穿插和裁剪形状。
+- 支持平移；缩放、旋转、倾斜、透视和镜像变换无法由 GTK 原生子组件准确表示。
+  遇到这些变换时，插件会隐藏 WebView 并打印限制说明，避免留下视觉错位但仍可交互
+  的原生区域。
 - 本地文件必须使用绝对路径，并会在加载前规范化；Flutter asset 中的路径穿越、绝对路径和逃出 asset bundle 的符号链接会被拒绝。
 - 不可信本地文件不要启用 universal file URL access。
 - 不同发行版 WebKitGTK 版本差异明显，媒体、权限和 dialog 需要在目标发行版验证。

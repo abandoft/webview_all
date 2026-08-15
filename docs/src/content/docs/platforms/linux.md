@@ -3,7 +3,7 @@ title: Linux
 description: WebKitGTK implementation, automatic GtkOverlay integration, APIs, and limits.
 ---
 
-Linux is provided by `webview_all_linux 1.3.3` and uses WebKitGTK.
+Linux is provided by `webview_all_linux 1.3.6` and uses WebKitGTK.
 
 ## Engine
 
@@ -112,7 +112,14 @@ blocked.
 
 ## Known Limits
 
-- The WebView is a native GTK widget, not a Flutter texture. Layering and clipping follow GTK overlay behavior.
+- The WebView is a native GTK widget, not a Flutter texture. It follows
+  Flutter's logical position and size and is clipped at the Flutter viewport,
+  but arbitrary Flutter layer interleaving and clip shapes cannot be reproduced
+  by `GtkOverlay`.
+- Translation is supported. Scale, rotation, skew, perspective, and mirrored
+  transforms cannot be represented faithfully by a native GTK child; the
+  plugin hides the WebView and logs the limitation instead of leaving a
+  visually misaligned interactive surface.
 - Local files must use absolute paths and are canonicalized before loading. Flutter asset keys containing traversal, absolute paths, or symlink escapes outside the asset bundle are rejected.
 - File URL universal access is powerful and should stay disabled for untrusted local content.
 - Distribution WebKitGTK versions differ; test media, permissions, and dialog flows on your target Linux distribution.
