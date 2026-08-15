@@ -89,6 +89,147 @@ Future<void> main() async {
     expect(currentUrl, primaryUrl);
   });
 
+  testWidgets('Linux native view receives system pointer and keyboard input', (
+    WidgetTester tester,
+  ) async {
+    if (!Platform.isLinux) {
+      return;
+    }
+
+    final bool hasXdotool = await _hasExecutable('xdotool');
+    if (!hasXdotool) {
+      if (Platform.environment['CI'] == 'true') {
+        fail('xdotool is required for the Linux native input test.');
+      }
+      return;
+    }
+
+    final Completer<void> pageFinished = Completer<void>();
+    final Completer<void> pointerDown = Completer<void>();
+    final Completer<void> flutterPointerDown = Completer<void>();
+    final controller = WebViewController();
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await (controller.platform as LinuxWebViewController).dispose();
+    });
+    await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    await controller.addJavaScriptChannel(
+      'LinuxPointerTest',
+      onMessageReceived: (JavaScriptMessage message) {
+        if (message.message == 'pointer-down' && !pointerDown.isCompleted) {
+          pointerDown.complete();
+        }
+      },
+    );
+    await controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageFinished: (_) {
+          if (!pageFinished.isCompleted) {
+            pageFinished.complete();
+          }
+        },
+      ),
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: SizedBox.expand(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    if (!flutterPointerDown.isCompleted) {
+                      flutterPointerDown.complete();
+                    }
+                  },
+                  child: const Center(child: Text('Flutter input target')),
+                ),
+              ),
+            ),
+            Expanded(child: WebViewWidget(controller: controller)),
+          ],
+        ),
+      ),
+    );
+    await controller.loadHtmlString('''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body { margin: 0; min-height: 3000px; }
+    #target {
+      position: fixed;
+      left: calc(50% - 140px);
+      top: calc(50% - 35px);
+      width: 280px;
+      height: 70px;
+      font-size: 20px;
+    }
+  </style>
+</head>
+<body>
+  <input id="target" onmousedown="LinuxPointerTest.postMessage('pointer-down')">
+</body>
+</html>
+''');
+    await pageFinished.future.timeout(const Duration(seconds: 10));
+    await _waitForJavaScriptPredicate(
+      controller,
+      'document.getElementById("target") !== null',
+      (Object value) => value == true,
+    );
+
+    final _X11Window window = await _findCurrentX11Window();
+    await _runXdotool(<String>['windowfocus', window.id]);
+    await _runXdotool(<String>[
+      'mousemove',
+      '--sync',
+      '--window',
+      window.id,
+      '${window.width * 3 ~/ 4}',
+      '${window.height ~/ 2}',
+    ]);
+    await _runXdotool(<String>['click', '1']);
+    await pointerDown.future.timeout(const Duration(seconds: 5));
+
+    await _runXdotool(<String>['type', '--delay', '20', 'commercial-input']);
+    await _waitForJavaScriptResult(
+      controller,
+      'document.getElementById("target").value',
+      'commercial-input',
+    );
+
+    await _runXdotool(<String>['click', '--repeat', '3', '--delay', '50', '5']);
+    await _waitForJavaScriptPredicate(
+      controller,
+      'window.scrollY > 0',
+      (Object value) => value == true,
+    );
+
+    final bool propagatedDeviceEvents =
+        tester.binding.shouldPropagateDevicePointerEvents;
+    tester.binding.shouldPropagateDevicePointerEvents = true;
+    try {
+      await _runXdotool(<String>[
+        'mousemove',
+        '--sync',
+        '--window',
+        window.id,
+        '${window.width ~/ 4}',
+        '${window.height ~/ 2}',
+      ]);
+      await _runXdotool(<String>['click', '1']);
+      await flutterPointerDown.future.timeout(const Duration(seconds: 5));
+    } finally {
+      tester.binding.shouldPropagateDevicePointerEvents =
+          propagatedDeviceEvents;
+    }
+  });
+
   testWidgets('runJavaScriptReturningResult', (WidgetTester tester) async {
     final pageFinished = Completer<void>();
 
@@ -1214,4 +1355,131 @@ Future<String> getTestVideoBase64() async {
         </html>
       ''';
   return base64Encode(const Utf8Encoder().convert(videoTest));
+}
+
+class _X11Window {
+  const _X11Window({
+    required this.id,
+    required this.width,
+    required this.height,
+  });
+
+  final String id;
+  final int width;
+  final int height;
+}
+
+Future<bool> _hasExecutable(String executable) async {
+  try {
+    final ProcessResult result = await Process.run(executable, <String>[
+      'version',
+    ]);
+    return result.exitCode == 0;
+  } on ProcessException {
+    return false;
+  }
+}
+
+Future<ProcessResult> _runXdotool(List<String> arguments) async {
+  final Process process = await Process.start('xdotool', arguments);
+  final Future<String> stdout = utf8.decoder.bind(process.stdout).join();
+  final Future<String> stderr = utf8.decoder.bind(process.stderr).join();
+  late final int exitCode;
+  try {
+    exitCode = await process.exitCode.timeout(const Duration(seconds: 10));
+  } on TimeoutException {
+    process.kill();
+    throw TestFailure('xdotool ${arguments.join(' ')} timed out.');
+  }
+  final String output = await stdout;
+  final String error = await stderr;
+  if (exitCode != 0) {
+    throw TestFailure(
+      'xdotool ${arguments.join(' ')} failed with exit code '
+      '$exitCode: $error',
+    );
+  }
+  return ProcessResult(process.pid, exitCode, output, error);
+}
+
+Future<_X11Window> _findCurrentX11Window() async {
+  final ProcessResult searchResult = await _runXdotool(<String>[
+    'search',
+    '--onlyvisible',
+    '--pid',
+    '$pid',
+  ]);
+  final List<String> ids = '${searchResult.stdout}'
+      .split(RegExp(r'\s+'))
+      .where((String value) => value.isNotEmpty)
+      .toList();
+  if (ids.isEmpty) {
+    throw TestFailure('No visible X11 window was found for process $pid.');
+  }
+
+  _X11Window? largestWindow;
+  for (final String id in ids) {
+    final ProcessResult geometryResult = await _runXdotool(<String>[
+      'getwindowgeometry',
+      '--shell',
+      id,
+    ]);
+    final Map<String, int> geometry = <String, int>{};
+    for (final String line in '${geometryResult.stdout}'.split('\n')) {
+      final int separator = line.indexOf('=');
+      if (separator <= 0) {
+        continue;
+      }
+      final int? value = int.tryParse(line.substring(separator + 1));
+      if (value != null) {
+        geometry[line.substring(0, separator)] = value;
+      }
+    }
+    final int width = geometry['WIDTH'] ?? 0;
+    final int height = geometry['HEIGHT'] ?? 0;
+    if (width <= 0 || height <= 0) {
+      continue;
+    }
+    final _X11Window candidate = _X11Window(
+      id: id,
+      width: width,
+      height: height,
+    );
+    if (largestWindow == null ||
+        width * height > largestWindow.width * largestWindow.height) {
+      largestWindow = candidate;
+    }
+  }
+  return largestWindow ??
+      (throw TestFailure('No usable X11 window geometry was found.'));
+}
+
+Future<void> _waitForJavaScriptResult(
+  WebViewController controller,
+  String expression,
+  Object expected,
+) {
+  return _waitForJavaScriptPredicate(
+    controller,
+    expression,
+    (Object value) => value == expected,
+  );
+}
+
+Future<void> _waitForJavaScriptPredicate(
+  WebViewController controller,
+  String expression,
+  bool Function(Object value) predicate,
+) async {
+  final Stopwatch stopwatch = Stopwatch()..start();
+  while (stopwatch.elapsed < const Duration(seconds: 5)) {
+    final Object value = await controller.runJavaScriptReturningResult(
+      expression,
+    );
+    if (predicate(value)) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+  throw TestFailure('JavaScript result did not satisfy: $expression');
 }

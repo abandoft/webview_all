@@ -237,7 +237,7 @@ jobs:
       - name: Install native dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libgtk-3-dev libwebkit2gtk-4.1-dev ninja-build xvfb
+          sudo apt-get install --yes libgtk-3-dev libwebkit2gtk-4.1-dev ninja-build xdotool xvfb
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -257,8 +257,17 @@ jobs:
         if: matrix.flutter == '3.44.x'
         working-directory: examples/platform
         run: |
-          xvfb-run -a env WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+          xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
             flutter test integration_test/webview_flutter_test.dart -d linux
+
+      - name: Run Linux HiDPI native input test
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: |
+          xvfb-run -a -s '-screen 0 3840x2160x24' \
+            env GDK_BACKEND=x11 GDK_SCALE=2 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+            flutter test integration_test/webview_flutter_test.dart -d linux \
+              --plain-name 'Linux native view receives system pointer and keyboard input'
 
   windows:
     name: Windows native build and integration (${{ matrix.flutter }})
