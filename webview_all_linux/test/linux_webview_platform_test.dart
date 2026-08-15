@@ -139,6 +139,302 @@ void main() {
     );
   });
 
+  test('sends monotonically increasing native frame sequences', () async {
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+
+    await controller.setFrame(
+      const Rect.fromLTWH(10, 20, 300, 180),
+      visible: true,
+    );
+    await controller.setFrame(Rect.zero, visible: false);
+
+    final List<MethodCall> frameCalls = calls
+        .where((MethodCall call) => call.method == 'setFrame')
+        .toList();
+    expect(frameCalls, hasLength(2));
+    expect((frameCalls[0].arguments as Map<Object?, Object?>)['sequence'], 1);
+    expect((frameCalls[1].arguments as Map<Object?, Object?>)['sequence'], 2);
+  });
+
+  testWidgets('keeps full native geometry at the Flutter viewport edge', (
+    WidgetTester tester,
+  ) async {
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final LinuxWebViewWidget platformWidget = LinuxWebViewWidget(
+      PlatformWebViewWidgetCreationParams(controller: controller),
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Transform.translate(
+            offset: const Offset(-40, -20),
+            child: SizedBox(
+              width: 100,
+              height: 80,
+              child: Builder(builder: platformWidget.build),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final MethodCall frameCall = calls.lastWhere(
+      (MethodCall call) =>
+          call.method == 'setFrame' &&
+          (call.arguments as Map<Object?, Object?>)['visible'] == true,
+    );
+    final Map<Object?, Object?> arguments =
+        frameCall.arguments as Map<Object?, Object?>;
+    expect(arguments['x'], -40);
+    expect(arguments['y'], -20);
+    expect(arguments['width'], 100);
+    expect(arguments['height'], 80);
+  });
+
+  testWidgets('keeps native geometry in logical pixels on HiDPI displays', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 2;
+    tester.view.physicalSize = const Size(1600, 1200);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final LinuxWebViewWidget platformWidget = LinuxWebViewWidget(
+      PlatformWebViewWidgetCreationParams(controller: controller),
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Transform.translate(
+            offset: const Offset(20, 30),
+            child: SizedBox(
+              width: 100,
+              height: 80,
+              child: Builder(builder: platformWidget.build),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final MethodCall frameCall = calls.lastWhere(
+      (MethodCall call) =>
+          call.method == 'setFrame' &&
+          (call.arguments as Map<Object?, Object?>)['visible'] == true,
+    );
+    final Map<Object?, Object?> arguments =
+        frameCall.arguments as Map<Object?, Object?>;
+    expect(arguments['x'], 20);
+    expect(arguments['y'], 30);
+    expect(arguments['width'], 100);
+    expect(arguments['height'], 80);
+  });
+
+  testWidgets('hides native view for unsupported transforms', (
+    WidgetTester tester,
+  ) async {
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final LinuxWebViewWidget platformWidget = LinuxWebViewWidget(
+      PlatformWebViewWidgetCreationParams(controller: controller),
+    );
+    var angle = 0.0;
+
+    Widget buildWebView() {
+      return Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Transform.rotate(
+            angle: angle,
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 100,
+              height: 80,
+              child: Builder(builder: platformWidget.build),
+            ),
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildWebView());
+    await tester.pump();
+    angle = 0.2;
+    await tester.pumpWidget(buildWebView());
+    await tester.pump();
+
+    final MethodCall frameCall = calls.lastWhere(
+      (MethodCall call) => call.method == 'setFrame',
+    );
+    expect((frameCall.arguments as Map<Object?, Object?>)['visible'], isFalse);
+  });
+
+  testWidgets(
+    'hides native view instead of reflowing it for scale transforms',
+    (WidgetTester tester) async {
+      final List<MethodCall> calls = <MethodCall>[];
+      _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+      final LinuxWebViewController controller = LinuxWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final LinuxWebViewWidget platformWidget = LinuxWebViewWidget(
+        PlatformWebViewWidgetCreationParams(controller: controller),
+      );
+      var scale = 1.0;
+
+      Widget buildWebView() {
+        return Directionality(
+          textDirection: TextDirection.ltr,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Transform.scale(
+              scale: scale,
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 100,
+                height: 80,
+                child: Builder(builder: platformWidget.build),
+              ),
+            ),
+          ),
+        );
+      }
+
+      await tester.pumpWidget(buildWebView());
+      await tester.pump();
+      scale = 1.5;
+      await tester.pumpWidget(buildWebView());
+      await tester.pump();
+
+      final MethodCall frameCall = calls.lastWhere(
+        (MethodCall call) => call.method == 'setFrame',
+      );
+      expect(
+        (frameCall.arguments as Map<Object?, Object?>)['visible'],
+        isFalse,
+      );
+    },
+  );
+
+  testWidgets('hides and restores the native view with app lifecycle', (
+    WidgetTester tester,
+  ) async {
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final LinuxWebViewWidget platformWidget = LinuxWebViewWidget(
+      PlatformWebViewWidgetCreationParams(controller: controller),
+    );
+    addTearDown(() {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    });
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 320,
+          height: 180,
+          child: Builder(builder: platformWidget.build),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    await tester.pump();
+    expect(
+      (calls.lastWhere((MethodCall call) => call.method == 'setFrame').arguments
+          as Map<Object?, Object?>)['visible'],
+      isFalse,
+    );
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+    expect(
+      (calls.lastWhere((MethodCall call) => call.method == 'setFrame').arguments
+          as Map<Object?, Object?>)['visible'],
+      isTrue,
+    );
+  });
+
+  testWidgets('hides native view when a Flutter ancestor stops painting', (
+    WidgetTester tester,
+  ) async {
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final LinuxWebViewWidget platformWidget = LinuxWebViewWidget(
+      PlatformWebViewWidgetCreationParams(controller: controller),
+    );
+    var opacity = 1.0;
+
+    Widget buildWebView() {
+      return Directionality(
+        textDirection: TextDirection.ltr,
+        child: Opacity(
+          opacity: opacity,
+          child: SizedBox(
+            width: 320,
+            height: 180,
+            child: Builder(builder: platformWidget.build),
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildWebView());
+    await tester.pump();
+    opacity = 0;
+    await tester.pumpWidget(buildWebView());
+    await tester.pump();
+
+    final MethodCall frameCall = calls.lastWhere(
+      (MethodCall call) => call.method == 'setFrame',
+    );
+    expect((frameCall.arguments as Map<Object?, Object?>)['visible'], isFalse);
+
+    final int frameCallCount = calls
+        .where((MethodCall call) => call.method == 'setFrame')
+        .length;
+    await tester.pump();
+    await tester.pump();
+    expect(
+      calls.where((MethodCall call) => call.method == 'setFrame'),
+      hasLength(frameCallCount),
+    );
+  });
+
   test('dispose releases the native WebView exactly once', () async {
     final List<MethodCall> calls = <MethodCall>[];
     _mockLinuxWebViewCreation(onInstanceCall: calls.add);
