@@ -1,3 +1,9 @@
+## 1.3.6
+
+* Fix Linux system input routing so WebKitGTK receives pointer, keyboard, and wheel input without disabling Flutter controls or allowing clicks to pass through the application window.
+* Keep Linux native WebView position and visibility correct across HiDPI displays, viewport edges, controller changes, application lifecycle changes, and when enclosing Flutter widgets are hidden or leave the visible area.
+* Improve Linux `GtkOverlay` layout and cleanup, prevent older position updates from overriding current state, and safely hide the WebView for transforms that GTK cannot display accurately.
+
 ## 1.3.5
 
 * Refine documentation details.
