@@ -3,7 +3,7 @@ title: iOS 和 macOS
 description: WKWebView 实现、WebKit API 和 Apple 平台差异。
 ---
 
-iOS 和 macOS 由 `webview_all_wkwebview ^1.3.3` 提供。
+iOS 和 macOS 由 `webview_all_wkwebview ^1.3.6` 提供。
 
 | 项 | 值 |
 | --- | --- |
