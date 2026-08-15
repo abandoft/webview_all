@@ -9,12 +9,14 @@ static void webview_all_linux_plugin_dispose(GObject* object) {
   WebviewAllLinuxPlugin* self =
       reinterpret_cast<WebviewAllLinuxPlugin*>(object);
 
-  g_clear_object(&self->registrar);
-  g_clear_object(&self->root_channel);
+  self->disposing = TRUE;
   if (self->webviews != nullptr) {
     g_hash_table_destroy(self->webviews);
     self->webviews = nullptr;
   }
+  detach_linux_webview_host(self);
+  g_clear_object(&self->root_channel);
+  g_clear_object(&self->registrar);
 
   G_OBJECT_CLASS(webview_all_linux_plugin_parent_class)->dispose(object);
 }

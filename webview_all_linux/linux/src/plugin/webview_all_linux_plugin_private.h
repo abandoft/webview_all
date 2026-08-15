@@ -7,14 +7,21 @@
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
 
+constexpr const gchar *kLinuxWebViewInstanceKey = "webview_all_linux_instance";
+
 struct _WebviewAllLinuxPlugin {
   GObject parent_instance;
 
   FlPluginRegistrar *registrar;
   FlMethodChannel *root_channel;
   GtkOverlay *overlay;
+  GtkWidget *flutter_view;
+  GtkWidget *flutter_input_widget;
   GHashTable *webviews;
   gint next_webview_id;
+  guint input_region_update_source_id;
+  gboolean input_region_warning_emitted;
+  gboolean disposing;
 };
 
 typedef struct {
@@ -48,6 +55,7 @@ typedef struct {
   gint frame_y;
   gint frame_width;
   gint frame_height;
+  gint64 frame_sequence;
   gboolean visible;
   double last_scroll_x;
   double last_scroll_y;
@@ -76,6 +84,10 @@ void root_method_call_cb(FlMethodChannel *channel, FlMethodCall *method_call,
                          gpointer user_data);
 GtkOverlay *ensure_overlay(WebviewAllLinuxPlugin *self);
 void update_flutter_view_input_region(WebviewAllLinuxPlugin *self);
+void schedule_flutter_view_input_region_update(WebviewAllLinuxPlugin *self);
+void restore_flutter_view_input_region(WebviewAllLinuxPlugin *self);
+void detach_linux_webview_host(WebviewAllLinuxPlugin *self);
+void release_linux_webview_focus(LinuxWebView *webview);
 void cancel_pending_request_timeout(LinuxWebView *webview, gint request_id);
 
 #endif // WEBVIEW_ALL_LINUX_PLUGIN_PRIVATE_H_

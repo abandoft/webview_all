@@ -402,7 +402,7 @@ static void resource_response_cb(WebKitWebResource *resource, GParamSpec *pspec,
                                  gpointer user_data) {
   WebKitWebView *web_view = WEBKIT_WEB_VIEW(user_data);
   LinuxWebView *webview = static_cast<LinuxWebView *>(
-      g_object_get_data(G_OBJECT(web_view), "webview_all_linux_instance"));
+      g_object_get_data(G_OBJECT(web_view), kLinuxWebViewInstanceKey));
   if (webview == nullptr || !webview->event_listening) {
     return;
   }
@@ -707,6 +707,18 @@ event_cancel_cb(FlEventChannel *channel, FlValue *args, gpointer user_data) {
   return nullptr;
 }
 
+static void webview_size_allocate_cb(GtkWidget *widget,
+                                     GtkAllocation *allocation,
+                                     gpointer user_data) {
+  LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
+  schedule_flutter_view_input_region_update(webview->plugin);
+}
+
+static void webview_mapping_changed_cb(GtkWidget *widget, gpointer user_data) {
+  LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
+  schedule_flutter_view_input_region_update(webview->plugin);
+}
+
 void destroy_linux_webview(gpointer data) {
   LinuxWebView *webview = static_cast<LinuxWebView *>(data);
   if (webview == nullptr) {
@@ -714,8 +726,13 @@ void destroy_linux_webview(gpointer data) {
   }
 
   if (webview->web_view != nullptr) {
+    webview->visible = FALSE;
+    release_linux_webview_focus(webview);
+    if (webview->plugin != nullptr && !webview->plugin->disposing) {
+      schedule_flutter_view_input_region_update(webview->plugin);
+    }
     resolve_all_pending_requests(webview);
-    g_object_set_data(G_OBJECT(webview->web_view), "webview_all_linux_instance",
+    g_object_set_data(G_OBJECT(webview->web_view), kLinuxWebViewInstanceKey,
                       nullptr);
     gtk_widget_destroy(GTK_WIDGET(webview->web_view));
     g_object_unref(webview->web_view);
@@ -746,7 +763,8 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
   webview->content_manager = webkit_user_content_manager_new();
   webview->web_view = WEBKIT_WEB_VIEW(
       webkit_web_view_new_with_user_content_manager(webview->content_manager));
-  g_object_set_data(G_OBJECT(webview->web_view), "webview_all_linux_instance",
+  g_object_ref_sink(webview->web_view);
+  g_object_set_data(G_OBJECT(webview->web_view), kLinuxWebViewInstanceKey,
                     webview);
   webview->pending_nav_decisions =
       g_hash_table_new_full(g_direct_hash, g_direct_equal, nullptr,
@@ -776,6 +794,7 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
   webview->horizontal_scrollbar_enabled = TRUE;
   webview->zoom_enabled = TRUE;
   webview->media_playback_requires_user_gesture = -1;
+  webview->frame_sequence = 0;
   webview->over_scroll_behavior = "";
 
   gchar *method_name =
@@ -838,12 +857,19 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
                    G_CALLBACK(zoom_scroll_event_cb), webview);
   g_signal_connect(webview->web_view, "key-press-event",
                    G_CALLBACK(zoom_key_press_event_cb), webview);
+  g_signal_connect(webview->web_view, "size-allocate",
+                   G_CALLBACK(webview_size_allocate_cb), webview);
+  g_signal_connect(webview->web_view, "map",
+                   G_CALLBACK(webview_mapping_changed_cb), webview);
+  g_signal_connect(webview->web_view, "unmap",
+                   G_CALLBACK(webview_mapping_changed_cb), webview);
 
   gtk_widget_set_halign(GTK_WIDGET(webview->web_view), GTK_ALIGN_START);
   gtk_widget_set_valign(GTK_WIDGET(webview->web_view), GTK_ALIGN_START);
   gtk_widget_set_hexpand(GTK_WIDGET(webview->web_view), FALSE);
   gtk_widget_set_vexpand(GTK_WIDGET(webview->web_view), FALSE);
   gtk_widget_set_can_focus(GTK_WIDGET(webview->web_view), TRUE);
+  gtk_widget_set_focus_on_click(GTK_WIDGET(webview->web_view), TRUE);
   gtk_widget_set_sensitive(GTK_WIDGET(webview->web_view), TRUE);
   gtk_widget_add_events(GTK_WIDGET(webview->web_view),
                         GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
@@ -855,8 +881,6 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
   gtk_overlay_add_overlay(overlay, GTK_WIDGET(webview->web_view));
   gtk_overlay_set_overlay_pass_through(overlay, GTK_WIDGET(webview->web_view),
                                        FALSE);
-  gtk_widget_show(GTK_WIDGET(webview->web_view));
-  gtk_widget_grab_focus(GTK_WIDGET(webview->web_view));
   gtk_widget_hide(GTK_WIDGET(webview->web_view));
 
   g_hash_table_insert(self->webviews, GINT_TO_POINTER(webview->id), webview);
