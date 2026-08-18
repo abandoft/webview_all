@@ -12,7 +12,7 @@ using namespace Microsoft::WRL;
 namespace webview_all_windows {
 
 // static
-std::unique_ptr<WebviewHost>
+std::shared_ptr<WebviewHost>
 WebviewHost::Create(WebviewPlatform *platform,
                     std::optional<std::wstring> user_data_directory,
                     std::optional<std::wstring> browser_exe_path,
@@ -44,7 +44,7 @@ WebviewHost::Create(WebviewPlatform *platform,
     if ((SUCCEEDED(result) || result == RPC_E_CHANGED_MODE) && env) {
       auto webview_env3 = env.try_query<ICoreWebView2Environment3>();
       if (webview_env3) {
-        return std::unique_ptr<WebviewHost>(
+        return std::shared_ptr<WebviewHost>(
             new WebviewHost(platform, std::move(webview_env3)));
       }
     }
@@ -59,16 +59,17 @@ WebviewHost::WebviewHost(WebviewPlatform *platform,
   compositor_ = platform->graphics_context()->CreateCompositor();
 }
 
-void WebviewHost::CreateWebview(HWND hwnd, bool offscreen_only,
-                                bool owns_window,
+void WebviewHost::CreateWebview(HWND parent_window,
                                 WebviewCreationCallback callback) {
   CreateWebViewCompositionController(
-      hwnd, [=, self = this](
-                wil::com_ptr<ICoreWebView2CompositionController> controller,
-                std::unique_ptr<WebviewCreationError> error) {
+      parent_window,
+      [callback = std::move(callback), parent_window,
+       self = shared_from_this()](
+          wil::com_ptr<ICoreWebView2CompositionController> controller,
+          std::unique_ptr<WebviewCreationError> error) mutable {
         if (controller) {
-          std::unique_ptr<Webview> webview(new Webview(
-              std::move(controller), self, hwnd, owns_window, offscreen_only));
+          std::unique_ptr<Webview> webview(
+              new Webview(std::move(controller), self, parent_window));
           if (!webview->IsValid()) {
             callback(
                 nullptr,

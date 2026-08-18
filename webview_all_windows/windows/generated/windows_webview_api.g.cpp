@@ -3239,6 +3239,48 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
       channel.SetMessageHandler(nullptr);
     }
   }
+  {
+    BasicMessageChannel<> channel(binary_messenger,
+                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "WindowsWebViewHostApi.setSurfaceAttached" +
+                                      prepended_suffix,
+                                  &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler(
+          [api](const EncodableValue &message,
+                const ::flutter::MessageReply<EncodableValue> &reply) {
+            try {
+              const auto &args = std::get<EncodableList>(message);
+              const auto &encodable_texture_id_arg = args.at(0);
+              if (encodable_texture_id_arg.IsNull()) {
+                reply(WrapError("texture_id_arg unexpectedly null."));
+                return;
+              }
+              const int64_t texture_id_arg =
+                  encodable_texture_id_arg.LongValue();
+              const auto &encodable_attached_arg = args.at(1);
+              if (encodable_attached_arg.IsNull()) {
+                reply(WrapError("attached_arg unexpectedly null."));
+                return;
+              }
+              const auto &attached_arg = std::get<bool>(encodable_attached_arg);
+              std::optional<FlutterError> output =
+                  api->SetSurfaceAttached(texture_id_arg, attached_arg);
+              if (output.has_value()) {
+                reply(WrapError(output.value()));
+                return;
+              }
+              EncodableList wrapped;
+              wrapped.push_back(EncodableValue());
+              reply(EncodableValue(std::move(wrapped)));
+            } catch (const std::exception &exception) {
+              reply(WrapError(exception.what()));
+            }
+          });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
 }
 
 EncodableValue

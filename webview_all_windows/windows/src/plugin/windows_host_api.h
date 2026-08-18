@@ -17,22 +17,34 @@ namespace webview_all_windows {
 
 class WindowsHostApi : public flutter::Plugin, public WindowsWebViewHostApi {
 public:
-  static void RegisterWithRegistrar(flutter::PluginRegistrarWindows *registrar);
+  static void RegisterWithRegistrar(flutter::PluginRegistrarWindows *registrar,
+                                    HWND parent_window);
 
   WindowsHostApi(flutter::TextureRegistrar *textures,
-                 flutter::BinaryMessenger *messenger);
+                 flutter::BinaryMessenger *messenger, HWND parent_window);
   ~WindowsHostApi() override;
 
 private:
+  struct LifetimeState {
+    WindowsHostApi *owner = nullptr;
+  };
+
   std::unique_ptr<WebviewPlatform> platform_;
-  std::unique_ptr<WebviewHost> webview_host_;
+  std::shared_ptr<WebviewHost> webview_host_;
   std::unordered_map<int64_t, std::unique_ptr<WebviewBridge>> instances_;
 
-  WNDCLASS window_class_ = {};
   flutter::TextureRegistrar *textures_;
   flutter::BinaryMessenger *messenger_;
+  flutter::PluginRegistrarWindows *registrar_ = nullptr;
+  HWND parent_window_ = nullptr;
+  int window_proc_delegate_id_ = -1;
+  std::shared_ptr<LifetimeState> lifetime_state_ =
+      std::make_shared<LifetimeState>();
 
   bool InitPlatform();
+  void NotifyParentWindowPositionChanged();
+  std::optional<LRESULT> HandleWindowMessage(HWND hwnd, UINT message,
+                                             WPARAM wparam, LPARAM lparam);
 
   std::optional<FlutterError>
   InitializeEnvironment(const WindowsEnvironmentOptions &options) override;
@@ -128,6 +140,8 @@ private:
   SetScrollDelta(int64_t texture_id, const WindowsPointData &delta) override;
   std::optional<FlutterError> SetSize(int64_t texture_id,
                                       const WindowsSizeData &size) override;
+  std::optional<FlutterError> SetSurfaceAttached(int64_t texture_id,
+                                                 bool attached) override;
 
   WebviewBridge *FindBridge(int64_t texture_id);
   std::optional<FlutterError> InvalidIdError();

@@ -546,6 +546,8 @@ public:
   SetScrollDelta(int64_t texture_id, const WindowsPointData &delta) = 0;
   virtual std::optional<FlutterError> SetSize(int64_t texture_id,
                                               const WindowsSizeData &size) = 0;
+  virtual std::optional<FlutterError> SetSurfaceAttached(int64_t texture_id,
+                                                         bool attached) = 0;
 
   // The codec used by WindowsWebViewHostApi.
   static const ::flutter::StandardMessageCodec &GetCodec();

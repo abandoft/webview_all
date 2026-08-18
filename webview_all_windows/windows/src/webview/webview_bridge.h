@@ -36,6 +36,8 @@ public:
   void SetScrollDelta(double dx, double dy);
   void SetPointerButtonState(int64_t button, bool is_down);
   bool SetSize(double width, double height, double scale_factor);
+  bool SetSurfaceAttached(bool attached);
+  void NotifyParentWindowPositionChanged();
 
   void LoadUrl(const std::string &url);
   bool LoadRequest(const std::string &url, const std::string &method,
@@ -46,7 +48,7 @@ public:
   bool Stop();
   bool GoBack();
   bool GoForward();
-  void Suspend();
+  bool Suspend();
   bool Resume();
 
   void SetVirtualHostNameMapping(const std::string &host_name,
@@ -102,8 +104,12 @@ private:
 
   flutter::TextureRegistrar *texture_registrar_;
   int64_t texture_id_ = -1;
+  bool surface_attached_ = false;
+  bool surface_size_set_ = false;
+  bool suspended_ = false;
 
   void RegisterEventHandlers();
+  bool UpdateRenderingState();
 
   template <typename T> void EmitEvent(const T &value) {
     if (event_sink_) {

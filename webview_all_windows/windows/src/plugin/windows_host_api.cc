@@ -25,6 +25,7 @@ constexpr auto kErrorCodeEnvironmentCreationFailed =
 constexpr auto kErrorCodeEnvironmentAlreadyInitialized =
     "environment_already_initialized";
 constexpr auto kErrorCodeWebviewCreationFailed = "webview_creation_failed";
+constexpr auto kErrorCodeInvalidParentWindow = "invalid_parent_window";
 constexpr auto kErrorCodeOpenUrlFailed = "open_url_failed";
 constexpr auto kErrorUnsupportedPlatform = "unsupported_platform";
 constexpr auto kErrorMethodFailed = "method_failed";
@@ -43,9 +44,22 @@ std::string FormatWebviewCreationError(const WebviewCreationError &error) {
 
 // static
 void WindowsHostApi::RegisterWithRegistrar(
-    flutter::PluginRegistrarWindows *registrar) {
-  auto plugin = std::make_unique<WindowsHostApi>(registrar->texture_registrar(),
-                                                 registrar->messenger());
+    flutter::PluginRegistrarWindows *registrar, HWND parent_window) {
+  auto plugin = std::make_unique<WindowsHostApi>(
+      registrar->texture_registrar(), registrar->messenger(), parent_window);
+  plugin->registrar_ = registrar;
+
+  const std::shared_ptr<LifetimeState> lifetime_state = plugin->lifetime_state_;
+  plugin->window_proc_delegate_id_ =
+      registrar->RegisterTopLevelWindowProcDelegate(
+          [lifetime_state](HWND hwnd, UINT message, WPARAM wparam,
+                           LPARAM lparam) -> std::optional<LRESULT> {
+            if (lifetime_state->owner == nullptr) {
+              return std::nullopt;
+            }
+            return lifetime_state->owner->HandleWindowMessage(hwnd, message,
+                                                              wparam, lparam);
+          });
 
   webview_all_windows::WindowsWebViewHostApi::SetUp(registrar->messenger(),
                                                     plugin.get());
@@ -54,17 +68,42 @@ void WindowsHostApi::RegisterWithRegistrar(
 }
 
 WindowsHostApi::WindowsHostApi(flutter::TextureRegistrar *textures,
-                               flutter::BinaryMessenger *messenger)
-    : textures_(textures), messenger_(messenger) {
-  window_class_.lpszClassName = L"FlutterWebviewMessage";
-  window_class_.lpfnWndProc = &DefWindowProc;
-  RegisterClass(&window_class_);
+                               flutter::BinaryMessenger *messenger,
+                               HWND parent_window)
+    : textures_(textures), messenger_(messenger),
+      parent_window_(parent_window) {
+  lifetime_state_->owner = this;
 }
 
 WindowsHostApi::~WindowsHostApi() {
+  lifetime_state_->owner = nullptr;
   webview_all_windows::WindowsWebViewHostApi::SetUp(messenger_, nullptr);
   instances_.clear();
-  UnregisterClass(window_class_.lpszClassName, nullptr);
+  if (registrar_ != nullptr && window_proc_delegate_id_ >= 0) {
+    registrar_->UnregisterTopLevelWindowProcDelegate(window_proc_delegate_id_);
+  }
+}
+
+std::optional<LRESULT> WindowsHostApi::HandleWindowMessage(HWND, UINT message,
+                                                           WPARAM, LPARAM) {
+  switch (message) {
+  case WM_DISPLAYCHANGE:
+  case WM_DPICHANGED:
+  case WM_MOVE:
+  case WM_SIZE:
+  case WM_WINDOWPOSCHANGED:
+    NotifyParentWindowPositionChanged();
+    break;
+  default:
+    break;
+  }
+  return std::nullopt;
+}
+
+void WindowsHostApi::NotifyParentWindowPositionChanged() {
+  for (const auto &instance : instances_) {
+    instance.second->NotifyParentWindowPositionChanged();
+  }
 }
 
 std::optional<webview_all_windows::FlutterError>
@@ -139,6 +178,12 @@ void WindowsHostApi::CreateWebView(
                        webview_all_windows::WindowsCreateWebViewResult>
                            reply)>
         result) {
+  if (parent_window_ == nullptr || !IsWindow(parent_window_)) {
+    return result(webview_all_windows::FlutterError(
+        kErrorCodeInvalidParentWindow,
+        "The Flutter view window is unavailable."));
+  }
+
   if (!InitPlatform()) {
     return result(webview_all_windows::FlutterError(
         kErrorUnsupportedPlatform, "The platform is not supported"));
@@ -153,15 +198,15 @@ void WindowsHostApi::CreateWebView(
     }
   }
 
-  auto hwnd =
-      CreateWindowEx(0, window_class_.lpszClassName, L"", 0, 0, 0, 0, 0,
-                     HWND_MESSAGE, nullptr, window_class_.hInstance, nullptr);
-
   webview_host_->CreateWebview(
-      hwnd, true, true,
-      [result = std::move(result),
-       this](std::unique_ptr<Webview> webview,
-             std::unique_ptr<WebviewCreationError> error) mutable {
+      parent_window_,
+      [lifetime_state = lifetime_state_, result = std::move(result)](
+          std::unique_ptr<Webview> webview,
+          std::unique_ptr<WebviewCreationError> error) mutable {
+        WindowsHostApi *const owner = lifetime_state->owner;
+        if (owner == nullptr) {
+          return;
+        }
         if (!webview) {
           if (error) {
             return result(webview_all_windows::FlutterError(
@@ -173,15 +218,15 @@ void WindowsHostApi::CreateWebView(
         }
 
         auto bridge = std::make_unique<WebviewBridge>(
-            messenger_, textures_, platform_->graphics_context(),
-            std::move(webview));
+            owner->messenger_, owner->textures_,
+            owner->platform_->graphics_context(), std::move(webview));
         if (!bridge->IsValid()) {
           return result(webview_all_windows::FlutterError(
               kErrorCodeWebviewCreationFailed,
               "Creating the WebView graphics capture texture failed."));
         }
         auto texture_id = bridge->texture_id();
-        instances_[texture_id] = std::move(bridge);
+        owner->instances_[texture_id] = std::move(bridge);
 
         result(webview_all_windows::WindowsCreateWebViewResult(texture_id));
       });
@@ -663,7 +708,9 @@ WindowsHostApi::Suspend(int64_t texture_id) {
   if (!bridge) {
     return InvalidIdError();
   }
-  bridge->Suspend();
+  if (!bridge->Suspend()) {
+    return MethodFailedError("Suspending the WebView failed.");
+  }
   return std::nullopt;
 }
 
@@ -770,7 +817,21 @@ WindowsHostApi::SetSize(int64_t texture_id,
   }
   if (!bridge->SetSize(size.width(), size.height(), size.scale_factor())) {
     return webview_all_windows::FlutterError(
-        kErrorMethodFailed, "Starting WebView graphics capture failed.");
+        kErrorMethodFailed, "Updating the WebView surface size failed.");
+  }
+  return std::nullopt;
+}
+
+std::optional<webview_all_windows::FlutterError>
+WindowsHostApi::SetSurfaceAttached(int64_t texture_id, bool attached) {
+  auto bridge = FindBridge(texture_id);
+  if (!bridge) {
+    return InvalidIdError();
+  }
+  if (!bridge->SetSurfaceAttached(attached)) {
+    return MethodFailedError(attached
+                                 ? "Attaching the WebView surface failed."
+                                 : "Detaching the WebView surface failed.");
   }
   return std::nullopt;
 }

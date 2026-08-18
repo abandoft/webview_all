@@ -3,6 +3,8 @@
 #include <flutter/event_stream_handler_functions.h>
 #include <flutter/method_result_functions.h>
 
+#include <cmath>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -158,9 +160,19 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
 }
 
 WebviewBridge::~WebviewBridge() {
+  event_sink_.reset();
+  event_channel_.reset();
+  method_channel_.reset();
+  if (texture_bridge_) {
+    texture_bridge_->Stop();
+  }
   if (texture_id_ >= 0) {
     texture_registrar_->UnregisterTexture(texture_id_);
+    texture_id_ = -1;
   }
+  flutter_texture_.reset();
+  texture_bridge_.reset();
+  webview_.reset();
 }
 
 void WebviewBridge::RegisterEventHandlers() {
@@ -564,10 +576,39 @@ void WebviewBridge::SetPointerButtonState(int64_t button, bool is_down) {
 }
 
 bool WebviewBridge::SetSize(double width, double height, double scale_factor) {
-  webview_->SetSurfaceSize(static_cast<size_t>(width),
-                           static_cast<size_t>(height),
-                           static_cast<float>(scale_factor));
-  return texture_bridge_->Start();
+  if (!std::isfinite(width) || !std::isfinite(height) ||
+      !std::isfinite(scale_factor) || width <= 0 || height <= 0 ||
+      scale_factor <= 0 ||
+      width >= static_cast<double>((std::numeric_limits<size_t>::max)()) ||
+      height >= static_cast<double>((std::numeric_limits<size_t>::max)()) ||
+      scale_factor >=
+          static_cast<double>((std::numeric_limits<float>::max)()) ||
+      !webview_->SetSurfaceSize(static_cast<size_t>(width),
+                                static_cast<size_t>(height),
+                                static_cast<float>(scale_factor))) {
+    return false;
+  }
+  surface_size_set_ = true;
+  return UpdateRenderingState();
+}
+
+bool WebviewBridge::SetSurfaceAttached(bool attached) {
+  surface_attached_ = attached;
+  return UpdateRenderingState();
+}
+
+void WebviewBridge::NotifyParentWindowPositionChanged() {
+  webview_->NotifyParentWindowPositionChanged();
+}
+
+bool WebviewBridge::UpdateRenderingState() {
+  const bool should_render =
+      surface_attached_ && surface_size_set_ && !suspended_;
+  if (!should_render) {
+    texture_bridge_->Stop();
+    return webview_->SetVisible(false);
+  }
+  return webview_->SetVisible(true) && texture_bridge_->Start();
 }
 
 void WebviewBridge::LoadUrl(const std::string &url) { webview_->LoadUrl(url); }
@@ -591,14 +632,23 @@ bool WebviewBridge::GoBack() { return webview_->GoBack(); }
 
 bool WebviewBridge::GoForward() { return webview_->GoForward(); }
 
-void WebviewBridge::Suspend() {
+bool WebviewBridge::Suspend() {
+  suspended_ = true;
   texture_bridge_->Stop();
-  webview_->Suspend();
+  if (webview_->Suspend()) {
+    return true;
+  }
+  suspended_ = false;
+  UpdateRenderingState();
+  return false;
 }
 
 bool WebviewBridge::Resume() {
-  webview_->Resume();
-  return texture_bridge_->Start();
+  if (!webview_->Resume()) {
+    return false;
+  }
+  suspended_ = false;
+  return UpdateRenderingState();
 }
 
 void WebviewBridge::SetVirtualHostNameMapping(const std::string &host_name,

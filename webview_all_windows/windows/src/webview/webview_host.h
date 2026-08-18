@@ -28,7 +28,7 @@ struct WebviewCreationError {
   }
 };
 
-class WebviewHost {
+class WebviewHost : public std::enable_shared_from_this<WebviewHost> {
 public:
   typedef std::function<void(std::unique_ptr<Webview>,
                              std::unique_ptr<WebviewCreationError>)>
@@ -40,14 +40,13 @@ public:
                              std::unique_ptr<WebviewCreationError>)>
       PointerInfoCreationCallback;
 
-  static std::unique_ptr<WebviewHost>
+  static std::shared_ptr<WebviewHost>
   Create(WebviewPlatform *platform,
          std::optional<std::wstring> user_data_directory = std::nullopt,
          std::optional<std::wstring> browser_exe_path = std::nullopt,
          std::optional<std::string> arguments = std::nullopt);
 
-  void CreateWebview(HWND hwnd, bool offscreen_only, bool owns_window,
-                     WebviewCreationCallback callback);
+  void CreateWebview(HWND parent_window, WebviewCreationCallback callback);
 
   void CreateWebViewPointerInfo(PointerInfoCreationCallback cb);
 

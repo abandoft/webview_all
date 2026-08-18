@@ -11,7 +11,6 @@
 
 #include <winrt/Windows.Foundation.h>
 
-#include "util/composition.desktop.interop.h"
 #include "util/logging.h"
 #include "util/string_converter.h"
 #include "webview/webview_host.h"
@@ -20,6 +19,14 @@ using namespace Microsoft::WRL;
 
 namespace webview_all_windows {
 namespace {
+
+constexpr int64_t kOffscreenMargin = 1024;
+constexpr int64_t kMaximumSurfaceDimension = 16384;
+
+bool IsLong(int64_t value) {
+  return value >= (std::numeric_limits<LONG>::min)() &&
+         value <= (std::numeric_limits<LONG>::max)();
+}
 
 inline void ConvertColor(COREWEBVIEW2_COLOR &webview_color, int32_t color) {
   webview_color.B = color & 0xFF;
@@ -199,9 +206,10 @@ std::string CanonicalizeNavigationUrl(const std::string &url) {
 
 Webview::Webview(
     wil::com_ptr<ICoreWebView2CompositionController> composition_controller,
-    WebviewHost *host, HWND hwnd, bool owns_window, bool offscreen_only)
-    : composition_controller_(std::move(composition_controller)), host_(host),
-      hwnd_(hwnd), owns_window_(owns_window) {
+    std::shared_ptr<WebviewHost> host, HWND parent_window)
+    : parent_window_(parent_window),
+      composition_controller_(std::move(composition_controller)),
+      host_(std::move(host)) {
   lifetime_state_->owner = this;
   webview_controller_ =
       composition_controller_.try_query<ICoreWebView2Controller3>();
@@ -237,7 +245,7 @@ Webview::Webview(
   EnableSecurityUpdates();
   RegisterEventHandlers();
 
-  is_valid_ = CreateSurface(host->compositor(), hwnd, offscreen_only);
+  is_valid_ = CreateSurface(host_->compositor());
 }
 
 Webview::~Webview() {
@@ -245,14 +253,29 @@ Webview::~Webview() {
   lifetime_state_->owner = nullptr;
   navigation_requested_callback_ = nullptr;
   download_event_callback_ = nullptr;
-  if (owns_window_) {
-    DestroyWindow(hwnd_);
+
+  if (webview_controller_) {
+    webview_controller_->put_IsVisible(FALSE);
   }
+  if (composition_controller_) {
+    composition_controller_->put_RootVisualTarget(nullptr);
+  }
+  if (webview_controller_) {
+    webview_controller_->Close();
+  }
+
+  devtools_protocol_event_receiver_ = nullptr;
+  settings2_ = nullptr;
+  settings_ = nullptr;
+  webview_ = nullptr;
+  webview_controller_ = nullptr;
+  composition_controller_ = nullptr;
+  surface_ = nullptr;
+  host_.reset();
 }
 
 bool Webview::CreateSurface(
-    winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor,
-    HWND hwnd, bool offscreen_only) {
+    winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor) {
   if (!compositor || !composition_controller_ || !webview_controller_) {
     return false;
   }
@@ -267,22 +290,13 @@ bool Webview::CreateSurface(
     return false;
   }
 
-  // initial size. doesn't matter as we resize the surface anyway.
+  // The initial bounds must be outside the virtual desktop before WebView2 is
+  // connected or made visible. The texture is resized to the Flutter widget
+  // after its first layout.
   if (FAILED(surface_->put_Size({1280, 720})) ||
-      FAILED(surface_->put_IsVisible(true))) {
+      FAILED(surface_->put_IsVisible(true)) ||
+      !UpdateControllerBounds(1280, 720, 1.0f)) {
     return false;
-  }
-
-  // Create on-screen window for debugging purposes
-  if (!offscreen_only) {
-    window_target_ = util::TryCreateDesktopWindowTarget(compositor, hwnd);
-    auto composition_target =
-        window_target_
-            .try_as<ABI::Windows::UI::Composition::ICompositionTarget>();
-    if (!composition_target ||
-        FAILED(composition_target->put_Root(surface_.get()))) {
-      return false;
-    }
   }
 
   winrt::com_ptr<ABI::Windows::UI::Composition::IVisual> webview_visual;
@@ -305,7 +319,7 @@ bool Webview::CreateSurface(
       FAILED(children->InsertAtTop(webview_visual.get())) ||
       FAILED(composition_controller_->put_RootVisualTarget(
           webview_visual2.get())) ||
-      FAILED(webview_controller_->put_IsVisible(true))) {
+      FAILED(webview_controller_->put_IsVisible(FALSE))) {
     return false;
   }
 
@@ -928,31 +942,106 @@ void Webview::RegisterEventHandlers() {
   }
 }
 
-void Webview::SetSurfaceSize(size_t width, size_t height, float scale_factor) {
-  if (!IsValid()) {
-    return;
+std::optional<RECT>
+Webview::CalculateOffscreenBounds(size_t width, size_t height,
+                                  float scale_factor) const {
+  if (parent_window_ == nullptr || !IsWindow(parent_window_) || width == 0 ||
+      height == 0 || !std::isfinite(scale_factor) || scale_factor <= 0.0f) {
+    return std::nullopt;
   }
 
-  if (surface_ && width > 0 && height > 0) {
-    scale_factor_ = scale_factor;
-    auto scaled_width = width * scale_factor;
-    auto scaled_height = height * scale_factor;
+  const long double scaled_width_value =
+      std::ceil(static_cast<long double>(width) * scale_factor);
+  const long double scaled_height_value =
+      std::ceil(static_cast<long double>(height) * scale_factor);
+  if (scaled_width_value <= 0 || scaled_height_value <= 0 ||
+      scaled_width_value > kMaximumSurfaceDimension ||
+      scaled_height_value > kMaximumSurfaceDimension) {
+    return std::nullopt;
+  }
 
-    RECT bounds;
-    bounds.left = 0;
-    bounds.top = 0;
-    bounds.right = static_cast<LONG>(scaled_width);
-    bounds.bottom = static_cast<LONG>(scaled_height);
+  const int64_t scaled_width = static_cast<int64_t>(scaled_width_value);
+  const int64_t scaled_height = static_cast<int64_t>(scaled_height_value);
+  POINT parent_origin = {};
+  if (!ClientToScreen(parent_window_, &parent_origin)) {
+    return std::nullopt;
+  }
 
-    surface_->put_Size({scaled_width, scaled_height});
-    webview_controller_->put_RasterizationScale(scale_factor);
-    if (webview_controller_->put_Bounds(bounds) != S_OK) {
-      util::LogWarning("Setting webview bounds failed.");
-    }
+  const int64_t virtual_left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+  const int64_t virtual_top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+  const int64_t offscreen_right =
+      virtual_left - kOffscreenMargin - parent_origin.x;
+  const int64_t offscreen_bottom =
+      virtual_top - kOffscreenMargin - parent_origin.y;
+  const int64_t offscreen_left = offscreen_right - scaled_width;
+  const int64_t offscreen_top = offscreen_bottom - scaled_height;
+  if (!IsLong(offscreen_left) || !IsLong(offscreen_top) ||
+      !IsLong(offscreen_right) || !IsLong(offscreen_bottom)) {
+    return std::nullopt;
+  }
 
-    if (surface_size_changed_callback_) {
-      surface_size_changed_callback_(width, height);
-    }
+  return RECT{
+      static_cast<LONG>(offscreen_left), static_cast<LONG>(offscreen_top),
+      static_cast<LONG>(offscreen_right), static_cast<LONG>(offscreen_bottom)};
+}
+
+bool Webview::UpdateControllerBounds(size_t width, size_t height,
+                                     float scale_factor) {
+  const auto bounds = CalculateOffscreenBounds(width, height, scale_factor);
+  if (!bounds || !webview_controller_ ||
+      FAILED(webview_controller_->put_RasterizationScale(scale_factor)) ||
+      FAILED(webview_controller_->put_Bounds(*bounds))) {
+    return false;
+  }
+
+  surface_width_ = width;
+  surface_height_ = height;
+  scale_factor_ = scale_factor;
+  return true;
+}
+
+bool Webview::SetSurfaceSize(size_t width, size_t height, float scale_factor) {
+  if (!IsValid() || !surface_) {
+    return false;
+  }
+
+  const auto bounds = CalculateOffscreenBounds(width, height, scale_factor);
+  if (!bounds) {
+    util::LogWarning(
+        "The WebView surface size or off-screen bounds are invalid.");
+    return false;
+  }
+
+  const float scaled_width = static_cast<float>(bounds->right - bounds->left);
+  const float scaled_height = static_cast<float>(bounds->bottom - bounds->top);
+  if (FAILED(webview_controller_->put_RasterizationScale(scale_factor)) ||
+      FAILED(webview_controller_->put_Bounds(*bounds)) ||
+      FAILED(surface_->put_Size({scaled_width, scaled_height}))) {
+    util::LogWarning("Updating the WebView surface failed.");
+    return false;
+  }
+
+  surface_width_ = width;
+  surface_height_ = height;
+  scale_factor_ = scale_factor;
+  if (surface_size_changed_callback_) {
+    surface_size_changed_callback_(width, height);
+  }
+  return true;
+}
+
+bool Webview::SetVisible(bool visible) {
+  return IsValid() && webview_controller_ &&
+         SUCCEEDED(webview_controller_->put_IsVisible(visible ? TRUE : FALSE));
+}
+
+void Webview::NotifyParentWindowPositionChanged() {
+  if (!IsValid() || !webview_controller_) {
+    return;
+  }
+  if (FAILED(webview_controller_->NotifyParentWindowPositionChanged()) ||
+      !UpdateControllerBounds(surface_width_, surface_height_, scale_factor_)) {
+    util::LogWarning("Updating WebView parent window position failed.");
   }
 }
 
@@ -1659,14 +1748,13 @@ bool Webview::Suspend() {
     return false;
   }
 
-  wil::com_ptr<ICoreWebView2_3> webview;
-  webview = webview_.query<ICoreWebView2_3>();
+  wil::com_ptr<ICoreWebView2_3> webview = webview_.try_query<ICoreWebView2_3>();
   if (!webview) {
     return false;
   }
 
-  webview_controller_->put_IsVisible(false);
-  return webview->TrySuspend(
+  return SetVisible(false) &&
+         webview->TrySuspend(
              Callback<ICoreWebView2TrySuspendCompletedHandler>(
                  [](HRESULT error_code, BOOL is_successful) -> HRESULT {
                    return S_OK;
@@ -1679,13 +1767,11 @@ bool Webview::Resume() {
     return false;
   }
 
-  wil::com_ptr<ICoreWebView2_3> webview;
-  webview = webview_.query<ICoreWebView2_3>();
+  wil::com_ptr<ICoreWebView2_3> webview = webview_.try_query<ICoreWebView2_3>();
   if (!webview) {
     return false;
   }
-  return webview->Resume() == S_OK &&
-         webview_controller_->put_IsVisible(true) == S_OK;
+  return webview->Resume() == S_OK;
 }
 
 bool Webview::SetVirtualHostNameMapping(

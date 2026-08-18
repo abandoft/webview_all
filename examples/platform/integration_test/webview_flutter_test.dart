@@ -19,6 +19,7 @@ import 'package:webview_all/webview_all.dart';
 import 'package:webview_all_android/webview_all_android.dart';
 import 'package:webview_all_linux/webview_all_linux.dart';
 import 'package:webview_all_wkwebview/webview_all_wkwebview.dart';
+import 'package:webview_all_windows/webview_all_windows.dart';
 
 Future<void> main() async {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -72,6 +73,65 @@ Future<void> main() async {
   final secondaryUrl = '$prefixUrl/secondary.txt';
   final headersUrl = '$prefixUrl/headers';
   final basicAuthUrl = '$prefixUrl/http-basic-authentication';
+
+  testWidgets('Windows controller releases its renderer process', (
+    WidgetTester tester,
+  ) async {
+    if (!Platform.isWindows) {
+      return;
+    }
+
+    final int rendererCountBefore = await _countWindowsRendererProcesses();
+    final Completer<void> pageFinished = Completer<void>();
+    final WebViewController controller = WebViewController();
+    final WindowsWebViewController windowsController =
+        controller.platform as WindowsWebViewController;
+    var disposed = false;
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      if (!disposed) {
+        await windowsController.dispose();
+      }
+    });
+    await controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageFinished: (_) {
+          if (!pageFinished.isCompleted) {
+            pageFinished.complete();
+          }
+        },
+      ),
+    );
+    await controller.loadHtmlString('''
+<!DOCTYPE html>
+<html><head><title>Windows lifecycle test</title></head>
+<body>Windows lifecycle test</body></html>
+''');
+
+    await tester.pumpWidget(WebViewWidget(controller: controller));
+    await pageFinished.future.timeout(const Duration(seconds: 15));
+    await _waitForCondition(
+      () async => await _countWindowsRendererProcesses() > rendererCountBefore,
+      reason: 'Creating a Windows WebView did not start a renderer process.',
+      timeout: const Duration(seconds: 15),
+    );
+    final int rendererCountWhileMounted =
+        await _countWindowsRendererProcesses();
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await windowsController.dispose();
+    disposed = true;
+
+    await _waitForCondition(
+      () async => await _countWindowsRendererProcesses() <= rendererCountBefore,
+      reason:
+          'Disposing the Windows controller did not restore the renderer '
+          'process count from $rendererCountWhileMounted to '
+          '$rendererCountBefore.',
+      timeout: const Duration(seconds: 15),
+    );
+    await expectLater(controller.currentUrl(), throwsStateError);
+  });
 
   testWidgets('loadRequest', (WidgetTester tester) async {
     final pageFinished = Completer<void>();
@@ -1220,6 +1280,49 @@ bool _usesDecodedJavaScriptResults() {
 bool _isWKWebView() {
   return defaultTargetPlatform == TargetPlatform.iOS ||
       defaultTargetPlatform == TargetPlatform.macOS;
+}
+
+Future<int> _countWindowsRendererProcesses() async {
+  final String script =
+      r'''
+$rootProcessId = __ROOT_PROCESS_ID__
+$processes = @(Get-CimInstance Win32_Process)
+$descendantIds = [System.Collections.Generic.HashSet[uint32]]::new()
+$pendingIds = [System.Collections.Generic.Queue[uint32]]::new()
+$pendingIds.Enqueue([uint32]$rootProcessId)
+while ($pendingIds.Count -gt 0) {
+  $parentId = $pendingIds.Dequeue()
+  foreach ($process in $processes) {
+    if ($process.ParentProcessId -eq $parentId -and
+        $descendantIds.Add([uint32]$process.ProcessId)) {
+      $pendingIds.Enqueue([uint32]$process.ProcessId)
+    }
+  }
+}
+@($processes | Where-Object {
+  $descendantIds.Contains([uint32]$_.ProcessId) -and
+  $_.Name -ieq 'msedgewebview2.exe' -and
+  $_.CommandLine -match '--type=renderer'
+}).Count
+'''
+          .replaceFirst('__ROOT_PROCESS_ID__', '$pid');
+  final ProcessResult result = await Process.run('powershell.exe', <String>[
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    script,
+  ]).timeout(const Duration(seconds: 10));
+  if (result.exitCode != 0) {
+    throw TestFailure(
+      'Failed to inspect Windows WebView2 renderer processes: '
+      '${result.stderr}',
+    );
+  }
+  final int? count = int.tryParse('${result.stdout}'.trim());
+  if (count == null) {
+    throw TestFailure('Unexpected renderer process count: ${result.stdout}');
+  }
+  return count;
 }
 
 Future<void> _waitForCondition(

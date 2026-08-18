@@ -2,7 +2,6 @@
 
 #include <WebView2.h>
 #include <wil/com.h>
-#include <windows.ui.composition.desktop.h>
 #include <windows.ui.composition.h>
 #include <winrt/base.h>
 
@@ -223,7 +222,9 @@ public:
 
   bool IsValid() { return is_valid_; }
 
-  void SetSurfaceSize(size_t width, size_t height, float scale_factor);
+  bool SetSurfaceSize(size_t width, size_t height, float scale_factor);
+  bool SetVisible(bool visible);
+  void NotifyParentWindowPositionChanged();
   void SetCursorPos(double x, double y);
   void SetPointerUpdate(int32_t pointer, WebviewPointerEventKind eventKind,
                         double x, double y, double size, double pressure);
@@ -356,10 +357,11 @@ private:
     Webview *owner = nullptr;
   };
 
-  HWND hwnd_;
-  bool owns_window_;
+  HWND parent_window_;
   bool is_valid_ = false;
   float scale_factor_ = 1.0;
+  size_t surface_width_ = 1280;
+  size_t surface_height_ = 720;
   wil::com_ptr<ICoreWebView2CompositionController> composition_controller_;
   wil::com_ptr<ICoreWebView2Controller3> webview_controller_;
   wil::com_ptr<ICoreWebView2> webview_;
@@ -386,10 +388,8 @@ private:
       std::make_shared<LifetimeState>();
 
   winrt::com_ptr<ABI::Windows::UI::Composition::IVisual> surface_;
-  winrt::com_ptr<ABI::Windows::UI::Composition::Desktop::IDesktopWindowTarget>
-      window_target_;
 
-  WebviewHost *host_;
+  std::shared_ptr<WebviewHost> host_;
   EventRegistrations event_registrations_{};
 
   UrlChangedCallback url_changed_callback_;
@@ -414,11 +414,13 @@ private:
 
   Webview(
       wil::com_ptr<ICoreWebView2CompositionController> composition_controller,
-      WebviewHost *host, HWND hwnd, bool owns_window, bool offscreen_only);
+      std::shared_ptr<WebviewHost> host, HWND parent_window);
 
   bool CreateSurface(
-      winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor,
-      HWND hwnd, bool offscreen_only);
+      winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor);
+  std::optional<RECT> CalculateOffscreenBounds(size_t width, size_t height,
+                                               float scale_factor) const;
+  bool UpdateControllerBounds(size_t width, size_t height, float scale_factor);
   void RegisterEventHandlers();
   void InvalidatePendingNavigationRequests();
   void MarkNavigationApproved(const std::string &url);

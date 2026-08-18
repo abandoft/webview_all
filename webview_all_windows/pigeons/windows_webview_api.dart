@@ -230,4 +230,6 @@ abstract class WindowsWebViewHostApi {
   void setScrollDelta(int textureId, WindowsPointData delta);
 
   void setSize(int textureId, WindowsSizeData size);
+
+  void setSurfaceAttached(int textureId, bool attached);
 }

@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -12,6 +13,10 @@ import 'windows_webview_cookie.dart';
 import 'windows_webview_types.dart';
 import 'windows_webview_api.g.dart';
 import 'windows_webview_constants.dart';
+
+String _singleLineNativeLogValue(Object value) {
+  return value.toString().replaceAll(RegExp(r'[\r\n]+'), ' ');
+}
 
 class HistoryChanged {
   final bool canGoBack;
@@ -165,6 +170,8 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   bool _nativeWebViewCreated = false;
   bool _methodCallHandlerRegistered = false;
   bool _streamsClosed = false;
+  int _surfaceAttachmentCount = 0;
+  int _surfaceAttachmentGeneration = 0;
 
   Future<void> get ready =>
       _initializationFuture ??
@@ -410,12 +417,15 @@ class WebviewController extends ValueNotifier<WebviewValue> {
         );
       }
       value = value.copyWith(isInitialized: true);
+      if (_surfaceAttachmentCount > 0) {
+        _scheduleSurfaceAttachmentUpdate();
+      }
     } catch (error, stackTrace) {
       try {
         await _releaseNativeBindings();
       } catch (cleanupError) {
         debugPrint(
-          'webview_all_windows: failed to clean up after a WebView2 initialization error: $cleanupError',
+          'webview_all_windows: failed to clean up after a WebView2 initialization error: ${_singleLineNativeLogValue(cleanupError)}',
         );
       } finally {
         _initializationFuture = null;
@@ -585,7 +595,6 @@ class WebviewController extends ValueNotifier<WebviewValue> {
         _methodCallHandlerRegistered = false;
       }
     }
-
     try {
       await _eventStreamSubscription?.cancel();
     } catch (error, stackTrace) {
@@ -1163,6 +1172,46 @@ class WebviewController extends ValueNotifier<WebviewValue> {
       ),
     );
   }
+
+  void _attachSurface() {
+    if (_isDisposed) {
+      return;
+    }
+    _surfaceAttachmentCount += 1;
+    _scheduleSurfaceAttachmentUpdate();
+  }
+
+  void _detachSurface() {
+    if (_surfaceAttachmentCount == 0) {
+      return;
+    }
+    _surfaceAttachmentCount -= 1;
+    _scheduleSurfaceAttachmentUpdate();
+  }
+
+  void _scheduleSurfaceAttachmentUpdate() {
+    final int generation = ++_surfaceAttachmentGeneration;
+    final bool attached = _surfaceAttachmentCount > 0;
+    unawaited(_updateSurfaceAttachment(generation, attached));
+  }
+
+  Future<void> _updateSurfaceAttachment(int generation, bool attached) async {
+    try {
+      await ready;
+      if (_isDisposed ||
+          !_nativeWebViewCreated ||
+          generation != _surfaceAttachmentGeneration) {
+        return;
+      }
+      await _hostApi.setSurfaceAttached(_textureId, attached);
+    } catch (error) {
+      if (!_isDisposed && generation == _surfaceAttachmentGeneration) {
+        debugPrint(
+          'webview_all_windows: failed to update the WebView2 surface attachment: ${_singleLineNativeLogValue(error)}',
+        );
+      }
+    }
+  }
 }
 
 class Webview extends StatefulWidget {
@@ -1194,7 +1243,7 @@ class Webview extends StatefulWidget {
   _WebviewState createState() => _WebviewState();
 }
 
-class _WebviewState extends State<Webview> {
+class _WebviewState extends State<Webview> with WidgetsBindingObserver {
   final GlobalKey _key = GlobalKey();
   final _downButtons = <int, PointerButton>{};
 
@@ -1206,15 +1255,27 @@ class _WebviewState extends State<Webview> {
 
   StreamSubscription? _cursorSubscription;
   int _surfaceSizeGeneration = 0;
+  bool _applicationVisible = true;
+  bool _surfacePainted = false;
+  bool _surfaceAttached = false;
+  bool _visibilityCheckScheduled = false;
+  bool _surfaceSizeReportScheduled = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _applicationVisible = _isApplicationVisible(
+      WidgetsBinding.instance.lifecycleState,
+    );
+    _subscribeToCursor();
+    _scheduleSurfaceSizeReport();
+  }
 
-    // Report initial surface size
-    WidgetsBinding.instance.addPostFrameCallback((_) => _reportSurfaceSize());
-
-    _cursorSubscription = _controller._cursor.listen((cursor) {
+  void _subscribeToCursor() {
+    _cursorSubscription = _controller._cursor.listen((
+      SystemMouseCursor cursor,
+    ) {
       if (mounted) {
         setState(() {
           _cursor = cursor;
@@ -1224,21 +1285,120 @@ class _WebviewState extends State<Webview> {
   }
 
   @override
+  void didUpdateWidget(Webview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final bool controllerChanged = oldWidget.controller != widget.controller;
+
+    if (controllerChanged) {
+      if (_surfaceAttached) {
+        oldWidget.controller._detachSurface();
+        _controller._attachSurface();
+      }
+      unawaited(_cursorSubscription?.cancel());
+      _cursorSubscription = null;
+      _surfaceSizeGeneration += 1;
+      _subscribeToCursor();
+    }
+
+    if (controllerChanged ||
+        oldWidget.width != widget.width ||
+        oldWidget.height != widget.height ||
+        oldWidget.scaleFactor != widget.scaleFactor) {
+      _scheduleSurfaceSizeReport();
+    }
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    _scheduleSurfaceSizeReport();
+    context.findRenderObject()?.markNeedsPaint();
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    final bool applicationVisible = _isApplicationVisible(state);
+    if (_applicationVisible == applicationVisible) {
+      return;
+    }
+    _applicationVisible = applicationVisible;
+    if (applicationVisible) {
+      _surfacePainted = false;
+      context.findRenderObject()?.markNeedsPaint();
+      WidgetsBinding.instance.ensureVisualUpdate();
+    }
+    _syncSurfaceAttachment();
+  }
+
+  static bool _isApplicationVisible(AppLifecycleState? state) {
+    return state == null ||
+        state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive;
+  }
+
+  void _handleSurfacePainted(bool painted) {
+    if (_surfacePainted == painted) {
+      return;
+    }
+    _surfacePainted = painted;
+    _syncSurfaceAttachment();
+  }
+
+  void _syncSurfaceAttachment() {
+    final bool shouldAttach = _surfacePainted && _applicationVisible;
+    if (_surfaceAttached == shouldAttach) {
+      return;
+    }
+    _surfaceAttached = shouldAttach;
+    if (shouldAttach) {
+      _controller._attachSurface();
+      _scheduleVisibilityCheck();
+    } else {
+      _controller._detachSurface();
+    }
+  }
+
+  void _scheduleVisibilityCheck() {
+    if (_visibilityCheckScheduled || !_surfaceAttached) {
+      return;
+    }
+    _visibilityCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      _visibilityCheckScheduled = false;
+      if (!mounted || !_surfaceAttached) {
+        return;
+      }
+      final RenderObject? renderObject = context.findRenderObject();
+      if (renderObject is _WindowsSurfaceRenderBox &&
+          !renderObject.isEffectivelyPainted) {
+        _handleSurfacePainted(false);
+        return;
+      }
+      _scheduleVisibilityCheck();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return (widget.height != null && widget.width != null)
-        ? SizedBox(
-            key: _key,
-            width: widget.width,
-            height: widget.height,
-            child: _buildInner(),
-          )
-        : SizedBox.expand(key: _key, child: _buildInner());
+    return _WindowsSurfaceObserver(
+      onPaintedChanged: _handleSurfacePainted,
+      child: (widget.height != null && widget.width != null)
+          ? SizedBox(
+              key: _key,
+              width: widget.width,
+              height: widget.height,
+              child: _buildInner(),
+            )
+          : SizedBox.expand(key: _key, child: _buildInner()),
+    );
   }
 
   Widget _buildInner() {
     return NotificationListener<SizeChangedLayoutNotification>(
       onNotification: (notification) {
-        _reportSurfaceSize();
+        _scheduleSurfaceSizeReport();
         return true;
       },
       child: SizeChangedLayoutNotifier(
@@ -1335,6 +1495,19 @@ class _WebviewState extends State<Webview> {
     );
   }
 
+  void _scheduleSurfaceSizeReport() {
+    if (_surfaceSizeReportScheduled) {
+      return;
+    }
+    _surfaceSizeReportScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      _surfaceSizeReportScheduled = false;
+      if (mounted) {
+        unawaited(_reportSurfaceSize());
+      }
+    });
+  }
+
   Future<void> _reportSurfaceSize() async {
     final int generation = ++_surfaceSizeGeneration;
     final BuildContext? initialContext = _key.currentContext;
@@ -1359,7 +1532,7 @@ class _WebviewState extends State<Webview> {
     } catch (error) {
       if (mounted) {
         debugPrint(
-          'webview_all_windows: failed to update the WebView2 surface size: $error',
+          'webview_all_windows: failed to update the WebView2 surface size: ${_singleLineNativeLogValue(error)}',
         );
       }
     }
@@ -1367,9 +1540,72 @@ class _WebviewState extends State<Webview> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _surfaceSizeReportScheduled = false;
     _surfaceSizeGeneration += 1;
+    if (_surfaceAttached) {
+      _surfaceAttached = false;
+      _controller._detachSurface();
+    }
     unawaited(_cursorSubscription?.cancel());
     _cursorSubscription = null;
     super.dispose();
+  }
+}
+
+class _WindowsSurfaceObserver extends SingleChildRenderObjectWidget {
+  const _WindowsSurfaceObserver({
+    required this.onPaintedChanged,
+    required super.child,
+  });
+
+  final ValueChanged<bool> onPaintedChanged;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _WindowsSurfaceRenderBox(onPaintedChanged);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _WindowsSurfaceRenderBox renderObject,
+  ) {
+    renderObject.onPaintedChanged = onPaintedChanged;
+  }
+}
+
+class _WindowsSurfaceRenderBox extends RenderProxyBox {
+  _WindowsSurfaceRenderBox(this._onPaintedChanged);
+
+  ValueChanged<bool> _onPaintedChanged;
+
+  set onPaintedChanged(ValueChanged<bool> value) {
+    _onPaintedChanged = value;
+  }
+
+  bool get isEffectivelyPainted {
+    RenderObject child = this;
+    RenderObject? ancestor = parent;
+    while (ancestor != null) {
+      if (!ancestor.paintsChild(child)) {
+        return false;
+      }
+      child = ancestor;
+      ancestor = ancestor.parent;
+    }
+    return true;
+  }
+
+  @override
+  void detach() {
+    _onPaintedChanged(false);
+    super.detach();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    super.paint(context, offset);
+    _onPaintedChanged(attached && isEffectivelyPainted);
   }
 }
