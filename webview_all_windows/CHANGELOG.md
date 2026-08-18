@@ -1,3 +1,10 @@
+## 1.3.7
+
+* Add Android WebAuthn and passkey configuration through `setWebAuthenticationSupport` for associated apps and eligible browser apps.
+* Fix a Windows issue where WebView2 could continue intercepting desktop clicks after the application window was minimized or the WebView was hidden or removed.
+* Improve Windows WebView display and rendering recovery across application lifecycle changes, WebView visibility changes, window movement, display changes, and DPI changes.
+* Add deterministic Windows WebView2 cleanup through `WindowsWebViewController.dispose()`, including safe disposal during initialization and automatic fallback cleanup.
+
 ## 1.3.6
 
 * Fix Linux system input routing so WebKitGTK receives pointer, keyboard, and wheel input without disabling Flutter controls or allowing clicks to pass through the application window.

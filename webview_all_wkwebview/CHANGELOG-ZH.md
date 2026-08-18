@@ -1,3 +1,10 @@
+## 1.3.7
+
+* Android 新增 WebAuthn（Passkey）配置，可通过 `setWebAuthenticationSupport` 为已关联应用或具备资格的浏览器应用启用。
+* 修复 Windows 应用窗口最小化，或 WebView 被隐藏、移除后，WebView2 仍可能拦截桌面点击的问题。
+* 完善 Windows WebView 在应用前后台切换、WebView 显隐、窗口移动、显示器及缩放变化时的显示和渲染恢复。
+* 新增 `WindowsWebViewController.dispose()`，可确定性释放 WebView2 资源，并支持初始化期间安全释放和自动兜底清理。
+
 ## 1.3.6
 
 * 修复 Linux 系统输入路由，使 WebKitGTK 可接收鼠标、键盘和滚轮输入，同时不再导致 Flutter 控件失去交互或点击穿透应用窗口。
