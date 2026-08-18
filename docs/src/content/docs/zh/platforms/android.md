@@ -3,7 +3,7 @@ title: Android
 description: Android WebView 实现、API 和限制。
 ---
 
-Android 由 `webview_all_android ^1.3.6` 提供，`webview_all` 将它注册为默认 Android 实现。
+Android 由 `webview_all_android ^1.3.7` 提供，`webview_all` 将它注册为默认 Android 实现。
 
 | 项 | 值 |
 | --- | --- |
@@ -31,6 +31,7 @@ Android 由 `webview_all_android ^1.3.6` 提供，`webview_all` 将它注册为�
 | `setCustomWidgetCallbacks` | 处理视频等全屏 custom view。 |
 | `setMixedContentMode` | 控制 HTTPS 页面加载 HTTP 内容。 |
 | `isWebViewFeatureSupported` | 查询 AndroidX WebView 功能。 |
+| `setWebAuthenticationSupport` | 为已关联应用或具备资格的浏览器应用启用 WebAuthn。 |
 | `setPaymentRequestEnabled` | 开启 Payment Request API。 |
 | `setInsetsForWebContentToIgnore` | 控制传给网页的 window insets。 |
 
@@ -42,6 +43,29 @@ await (controller.platform as AndroidWebViewController)
 ```
 
 `neverAllow` 是生产环境推荐值。
+
+## WebAuthn 与 Passkey
+
+Android WebView 默认关闭 WebAuthn。启用前必须先检查当前设备与
+WebView 版本是否支持：
+
+```dart
+final android = controller.platform as AndroidWebViewController;
+
+if (await android.isWebViewFeatureSupported(
+  WebViewFeatureType.webAuthentication,
+)) {
+  await android.setWebAuthenticationSupport(
+    WebAuthenticationSupport.forApp,
+  );
+}
+```
+
+`forApp` 是普通应用应使用的模式，并且必须通过
+[Digital Asset Links](https://developers.google.com/digital-asset-links)
+关联应用与 relying-party 域名。`forBrowser` 只适用于经凭据提供方
+批准、可代表第三方站点请求凭据的特权浏览器应用，普通应用不应使用它绕过
+域名关联。`none` 用于关闭功能，也是 AndroidX WebKit 的默认值。
 
 ## 文件选择
 
@@ -70,6 +94,8 @@ Android native 代码可通过 `WebViewFlutterAndroidExternalApi` 的
 - Android WebView `postUrl` 不支持 POST 自定义 headers。
 - `grant()` WebView 权限不等于系统运行时权限，宿主应用仍需自己请求。
 - Payment Request 取决于 AndroidX WebKit、系统 WebView/Chrome 版本和 manifest queries。
+- WebAuthn 取决于 AndroidX WebKit、系统 WebView 版本和正确的应用-站点关联；
+  未通过功能检查就调用设置接口可能产生不支持错误。
 - Android 插件会根据宿主工程的 Android Gradle Plugin 选择 Kotlin 集成方式：
   AGP 8 及以下使用 Kotlin Gradle Plugin，AGP 9 及以上使用 Built-in Kotlin，
   从而兼容旧版 Flutter 工程并避免与新版 Android 构建冲突。

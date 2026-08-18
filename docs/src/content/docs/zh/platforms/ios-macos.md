@@ -3,7 +3,7 @@ title: iOS 和 macOS
 description: WKWebView 实现、WebKit API 和 Apple 平台差异。
 ---
 
-iOS 和 macOS 由 `webview_all_wkwebview ^1.3.6` 提供。
+iOS 和 macOS 由 `webview_all_wkwebview ^1.3.7` 提供。
 
 | 项 | 值 |
 | --- | --- |
@@ -56,6 +56,20 @@ await (controller.platform as WebKitWebViewController).loadFileWithParams(
 ```
 
 `readAccessPath` 必须覆盖 HTML 引用的本地资源。
+
+## WebAuthn 与 Passkey
+
+`WKWebView` 会由 WebKit 自动处理 WebAuthn 请求，因此没有 Android 式的
+启用开关，`webview_all` 也不增加这种伪统一接口。使用 Passkey 时，需要在
+宿主应用的 Associated Domains 中配置 relying-party 域名，并按
+[Apple Passkey 文档](https://developer.apple.com/documentation/authenticationservices/supporting-passkeys)
+完成网站端关联。
+
+Passkey 使用的 Associated Domains 与
+`limitsNavigationsToAppBoundDomains` 不是同一项配置；启用 App-Bound
+Domains 不会自动开通 Passkey。实际能力还取决于系统版本和已安装的
+凭据提供方，网页应使用标准 `PublicKeyCredential` 能力检测，并在不可用时
+提供其他登录方式。
 
 ## macOS 差异
 

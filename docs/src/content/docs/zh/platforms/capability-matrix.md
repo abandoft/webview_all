@@ -1,6 +1,6 @@
 ---
 title: 能力矩阵
-description: webview_all 1.3.6 的跨平台能力覆盖。
+description: webview_all 1.3.7 的跨平台能力覆盖。
 ---
 
 标记说明：
@@ -49,6 +49,7 @@ description: webview_all 1.3.6 的跨平台能力覆盖。
 | Console | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 同源或插件管理的隔离 HTML |
 | JS dialog | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | alert 可走 bridge；隔离 HTML 的 confirm/prompt 由浏览器处理 |
 | 权限请求 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 可控制 HTML 媒体 hook + 浏览器提示 |
+| WebAuthn/Passkey | 有限制，显式启用且关联应用 | 有限制，取决于系统与 Associated Domains | 有限制，取决于系统与 Associated Domains | 有限制，取决于 Runtime/系统/凭据提供方 | 不支持，WebKitGTK port 缺失 | 不声明支持，ArkWeb 无公开宿主 API | 有限制，取决于浏览器与 iframe 策略 |
 | 文件选择 | 完整 | 无通用回调 | 无通用回调 | 无通用回调 | 无通用回调 | 完整 | 浏览器接管 |
 | 定位提示 | 完整 | 无平台 API | 无平台 API | 引擎/浏览器接管 | 引擎/浏览器接管 | 完整 | 浏览器接管 |
 

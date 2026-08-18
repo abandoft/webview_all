@@ -3,7 +3,7 @@ title: Web
 description: Browser iframe implementation, iframe attributes, fetch-backed requests, and security limits.
 ---
 
-Web is provided by `webview_all_web 1.3.6` and renders an HTML `iframe`.
+Web is provided by `webview_all_web 1.3.7` and renders an HTML `iframe`.
 
 ## Engine
 
@@ -52,6 +52,28 @@ controller owns iframe identity and document loading.
 | `setIFrameAllow(String? allow)` | Sets or removes `allow`. |
 | `setIFrameSandbox(String? sandbox)` | Sets or removes `sandbox`. |
 | `setIFrameReferrerPolicy(String? referrerPolicy)` | Sets or removes `referrerpolicy`. |
+
+## Web Authentication and Passkeys
+
+WebAuthn is provided by the browser, not by a native plugin bridge. The W3C
+default allows it in same-origin documents but disables it in cross-origin
+iframes. When the loaded relying party is cross-origin from the Flutter web
+application, delegate only the operations it needs through `iFrameAllow`:
+
+```dart
+final params = WebWebViewControllerCreationParams(
+  iFrameAllow:
+      'publickey-credentials-get; publickey-credentials-create',
+);
+```
+
+`setIFrameAllow` can update the same attribute later. The embedding page's
+`Permissions-Policy` header can apply a stricter policy and cannot be loosened
+by the iframe. WebAuthn also requires a secure context and a valid relying-
+party origin. If `iFrameSandbox` is used, do not give the WebAuthn document an
+opaque origin; choose sandbox permissions according to how much the embedded
+site is trusted. The plugin deliberately does not install a credential shim or
+grant these permissions by default.
 
 ## Loading Model
 
@@ -155,6 +177,7 @@ Browser JavaScript exposes only cookies visible to the host document. Therefore:
 | SSL auth decisions | Not available. Browser TLS errors are controlled by the browser. |
 | HTTP auth callback | Not available as a WebView callback. |
 | Cross-origin JavaScript | Blocked by browser same-origin policy. |
+| Cross-origin WebAuthn without iframe delegation | Blocked by the browser's Permissions Policy. |
 
 ## Permission Mediation
 

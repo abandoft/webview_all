@@ -3,7 +3,7 @@ title: iOS and macOS
 description: WKWebView implementation, WebKit APIs, and Apple platform differences.
 ---
 
-iOS and macOS are provided by `webview_all_wkwebview ^1.3.6`. `webview_all` registers it as the default implementation for both Apple platforms.
+iOS and macOS are provided by `webview_all_wkwebview ^1.3.7`. `webview_all` registers it as the default implementation for both Apple platforms.
 
 ## Engine
 
@@ -89,6 +89,21 @@ The common `WebViewController.addJavaScriptChannel` automatically converts commo
 
 Your app still needs the corresponding `Info.plist` privacy description keys.
 
+## Web Authentication and Passkeys
+
+`WKWebView` handles WebAuthn challenges through WebKit, so there is no Android-
+style enable switch and `webview_all` does not add one. To use passkeys, add
+the relying-party domain to the host app's Associated Domains configuration
+and configure the website-side association described by
+[Apple's passkey documentation](https://developer.apple.com/documentation/authenticationservices/supporting-passkeys).
+
+Associated Domains for passkeys are separate from
+`limitsNavigationsToAppBoundDomains`; enabling App-Bound Domains does not
+configure passkey access. Actual authenticator and conditional-mediation
+availability depends on the OS and installed credential providers. The page
+should use the standard `PublicKeyCredential` availability checks and provide
+another sign-in method when they report that no authenticator is available.
+
 ## macOS Differences
 
 The same Dart package targets iOS and macOS. macOS support uses public native
@@ -125,4 +140,6 @@ Flutter versions. No host application changes are required.
 
 - WebKit may reject JavaScript return values that cannot be bridged to Dart.
 - App-Bound Domains require host app configuration and iOS 14+ or macOS 11+.
+- Passkeys require the relying-party domain to be configured as an Associated
+  Domain and remain subject to OS and credential-provider availability.
 - Permission handling still depends on OS privacy entitlements and user decisions.

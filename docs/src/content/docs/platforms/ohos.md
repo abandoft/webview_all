@@ -3,7 +3,7 @@ title: OHOS
 description: ArkWeb implementation, APIs, and HarmonyOS/OpenHarmony limits.
 ---
 
-OHOS is provided by `webview_all_ohos 1.3.6` and uses ArkWeb through the OHOS Flutter SDK.
+OHOS is provided by `webview_all_ohos 1.3.7` and uses ArkWeb through the OHOS Flutter SDK.
 
 ## Engine
 
@@ -111,10 +111,22 @@ OHOS-specific types add native request and response detail:
 | `OhosWebResourceResponse` | `reasonPhrase`, `mimeType`. |
 | `OhosPlatformSslAuthError` | `url`, `errorCode`, `description`, `proceed()`, `cancel()`. |
 
+## Web Authentication and Passkeys
+
+The supported ArkWeb SDK surface does not currently document a host API for
+enabling or brokering WebAuthn/passkeys. `webview_all_ohos` therefore does not
+claim this capability or add an Android-shaped setting with no native
+equivalent. Applications should test the standard web capability on every
+target API level and device, keep another authentication method, and use a
+supported external browser when passkeys are mandatory. No JavaScript
+credential shim is installed.
+
 ## Known Limits
 
 - POST with custom headers is not available through current ArkWeb `postUrl` APIs.
 - Web content permission approval still requires the host app to hold the matching OHOS permission.
+- WebAuthn/passkey behavior is not guaranteed by the documented ArkWeb host
+  APIs and must not be assumed from ArkWeb's browser engine alone.
 - ArkWeb behavior can vary across HarmonyOS/OpenHarmony versions, especially for media, file picker, and permission surfaces. Test on the target API level.
 
 ## Isolated Toolchain

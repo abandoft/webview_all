@@ -19,7 +19,7 @@ if (controller.platform is WindowsWebViewController) {
 
 主要类型：`AndroidWebViewController`、`AndroidWebViewWidget`、`AndroidNavigationDelegate`、`AndroidWebViewCookieManager`、`AndroidLoadFileParams`、`AndroidJavaScriptChannelParams`、`AndroidWebViewPermissionRequest`、`AndroidWebViewPermissionResourceType`、`AndroidSslAuthError`、`AndroidWebResourceError`、`AndroidUrlChange`、`FileSelectorParams`。
 
-重要 API：debugging、file/content access、media gesture、text zoom、wide viewport、geolocation、file selector、custom fullscreen widget、console、JS dialogs、scrollbars、overscroll、mixed content、Payment Request、window insets。
+重要 API：debugging、file/content access、media gesture、text zoom、wide viewport、geolocation、file selector、custom fullscreen widget、console、JS dialogs、scrollbars、overscroll、mixed content、WebAuthn/Passkey、Payment Request、window insets。
 
 ## iOS/macOS
 
@@ -35,7 +35,7 @@ if (controller.platform is WindowsWebViewController) {
 
 主要类型：`WindowsWebViewController`、`WindowsWebViewWidget`、`WindowsNavigationDelegate`、`WindowsWebViewCookieManager`、`WindowsWebViewCookie`、`WindowsPlatformSslAuthError`、`WindowsWebResourceRequest`、`WindowsWebResourceResponse`、`WindowsWebResourceError`。
 
-重要 API：`initializeEnvironment`、`getWebViewVersion`、`openDevTools`、`suspend`、`resume`、`setPopupWindowPolicy`、`setZoomFactor`、`setCacheDisabled`、完整 cookie 设置/查询/删除。
+重要 API：`initializeEnvironment`、`getWebViewVersion`、`openDevTools`、`suspend`、`resume`、`setPopupWindowPolicy`、`setZoomFactor`、`setCacheDisabled`、Windows 专属的确定性 `dispose`、完整 cookie 设置/查询/删除。移除组件不会销毁仍可复用的 controller；仅在其所有者确认不再使用时调用 `dispose`。
 
 ## Linux
 

@@ -3,7 +3,7 @@ title: Android
 description: Android WebView implementation, APIs, and platform limits.
 ---
 
-Android is provided by `webview_all_android ^1.3.6`. `webview_all` registers it as the default Android implementation.
+Android is provided by `webview_all_android ^1.3.7`. `webview_all` registers it as the default Android implementation.
 
 ## Engine
 
@@ -43,6 +43,7 @@ final controller = WebViewController.fromPlatformCreationParams(params);
 | `setCustomWidgetCallbacks(...)` | Handles fullscreen custom views, commonly video. |
 | `setMixedContentMode(MixedContentMode mode)` | Controls HTTPS pages loading HTTP content. |
 | `isWebViewFeatureSupported(WebViewFeatureType featureType)` | Queries AndroidX WebView feature support. |
+| `setWebAuthenticationSupport(WebAuthenticationSupport support)` | Enables WebAuthn for an associated app or an eligible browser app. |
 | `setPaymentRequestEnabled(bool enabled)` | Enables Payment Request API when supported. |
 | `setInsetsForWebContentToIgnore(List<AndroidWebViewInsets> insets)` | Prevents selected window insets from reaching web content. |
 
@@ -86,6 +87,31 @@ if (await android.isWebViewFeatureSupported(
 
 Payment apps may require Android manifest `queries` entries so WebView can discover installed payment handlers.
 
+## Web Authentication and Passkeys
+
+Android WebView disables WebAuthn by default. Check the installed WebView's
+feature support before enabling it:
+
+```dart
+final android = controller.platform as AndroidWebViewController;
+
+if (await android.isWebViewFeatureSupported(
+  WebViewFeatureType.webAuthentication,
+)) {
+  await android.setWebAuthenticationSupport(
+    WebAuthenticationSupport.forApp,
+  );
+}
+```
+
+`forApp` is the normal application mode. The relying-party domain must be
+associated with the Android app through
+[Digital Asset Links](https://developers.google.com/digital-asset-links).
+`forBrowser` allows requests for arbitrary relying parties, but it is only for
+privileged browser apps approved by the credential provider; it is not a way
+for an ordinary application to bypass origin association. Use `none` to turn
+the feature off. `none` is the AndroidX WebKit default.
+
 ## Permission Resources
 
 Android supports the common `camera` and `microphone` resource types, plus:
@@ -126,6 +152,9 @@ with Flutter 3.35 by using its engine plugin registry.
 - `loadRequest` cannot send custom headers with a POST body because Android WebView's `postUrl` API does not expose headers.
 - WebView permission approval does not replace Android runtime permissions. Your app must request system permissions separately.
 - Payment Request depends on AndroidX WebKit feature support and the installed WebView version.
+- WebAuthn depends on AndroidX WebKit feature support, the installed WebView,
+  and correct app-to-site association. Calling its setter without a successful
+  feature check can throw an unsupported-operation error.
 - The Android plugin selects its Kotlin integration from the host project's
   Android Gradle Plugin: AGP 8 and earlier use the Kotlin Gradle Plugin, while
   AGP 9 and later use Built-in Kotlin. This keeps older Flutter projects

@@ -19,7 +19,7 @@ Package: `webview_all_android`.
 
 Main types: `AndroidWebViewController`, `AndroidWebViewWidget`, `AndroidNavigationDelegate`, `AndroidWebViewCookieManager`, `AndroidLoadFileParams`, `AndroidJavaScriptChannelParams`, `AndroidWebViewPermissionRequest`, `AndroidWebViewPermissionResourceType`, `AndroidSslAuthError`, `AndroidWebResourceError`, `AndroidUrlChange`, `FileSelectorParams`.
 
-Important APIs: debugging, file/content access, media gesture, text zoom, wide viewport, geolocation, file selector, custom fullscreen widget, console, JS dialogs, scrollbars, overscroll, mixed content, Payment Request, window insets.
+Important APIs: debugging, file/content access, media gesture, text zoom, wide viewport, geolocation, file selector, custom fullscreen widget, console, JS dialogs, scrollbars, overscroll, mixed content, WebAuthn/passkeys, Payment Request, window insets.
 
 ## iOS/macOS
 
@@ -35,7 +35,7 @@ Package: `webview_all_windows`.
 
 Main types: `WindowsWebViewController`, `WindowsWebViewWidget`, `WindowsNavigationDelegate`, `WindowsWebViewCookieManager`, `WindowsWebViewCookie`, `WindowsPlatformSslAuthError`, `WindowsWebResourceRequest`, `WindowsWebResourceResponse`, `WindowsWebResourceError`.
 
-Important APIs: `initializeEnvironment`, `getWebViewVersion`, `openDevTools`, `suspend`, `resume`, `setPopupWindowPolicy`, `setZoomFactor`, `setCacheDisabled`, full cookie set/query/delete.
+Important APIs: `initializeEnvironment`, `getWebViewVersion`, `openDevTools`, `suspend`, `resume`, `setPopupWindowPolicy`, `setZoomFactor`, `setCacheDisabled`, Windows-specific deterministic `dispose`, full cookie set/query/delete. Removing the widget does not dispose a reusable controller; call `dispose` only when its owner will never use it again.
 
 ## Linux
 

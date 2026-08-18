@@ -3,7 +3,7 @@ title: OHOS
 description: ArkWeb 实现、API 和 HarmonyOS/OpenHarmony 限制。
 ---
 
-OHOS 由 `webview_all_ohos 1.3.6` 提供，底层使用 ArkWeb。
+OHOS 由 `webview_all_ohos 1.3.7` 提供，底层使用 ArkWeb。
 
 | 项 | 值 |
 | --- | --- |
@@ -69,9 +69,17 @@ await (WebViewCookieManager().platform as OhosWebViewCookieManager)
 );
 ```
 
+## WebAuthn 与 Passkey
+
+当前支持的 ArkWeb SDK 公开接口没有明确的 WebAuthn/Passkey 启用或代理能力。
+`webview_all_ohos` 因此不声明支持该功能，也不增加没有原生实现的 Android 式开关。
+应用需要在每个目标 API 级别和设备上验证标准网页能力，保留其他认证方式；
+业务必须使用 Passkey 时，应转交给已确认支持的外部浏览器。插件不注入 JS 凭据模拟。
+
 ## 限制
 
 - WebView 权限批准不等于系统权限，宿主应用仍需声明并获取权限。
+- ArkWeb 公开宿主 API 不保证 WebAuthn/Passkey，不能只根据其浏览器引擎推断可用。
 - ArkWeb 行为可能随 HarmonyOS/OpenHarmony 版本变化，尤其是媒体、文件选择和权限。
 
 ## Toolchain 隔离

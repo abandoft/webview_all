@@ -3,7 +3,7 @@ title: Linux
 description: WebKitGTK implementation, automatic GtkOverlay integration, APIs, and limits.
 ---
 
-Linux is provided by `webview_all_linux 1.3.6` and uses WebKitGTK.
+Linux is provided by `webview_all_linux 1.3.7` and uses WebKitGTK.
 
 ## Engine
 
@@ -100,6 +100,17 @@ event channel closes. Exceptions from application decision callbacks are
 logged on one line and use the same safe defaults instead of leaving WebKitGTK
 blocked.
 
+## Web Authentication and Passkeys
+
+WebKitGTK does not currently provide WebAuthn support for its GTK port; the
+upstream work remains tracked in
+[WebKit bug 205350](https://bugs.webkit.org/show_bug.cgi?id=205350). Therefore
+`webview_all_linux` does not claim passkey support or expose a setting that the
+engine cannot honor. Applications that require passkeys on Linux should open
+the authentication flow in a supported external browser or offer another
+authentication method. The plugin does not inject a JavaScript credential
+shim because it cannot reproduce WebAuthn's origin and authenticator security.
+
 ## Request Detail
 
 | Type | Extra fields |
@@ -123,5 +134,7 @@ blocked.
 - Local files must use absolute paths and are canonicalized before loading. Flutter asset keys containing traversal, absolute paths, or symlink escapes outside the asset bundle are rejected.
 - File URL universal access is powerful and should stay disabled for untrusted local content.
 - Distribution WebKitGTK versions differ; test media, permissions, and dialog flows on your target Linux distribution.
+- WebAuthn/passkeys are unavailable until the WebKitGTK port implements the
+  required platform authenticator integration.
 - Frame updates are asynchronous and failure-isolated; stale widget teardown
   work cannot surface as an unhandled exception.

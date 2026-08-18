@@ -67,6 +67,24 @@ await (controller.platform as AndroidWebViewController)
 
 其他平台应优先只加载 HTTPS，并通过 `onNavigationRequest` 限制未知 host。
 
+## WebAuthn 与 Passkey
+
+WebAuthn 必须保留平台引擎的 origin 和 authenticator 安全模型。只有 AndroidX
+WebKit 需要显式开关，因此 `webview_all` 只在 Android 平台提供该 API；不会模拟
+凭据，也不会向公共 Controller 增加其他引擎无法执行的开关。
+
+| 平台 | 生产环境要求 |
+| --- | --- |
+| Android | 先检查 `WebViewFeatureType.webAuthentication`；普通应用使用 `forApp` 并配置 Digital Asset Links。`forBrowser` 只适用于具备资格的特权浏览器应用。 |
+| iOS/macOS | 由 `WKWebView` 处理，并在 Associated Domains 中配置 relying party。 |
+| Windows | 由 WebView2 与 Windows 处理，需要验证实际的桌面、Server 或虚拟化部署环境。 |
+| Linux | WebKitGTK 目前不支持 WebAuthn，使用支持该能力的外部浏览器或其他登录方式。 |
+| OHOS | ArkWeb 没有文档化的宿主集成，未经目标设备验证不应假定 Passkey 可用。 |
+| Web | 跨域 iframe 通过 `iFrameAllow` 授予 `publickey-credentials-get`；只在需要注册时再授予 `publickey-credentials-create`。 |
+
+当 authenticator 能力检测失败时，必须保留非 Passkey 登录方式。不要使用接收原始
+凭据或绕过 relying-party 校验的 JavaScript bridge 替代 WebAuthn。
+
 ## 文件访问
 
 不需要时关闭 file access：

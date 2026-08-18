@@ -3,7 +3,7 @@ title: Web
 description: 浏览器 iframe 实现、iframe 属性、fetch 请求和安全限制。
 ---
 
-Web 由 `webview_all_web 1.3.6` 提供，底层是 HTML `iframe`。
+Web 由 `webview_all_web 1.3.7` 提供，底层是 HTML `iframe`。
 
 | 项 | 值 |
 | --- | --- |
@@ -37,6 +37,25 @@ iframe 属性名会在写入 DOM 前校验。空名称、非法名称以及由�
 | `setIFrameAllow` | 设置 `allow`。 |
 | `setIFrameSandbox` | 设置 `sandbox`。 |
 | `setIFrameReferrerPolicy` | 设置 `referrerpolicy`。 |
+
+## WebAuthn 与 Passkey
+
+WebAuthn 由浏览器提供，不需要 native 插件桥。W3C 默认允许同源文档使用，
+但会关闭跨域 iframe 中的 WebAuthn。当 relying party 与 Flutter Web 宿主
+不同源时，应只通过 `iFrameAllow` 授予业务实际需要的操作：
+
+```dart
+final params = WebWebViewControllerCreationParams(
+  iFrameAllow:
+      'publickey-credentials-get; publickey-credentials-create',
+);
+```
+
+也可以通过 `setIFrameAllow` 在创建后更新。宿主页面的 `Permissions-Policy`
+header 可以设置更严格的限制，iframe 不能绕过。WebAuthn 还需要安全上下文和
+合法的 relying-party origin。使用 `iFrameSandbox` 时，不能把 WebAuthn
+文档变成不透明 origin；sandbox 权限需要按内容可信程度单独设计。插件不注入
+凭据模拟，也不会默认授予这些权限。
 
 ## 加载模型
 
@@ -114,6 +133,7 @@ Web Cookie 来自宿主页面的 `document.cookie`，因此：
 | SSL auth | 浏览器不暴露可恢复证书决策。 |
 | HTTP auth | iframe 没有 WebView 风格回调。 |
 | 跨域 JS | 浏览器同源策略禁止。 |
+| 未授权的跨域 WebAuthn | 被浏览器 Permissions Policy 禁止。 |
 
 可控制 HTML 的 camera/microphone 请求可以转发到
 `onPermissionRequest`，但最终系统提示仍由浏览器决定。自定义 `confirm`

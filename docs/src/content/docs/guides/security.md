@@ -75,6 +75,26 @@ await (controller.platform as AndroidWebViewController)
 
 For other platforms, prefer HTTPS-only content and block unknown hosts through `onNavigationRequest`.
 
+## Web Authentication and Passkeys
+
+WebAuthn must preserve the platform engine's origin and authenticator security
+model. `webview_all` exposes an enable switch only on Android, where AndroidX
+WebKit requires one; it does not emulate credentials or add a common switch
+that other engines cannot honor.
+
+| Platform | Production requirement |
+| --- | --- |
+| Android | Check `WebViewFeatureType.webAuthentication`, use `forApp` for an ordinary app, and configure Digital Asset Links. `forBrowser` is restricted to eligible privileged browser apps. |
+| iOS/macOS | Let `WKWebView` handle the request and configure the relying party in Associated Domains. |
+| Windows | Let WebView2 and Windows handle the request; validate the exact desktop, Server, or virtualized deployment environment. |
+| Linux | WebKitGTK does not currently implement WebAuthn; use a supported external browser or another sign-in method. |
+| OHOS | ArkWeb does not document a supported host integration; do not assume passkey availability without target-device validation. |
+| Web | For a cross-origin iframe, delegate `publickey-credentials-get` and, only when registration is needed, `publickey-credentials-create` through `iFrameAllow`. |
+
+Keep a non-passkey sign-in path whenever the authenticator availability check
+fails. Never replace WebAuthn with a JavaScript bridge that accepts raw
+credentials or bypasses relying-party validation.
+
 ## File Access
 
 Disable file access unless your product requires it:

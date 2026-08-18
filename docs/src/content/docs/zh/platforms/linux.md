@@ -3,7 +3,7 @@ title: Linux
 description: WebKitGTK 实现、自动 GtkOverlay 集成、API 和限制。
 ---
 
-Linux 由 `webview_all_linux 1.3.6` 提供，底层使用 WebKitGTK。
+Linux 由 `webview_all_linux 1.3.7` 提供，底层使用 WebKitGTK。
 
 | 项 | 值 |
 | --- | --- |
@@ -65,6 +65,15 @@ Linux 通过 event channel 上报 URL、页面生命周期、进度、history、
 event channel 关闭，导航会拒绝，认证/dialog/TLS 会取消，权限会拒绝。应用回调
 抛异常时会打印单行信息并使用相同的安全默认值，不会让 WebKitGTK 一直阻塞。
 
+## WebAuthn 与 Passkey
+
+WebKitGTK 的 GTK port 目前还没有 WebAuthn 支持，上游工作仍记录在
+[WebKit bug 205350](https://bugs.webkit.org/show_bug.cgi?id=205350)。因此
+`webview_all_linux` 不声明支持 Passkey，也不暴露底层无法执行的虚假开关。
+必须使用 Passkey 的 Linux 应用应将认证流程交给支持该能力的外部浏览器，
+或保留其他认证方式。插件不使用 JS 凭据模拟，因为它无法保证 WebAuthn 的
+origin 与 authenticator 安全语义。
+
 ## 限制
 
 - WebView 是 GTK 原生 widget，而非 Flutter texture。它会跟随 Flutter
@@ -76,4 +85,5 @@ event channel 关闭，导航会拒绝，认证/dialog/TLS 会取消，权限会
 - 本地文件必须使用绝对路径，并会在加载前规范化；Flutter asset 中的路径穿越、绝对路径和逃出 asset bundle 的符号链接会被拒绝。
 - 不可信本地文件不要启用 universal file URL access。
 - 不同发行版 WebKitGTK 版本差异明显，媒体、权限和 dialog 需要在目标发行版验证。
+- WebAuthn/Passkey 需要等待 WebKitGTK GTK port 实现平台 authenticator 集成。
 - frame 更新是异步且错误隔离的，组件销毁阶段不会泄漏未处理异常。
