@@ -4,6 +4,7 @@
 
 package com.abandoft.webview_all_android;
 
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -35,5 +36,44 @@ public class WebSettingsCompatTest {
     } catch (Exception e) {
       fail(e.toString());
     }
+  }
+
+  @Test
+  public void setWebAuthenticationSupport() {
+    final PigeonApiWebSettingsCompat api =
+        new TestProxyApiRegistrar().getPigeonApiWebSettingsCompat();
+    final WebSettings webSettings = mock(WebSettings.class);
+
+    try (MockedStatic<WebSettingsCompat> mockedStatic = mockStatic(WebSettingsCompat.class)) {
+      try (MockedStatic<WebViewFeature> mockedWebViewFeature = mockStatic(WebViewFeature.class)) {
+        mockedWebViewFeature
+            .when(() -> WebViewFeature.isFeatureSupported(WebViewFeature.WEB_AUTHENTICATION))
+            .thenReturn(true);
+
+        for (int support = 0; support <= 2; support++) {
+          api.setWebAuthenticationSupport(webSettings, support);
+          final int expectedSupport = support;
+          mockedStatic.verify(
+              () -> WebSettingsCompat.setWebAuthenticationSupport(webSettings, expectedSupport));
+        }
+      } catch (Exception exception) {
+        fail(exception.toString());
+      }
+    } catch (Exception exception) {
+      fail(exception.toString());
+    }
+  }
+
+  @Test
+  public void setWebAuthenticationSupportRejectsValuesOutsideIntRange() {
+    final PigeonApiWebSettingsCompat api =
+        new TestProxyApiRegistrar().getPigeonApiWebSettingsCompat();
+    final WebSettings webSettings = mock(WebSettings.class);
+
+    assertThrows(
+        ArithmeticException.class,
+        () ->
+            api.setWebAuthenticationSupport(
+                webSettings, (long) Integer.MAX_VALUE + 1L));
   }
 }

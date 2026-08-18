@@ -16,13 +16,13 @@ webview_all的主插件、interface、android、iOS/macOS、web插件都源自�
 | --- | --- | --- | --- | --- |
 | `webview_all` | `webview_flutter` | `4.14.1` | `2026-07-08 01:29:37` | `4.14.1` |
 | `webview_platform_interface` | `webview_flutter_platform_interface` | `2.15.1` | `2026-03-26 03:24:16` | `2.15.1` |
-| `webview_all_android` | `webview_flutter_android` | `4.13.0` | `2026-06-05 01:07:52` | `4.13.0` |
+| `webview_all_android` | `webview_flutter_android` | `4.14.0` | `2026-08-12 06:10:16` | `4.14.0` |
 | `webview_all_wkwebview` | `webview_flutter_wkwebview` | `3.26.0` | `2026-06-05 01:08:05` | `3.26.0` |
 | `webview_all_web` | `webview_flutter_web` | `0.2.3+4` | `2024-11-13 05:49:07` | `0.2.3+4` |
 
 表中的时间为“兼容性对齐至”版本在 pub.dev 的发布时间。“兼容性对齐”表示在不提高本仓库 Flutter 3.35 / Dart 3.9 最低版本的前提下，已迁移能够安全落地的上游行为和 API；它不代表照搬上游的新最低版本或构建工具。
 
-- Android 已对齐 4.13.0 的原生 `WebView` binding 访问入口、AndroidX annotation 更新、private API lint 标注和 Built-in Kotlin 构建结构。binding 入口通过 Flutter 3.35 已有的 engine plugin registry 实现；构建脚本按官方兼容方案在 AGP 8 及以下应用 Kotlin Gradle Plugin，在 AGP 9 及以上使用 Built-in Kotlin，最低版本保持不变。
+- Android 已对齐 4.14.0 的 Web Authentication 配置，可为已关联应用或具备资格的浏览器应用启用 WebAuthn（Passkey）；同时对齐原生 `WebView` binding 访问入口、AndroidX annotation 更新、private API lint 标注和 Built-in Kotlin 构建结构。binding 入口通过 Flutter 3.35 已有的 engine plugin registry 实现；构建脚本按官方兼容方案在 AGP 8 及以下应用 Kotlin Gradle Plugin，在 AGP 9 及以上使用 Built-in Kotlin，最低版本保持不变。
 - WKWebView 已对齐 3.26.0 的应用、scene 和 engine 生命周期清理，以及 iOS registrar 原生 `WKWebView` 访问入口。插件通过公开协议和 selector 的运行时能力检测，在 Flutter 3.38+ 注册 scene delegate，在 Flutter 3.44+ 使用 registrar 官方查询接口；Flutter 3.35–3.43 使用按 engine 隔离的弱引用兼容查询，最低版本保持不变。
 
 fork 后由本仓库自行增加的功能和修复不改变上表记录的官方同步基线。

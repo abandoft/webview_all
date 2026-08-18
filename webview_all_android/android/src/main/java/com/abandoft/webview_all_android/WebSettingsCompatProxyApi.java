@@ -29,4 +29,14 @@ public class WebSettingsCompatProxyApi extends PigeonApiWebSettingsCompat {
   public void setPaymentRequestEnabled(@NonNull WebSettings webSettings, boolean enabled) {
     WebSettingsCompat.setPaymentRequestEnabled(webSettings, enabled);
   }
+
+  /**
+   * This method should only be called if {@link WebViewFeatureProxyApi#isFeatureSupported(String)}
+   * with WEB_AUTHENTICATION returns true.
+   */
+  @SuppressLint("RequiresFeature")
+  @Override
+  public void setWebAuthenticationSupport(@NonNull WebSettings webSettings, long support) {
+    WebSettingsCompat.setWebAuthenticationSupport(webSettings, Math.toIntExact(support));
+  }
 }

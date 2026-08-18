@@ -924,8 +924,26 @@ class AndroidWebViewController extends PlatformWebViewController {
     final String feature = switch (featureType) {
       WebViewFeatureType.paymentRequest =>
         WebViewFeatureConstants.paymentRequest,
+      WebViewFeatureType.webAuthentication =>
+        WebViewFeatureConstants.webAuthentication,
     };
     return android_webview.WebViewFeature.isFeatureSupported(feature);
+  }
+
+  /// Sets the Web Authentication support level for this WebView.
+  ///
+  /// This controls whether WebAuthn APIs, including passkeys, can be used by
+  /// web content. WebAuthn is disabled by default. Check
+  /// [isWebViewFeatureSupported] with [WebViewFeatureType.webAuthentication]
+  /// before calling this method; AndroidX throws when the installed WebView
+  /// does not support the feature.
+  ///
+  /// See https://developer.android.com/reference/androidx/webkit/WebSettingsCompat#setWebAuthenticationSupport.
+  Future<void> setWebAuthenticationSupport(WebAuthenticationSupport support) {
+    return android_webview.WebSettingsCompat.setWebAuthenticationSupport(
+      _webView.settings,
+      support.value,
+    );
   }
 
   /// Sets whether the WebView should enable the Payment Request API.
@@ -1113,6 +1131,34 @@ enum WebViewFeatureType {
   ///
   /// This feature covers [WebSettingsCompat.setPaymentRequestEnabled].
   paymentRequest,
+
+  /// Feature for [AndroidWebViewController.setWebAuthenticationSupport].
+  webAuthentication,
+}
+
+/// The Web Authentication support available to web content on Android.
+///
+/// See [AndroidWebViewController.setWebAuthenticationSupport].
+enum WebAuthenticationSupport {
+  /// Disables WebAuthn requests. This is the AndroidX WebKit default.
+  none(0),
+
+  /// Allows WebAuthn for relying parties associated with the embedding app.
+  ///
+  /// The app and relying party must be associated through Digital Asset Links.
+  forApp(1),
+
+  /// Allows WebAuthn for any website.
+  ///
+  /// This is intended only for privileged browser apps that are approved by
+  /// the credential provider to act for third-party relying parties. Ordinary
+  /// applications should use [forApp].
+  forBrowser(2);
+
+  const WebAuthenticationSupport(this.value);
+
+  /// The value expected by AndroidX WebKit.
+  final int value;
 }
 
 /// Parameters received when the `WebView` should show a file selector.
