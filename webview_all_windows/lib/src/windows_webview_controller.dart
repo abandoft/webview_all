@@ -154,6 +154,8 @@ class WindowsWebViewController extends PlatformWebViewController {
       <StreamSubscription<dynamic>>[];
 
   Future<void>? _initializationFuture;
+  Future<void>? _disposeFuture;
+  bool _isDisposed = false;
   WindowsNavigationDelegate? _currentNavigationDelegate;
   Future<void> Function(bool enabled)? _navigationRequestListener;
   final String _fileVirtualHost = _createWindowsVirtualHost('app-file');
@@ -239,6 +241,7 @@ class WindowsWebViewController extends PlatformWebViewController {
     WeakReference<WindowsWebViewController> weakThis,
   ) async {
     await _webviewController.initialize();
+    _throwIfDisposed();
     _webviewController.setNavigationRequestedDelegate((
       String url,
       bool isUserInitiated,
@@ -281,6 +284,7 @@ class WindowsWebViewController extends PlatformWebViewController {
           native_types.WebviewPopupWindowPolicy.sameWindow,
       },
     );
+    _throwIfDisposed();
 
     _subscriptions.addAll(<StreamSubscription<dynamic>>[
       _webviewController.url.listen((String url) {
@@ -316,10 +320,15 @@ class WindowsWebViewController extends PlatformWebViewController {
   }
 
   Future<void> _ensureInitialized() async {
+    _throwIfDisposed();
     await _initializationFuture!;
+    _throwIfDisposed();
   }
 
   Future<void> _retryInitialization() {
+    if (_isDisposed) {
+      return Future<void>.error(_disposedStateError());
+    }
     final Future<void> initializationFuture = _prepareRetry();
     _setInitializationFuture(initializationFuture);
     return initializationFuture;
@@ -339,7 +348,103 @@ class WindowsWebViewController extends PlatformWebViewController {
         (StreamSubscription<dynamic> subscription) => subscription.cancel(),
       ),
     );
+    _throwIfDisposed();
     await _initialize(WeakReference<WindowsWebViewController>(this));
+  }
+
+  StateError _disposedStateError() {
+    return StateError('This Windows WebView controller has been disposed.');
+  }
+
+  void _throwIfDisposed() {
+    if (_isDisposed) {
+      throw _disposedStateError();
+    }
+  }
+
+  /// Permanently releases this controller and its native WebView2 resources.
+  ///
+  /// Removing a WebView widget does not call this method because controllers
+  /// can be detached and mounted again. Call this when the controller will no
+  /// longer be used. A disposed controller cannot be reused.
+  ///
+  /// Repeated calls return the same cleanup operation.
+  Future<void> dispose() {
+    final Future<void>? existingFuture = _disposeFuture;
+    if (existingFuture != null) {
+      return existingFuture;
+    }
+
+    _isDisposed = true;
+    _finalizer.detach(this);
+    final Future<void> Function(bool enabled)? listener =
+        _navigationRequestListener;
+    if (listener != null) {
+      _currentNavigationDelegate?._removeNavigationRequestListener(listener);
+    }
+    _navigationRequestListener = null;
+    _currentNavigationDelegate = null;
+    return _disposeFuture = _dispose();
+  }
+
+  Future<void> _dispose() async {
+    // Initialization errors are reported by the operation that initialized the
+    // controller. Disposal still has to release every resource created before
+    // that failure, without reporting the same initialization error again.
+    try {
+      await _initializationFuture;
+    } catch (_) {
+      // Continue with cleanup.
+    }
+
+    Object? cleanupError;
+    StackTrace? cleanupStackTrace;
+    final List<StreamSubscription<dynamic>> subscriptions =
+        List<StreamSubscription<dynamic>>.of(_subscriptions);
+    _subscriptions.clear();
+    try {
+      await Future.wait<void>(
+        subscriptions.map(
+          (StreamSubscription<dynamic> subscription) => subscription.cancel(),
+        ),
+        eagerError: false,
+      );
+    } catch (error, stackTrace) {
+      cleanupError = error;
+      cleanupStackTrace = stackTrace;
+    }
+
+    _webviewController.setNavigationRequestedDelegate(null);
+    _webviewController.setJavaScriptDialogRequestedDelegate(null);
+    _webviewController.setHttpAuthRequestedDelegate(null);
+    _webviewController.setSslAuthErrorRequestedDelegate(null);
+    _webviewController.setPermissionRequestedDelegate(null);
+    try {
+      await _webviewController.dispose();
+    } catch (error, stackTrace) {
+      cleanupError ??= error;
+      cleanupStackTrace ??= stackTrace;
+    }
+
+    _javaScriptChannelParams.clear();
+    _javaScriptChannelScriptIds.clear();
+    _virtualHostMappings.clear();
+    _onConsoleMessageCallback = null;
+    _onJavaScriptAlertDialogCallback = null;
+    _onJavaScriptConfirmDialogCallback = null;
+    _onJavaScriptTextInputDialogCallback = null;
+    _onScrollPositionChangeCallback = null;
+    _onPlatformPermissionRequestCallback = null;
+    _consoleBridgeScriptId = null;
+    _scrollBarStyleScriptId = null;
+    _overScrollStyleScriptId = null;
+
+    if (cleanupError != null) {
+      Error.throwWithStackTrace(
+        cleanupError,
+        cleanupStackTrace ?? StackTrace.current,
+      );
+    }
   }
 
   Future<void> _openWebView2DownloadPage() {
