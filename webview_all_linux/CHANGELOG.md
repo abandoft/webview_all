@@ -1,3 +1,11 @@
+## 1.3.8
+
+* Add Promise-aware `callAsyncJavaScript` with structured arguments, timeouts, consistent JSON results, and typed JavaScript errors.
+* Add document-start user scripts with capability checks and safe removal on Android, iOS, macOS, Windows, and Linux.
+* Add `WebViewDataManager.clearAllWebsiteData()` for logout cleanup, with explicit cleared, unsupported, and failed data categories.
+* Add `OffscreenWebViewSession` for deterministic offscreen-controller cleanup on Android, iOS, macOS, Windows, and Linux.
+* Make shared WebView2 environment configuration safely reusable and available to Windows website-data cleanup.
+
 ## 1.3.7
 
 * Add Android WebAuthn and passkey configuration through `setWebAuthenticationSupport` for associated apps and eligible browser apps.

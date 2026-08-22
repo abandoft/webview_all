@@ -1,3 +1,11 @@
+## 1.3.8
+
+* 新增可等待 Promise 的 `callAsyncJavaScript`，支持结构化参数、超时、一致的 JSON 结果和类型明确的 JavaScript 错误。
+* Android、iOS、macOS、Windows 和 Linux 新增可检测能力、可安全移除的 document-start 用户脚本。
+* 新增 `WebViewDataManager.clearAllWebsiteData()`，注销时无需 controller 即可清理网站数据，并区分已清理、不支持和失败的数据类型。
+* 新增 `OffscreenWebViewSession`，可在 Android、iOS、macOS、Windows 和 Linux 确定性释放离屏 controller。
+* Windows 共享 WebView2 环境配置支持安全复用，网站数据清理也可传入相同配置。
+
 ## 1.3.7
 
 * Android 新增 WebAuthn（Passkey）配置，可通过 `setWebAuthenticationSupport` 为已关联应用或具备资格的浏览器应用启用。
