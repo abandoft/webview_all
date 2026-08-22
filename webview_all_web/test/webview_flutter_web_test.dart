@@ -40,6 +40,25 @@ void main() {
         ),
         isA<WebWebViewCookieManager>(),
       );
+      expect(
+        platform.createPlatformWebViewDataManager(
+          const PlatformWebViewDataManagerCreationParams(),
+        ),
+        isA<WebWebViewDataManager>(),
+      );
+    });
+
+    test('reports browser-wide website data clearing as unsupported', () async {
+      final WebWebViewDataManager manager = WebWebViewDataManager(
+        const PlatformWebViewDataManagerCreationParams(),
+      );
+
+      final WebViewDataClearingResult result = await manager
+          .clearAllWebsiteData();
+
+      expect(result.clearedDataTypes, isEmpty);
+      expect(result.failures, isEmpty);
+      expect(result.unsupportedDataTypes, WebViewDataType.values.toSet());
     });
   });
 

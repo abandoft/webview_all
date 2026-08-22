@@ -32,6 +32,9 @@ external JSString? _jsonStringify(JSAny? value);
 @JS('Object.is')
 external bool _isSameJavaScriptObject(JSAny? first, JSAny? second);
 
+@JS('Promise.resolve')
+external JSPromise<JSAny?> _resolveJavaScriptPromise(JSAny? value);
+
 extension _WebWindowJavaScriptExtension on web.Window {
   @JS('eval')
   external JSAny? evaluateJavaScript(String script);
@@ -603,6 +606,7 @@ class WebWebViewController extends PlatformWebViewController {
   Future<Object?> _invokeIsolatedBridge(
     String action, {
     Map<String, Object?> payload = const <String, Object?>{},
+    Duration timeout = _isolatedBridgeTimeout,
   }) async {
     final int generation = _isolatedBridgeGeneration;
     final Completer<void>? ready = _isolatedBridgeReady;
@@ -613,10 +617,10 @@ class WebWebViewController extends PlatformWebViewController {
     }
 
     await ready.future.timeout(
-      _isolatedBridgeTimeout,
+      timeout,
       onTimeout: () => throw TimeoutException(
         'Timed out waiting for the isolated WebView bridge to initialize.',
-        _isolatedBridgeTimeout,
+        timeout,
       ),
     );
     if (generation != _isolatedBridgeGeneration ||
@@ -646,12 +650,12 @@ class WebWebViewController extends PlatformWebViewController {
     );
 
     return completer.future.timeout(
-      _isolatedBridgeTimeout,
+      timeout,
       onTimeout: () {
         _pendingIsolatedBridgeRequests.remove(requestId);
         throw TimeoutException(
           'Timed out waiting for the isolated WebView operation "$action".',
-          _isolatedBridgeTimeout,
+          timeout,
         );
       },
     );
@@ -937,6 +941,129 @@ class WebWebViewController extends PlatformWebViewController {
     throw StateError('Unreachable.');
   }
 
+  @override
+  Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
+    if (_javaScriptMode == JavaScriptMode.disabled) {
+      throw StateError('JavaScript execution is disabled for this WebView.');
+    }
+    final web.Window? window = _tryReadAccessibleContentWindow();
+    if (window != null) {
+      final int navigationGeneration = _navigationGeneration;
+      late final JSAny? resolved;
+      try {
+        final JSAny? promise = window.evaluateJavaScript(
+          _buildAsyncJavaScriptInvocation(params),
+        );
+        resolved = await _resolveJavaScriptPromise(promise).toDart.timeout(
+          params.timeout,
+          onTimeout: () => throw TimeoutException(
+            'The asynchronous JavaScript invocation timed out.',
+            params.timeout,
+          ),
+        );
+      } on TimeoutException {
+        rethrow;
+      } catch (error) {
+        throw JavaScriptExecutionException(message: error.toString());
+      }
+      if (navigationGeneration != _navigationGeneration) {
+        throw const JavaScriptExecutionException(
+          name: 'NavigationError',
+          message: 'The page navigated before JavaScript completed.',
+        );
+      }
+      final Object? envelope = resolved?.dartify();
+      if (envelope is! String) {
+        throw const JavaScriptExecutionException(
+          message: 'The browser returned an invalid JavaScript result.',
+        );
+      }
+      return _decodeAsyncJavaScriptEnvelope(envelope);
+    }
+    if (_hasIsolatedBridge) {
+      try {
+        return await _invokeIsolatedBridge(
+          'callAsyncJavaScript',
+          payload: <String, Object?>{
+            'functionBody': params.functionBody,
+            'arguments': params.arguments,
+          },
+          timeout: params.timeout,
+        );
+      } on TimeoutException {
+        rethrow;
+      } on JavaScriptExecutionException {
+        rethrow;
+      } catch (error) {
+        throw JavaScriptExecutionException(message: error.toString());
+      }
+    }
+    _requireAccessibleContentWindow(
+      'Running JavaScript is only supported for controllable iframe content.',
+    );
+    throw StateError('Unreachable.');
+  }
+
+  @override
+  Future<bool> isUserScriptInjectionSupported(
+    WebViewUserScriptInjectionTime injectionTime,
+  ) async {
+    // Browser iframe APIs cannot guarantee execution before page scripts.
+    return false;
+  }
+
+  String _buildAsyncJavaScriptInvocation(JavaScriptInvocationParams params) {
+    final String argumentNames = params.arguments.keys.join(',');
+    final String argumentValues = params.arguments.keys
+        .map((String name) => '__arguments[${jsonEncode(name)}]')
+        .join(',');
+    return '''
+(async()=>{
+  try {
+    const __arguments=${jsonEncode(params.arguments)};
+    const value=await (async function($argumentNames){
+${params.functionBody}
+    })($argumentValues);
+    const encoded=JSON.stringify(value);
+    return JSON.stringify({success:true,value:encoded===undefined?null:JSON.parse(encoded)});
+  } catch(error) {
+    return JSON.stringify({
+      success:false,
+      name:error&&error.name?String(error.name):null,
+      message:error&&error.message?String(error.message):String(error),
+      stack:error&&error.stack?String(error.stack):null
+    });
+  }
+})()
+''';
+  }
+
+  Object? _decodeAsyncJavaScriptEnvelope(String value) {
+    late final Object? decoded;
+    try {
+      decoded = jsonDecode(value);
+    } on FormatException {
+      throw const JavaScriptExecutionException(
+        name: 'SerializationError',
+        message: 'The browser returned an invalid JavaScript result.',
+      );
+    }
+    if (decoded is! Map<String, dynamic>) {
+      throw const JavaScriptExecutionException(
+        name: 'SerializationError',
+        message: 'The browser returned an invalid JavaScript result.',
+      );
+    }
+    if (decoded['success'] == true) {
+      return decoded['value'];
+    }
+    throw JavaScriptExecutionException(
+      name: decoded['name']?.toString(),
+      message: decoded['message']?.toString() ?? 'JavaScript execution failed.',
+      javaScriptStackTrace: decoded['stack']?.toString(),
+    );
+  }
+
   Object _dartObjectFromJavaScriptResult(JSAny? result) {
     if (result == null) {
       throw ArgumentError(
@@ -1019,7 +1146,13 @@ class WebWebViewController extends PlatformWebViewController {
           final String errorName = '${decoded['errorName'] ?? 'Error'}';
           final String errorMessage =
               '${decoded['errorMessage'] ?? 'The isolated frame operation failed.'}';
-          completer.completeError(StateError('$errorName: $errorMessage'));
+          completer.completeError(
+            JavaScriptExecutionException(
+              name: errorName,
+              message: errorMessage,
+              javaScriptStackTrace: decoded['errorStack'] as String?,
+            ),
+          );
         }
         return;
       case _isolatedBridgeScrollMessageType:
@@ -1955,11 +2088,12 @@ class WebWebViewController extends PlatformWebViewController {
       requestId: requestId,
       ok: false,
       errorName: error && error.name ? String(error.name) : 'Error',
-      errorMessage: error && error.message ? String(error.message) : String(error)
+      errorMessage: error && error.message ? String(error.message) : String(error),
+      errorStack: error && error.stack ? String(error.stack) : null
     });
   }
 
-  window.addEventListener('message', function(event) {
+  window.addEventListener('message', async function(event) {
     if (event.source !== window.parent) {
       return;
     }
@@ -1981,6 +2115,17 @@ class WebWebViewController extends PlatformWebViewController {
           return;
         case 'evaluateReturningResult': {
           const value = (0, eval)(String(payload.script || ''));
+          const encoded = JSON.stringify(value);
+          respond(requestId, encoded === undefined ? null : JSON.parse(encoded));
+          return;
+        }
+        case 'callAsyncJavaScript': {
+          const body = String(payload.functionBody || '');
+          const args = payload.arguments || {};
+          const names = Object.keys(args);
+          const values = names.map(function(name) { return args[name]; });
+          const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
+          const value = await new AsyncFunction(...names, body)(...values);
           const encoded = JSON.stringify(value);
           respond(requestId, encoded === undefined ? null : JSON.parse(encoded));
           return;

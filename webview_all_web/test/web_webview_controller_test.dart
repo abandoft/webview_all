@@ -171,6 +171,24 @@ void main() {
             ),
             'safe',
           );
+          expect(
+            await controller.callAsyncJavaScript(
+              JavaScriptInvocationParams(
+                functionBody: 'await Promise.resolve(); return left + right;',
+                arguments: const <String, Object?>{'left': 19, 'right': 23},
+              ),
+            ),
+            42,
+          );
+          await expectLater(
+            controller.callAsyncJavaScript(
+              JavaScriptInvocationParams(
+                functionBody: 'await new Promise(() => {});',
+                timeout: const Duration(milliseconds: 50),
+              ),
+            ),
+            throwsA(isA<TimeoutException>()),
+          );
         },
       );
 
@@ -1157,6 +1175,42 @@ void main() {
           },
         );
       });
+
+      test(
+        'awaits asynchronous JavaScript with structured arguments',
+        () async {
+          final WebWebViewControllerCreationParams params =
+              WebWebViewControllerCreationParams();
+          final WebWebViewController controller = WebWebViewController(params);
+          addTearDown(() => params.iFrame.remove());
+          await _attachAndLoadScrollableHtml(controller, params);
+
+          final Object? result = await controller.callAsyncJavaScript(
+            JavaScriptInvocationParams(
+              functionBody:
+                  'await Promise.resolve(); return value + nested.count;',
+              arguments: const <String, Object?>{
+                'value': 40,
+                'nested': <String, Object?>{'count': 2},
+              },
+            ),
+          );
+
+          expect(result, 42);
+          await expectLater(
+            controller.callAsyncJavaScript(
+              JavaScriptInvocationParams(functionBody: 'return (;'),
+            ),
+            throwsA(isA<JavaScriptExecutionException>()),
+          );
+          expect(
+            await controller.isUserScriptInjectionSupported(
+              WebViewUserScriptInjectionTime.documentStart,
+            ),
+            isFalse,
+          );
+        },
+      );
 
       test('rejects null or undefined JavaScript results', () async {
         final params = WebWebViewControllerCreationParams();
