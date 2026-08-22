@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -16,6 +18,19 @@ import 'android_webkit.g.dart' as android_webview;
 import 'android_webkit_constants.dart';
 import 'platform_views_service_proxy.dart';
 import 'weak_reference_utils.dart';
+
+final Expando<Set<VoidCallback>> _androidNavigationStartCallbacks =
+    Expando<Set<VoidCallback>>();
+
+String _createAndroidOpaqueIdentifier(String prefix) {
+  final Random random = Random.secure();
+  final String token = List<String>.generate(
+    16,
+    (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    growable: false,
+  ).join();
+  return '${prefix}_$token';
+}
 
 void _reportAndroidCallbackError(String callbackName, Object error) {
   debugPrint(
@@ -190,7 +205,20 @@ class AndroidWebViewController extends PlatformWebViewController {
     _webView.settings.setBuiltInZoomControls(true);
 
     _webView.setWebChromeClient(_webChromeClient);
+    final WeakReference<AndroidWebViewController> weakThis =
+        WeakReference<AndroidWebViewController>(this);
+    _asyncJavaScriptBridgeReady = _webView.addJavaScriptChannel(
+      android_webview.JavaScriptChannel(
+        channelName: _asyncJavaScriptChannelName,
+        postMessage: (_, String message) {
+          weakThis.target?._handleAsyncJavaScriptMessage(message);
+        },
+      ),
+    );
   }
+
+  static const String _asyncJavaScriptChannelName =
+      '__webview_all_async_javascript';
 
   AndroidWebViewControllerCreationParams get _androidWebViewParams =>
       params as AndroidWebViewControllerCreationParams;
@@ -448,6 +476,20 @@ class AndroidWebViewController extends PlatformWebViewController {
 
   final Map<String, AndroidJavaScriptChannelParams> _javaScriptChannelParams =
       <String, AndroidJavaScriptChannelParams>{};
+  final Map<String, Completer<Object?>> _pendingAsyncJavaScriptInvocations =
+      <String, Completer<Object?>>{};
+  final Set<String> _userScriptIdentifiers = <String>{};
+  late final Future<void> _asyncJavaScriptBridgeReady;
+  late final VoidCallback _navigationStartCallback = withWeakReferenceTo(this, (
+    WeakReference<AndroidWebViewController> weakReference,
+  ) {
+    return () {
+      weakReference.target?._cancelPendingAsyncJavaScriptInvocations();
+    };
+  });
+  int _nextAsyncJavaScriptInvocationIdentifier = 0;
+  int _nextUserScriptIdentifier = 0;
+  Future<void>? _offscreenCloseFuture;
 
   AndroidNavigationDelegate? _currentNavigationDelegate;
 
@@ -510,6 +552,7 @@ class AndroidWebViewController extends PlatformWebViewController {
   Future<void> loadFileWithParams(LoadFileParams params) async {
     switch (params) {
       case final AndroidLoadFileParams params:
+        await _prepareForNavigation();
         await Future.wait(<Future<void>>[
           _webView.settings.setAllowFileAccess(true),
           _webView.loadUrl(params.absoluteFilePath, params.headers),
@@ -536,6 +579,7 @@ class AndroidWebViewController extends PlatformWebViewController {
       throw ArgumentError('Asset for key "$key" not found.', 'key');
     }
 
+    await _prepareForNavigation();
     return _webView.loadUrl(
       Uri.file('/android_asset/$assetFilePath').toString(),
       <String, String>{},
@@ -543,17 +587,19 @@ class AndroidWebViewController extends PlatformWebViewController {
   }
 
   @override
-  Future<void> loadHtmlString(String html, {String? baseUrl}) {
+  Future<void> loadHtmlString(String html, {String? baseUrl}) async {
+    await _prepareForNavigation();
     return _webView.loadDataWithBaseUrl(baseUrl, html, 'text/html', null, null);
   }
 
   @override
-  Future<void> loadRequest(LoadRequestParams params) {
+  Future<void> loadRequest(LoadRequestParams params) async {
     if (!params.uri.hasScheme) {
       throw ArgumentError('WebViewRequest#uri is required to have a scheme.');
     }
     switch (params.method) {
       case LoadRequestMethod.get:
+        await _prepareForNavigation();
         return _webView.loadUrl(params.uri.toString(), params.headers);
       case LoadRequestMethod.post:
         if (params.headers.isNotEmpty) {
@@ -562,6 +608,7 @@ class AndroidWebViewController extends PlatformWebViewController {
             'the Android WebView postUrl API. The request was not sent.',
           );
         }
+        await _prepareForNavigation();
         return _webView.postUrl(
           params.uri.toString(),
           params.body ?? Uint8List(0),
@@ -590,13 +637,22 @@ class AndroidWebViewController extends PlatformWebViewController {
   Future<bool> canGoForward() => _webView.canGoForward();
 
   @override
-  Future<void> goBack() => _webView.goBack();
+  Future<void> goBack() async {
+    await _prepareForNavigation();
+    return _webView.goBack();
+  }
 
   @override
-  Future<void> goForward() => _webView.goForward();
+  Future<void> goForward() async {
+    await _prepareForNavigation();
+    return _webView.goForward();
+  }
 
   @override
-  Future<void> reload() => _webView.reload();
+  Future<void> reload() async {
+    await _prepareForNavigation();
+    return _webView.reload();
+  }
 
   @override
   Future<void> clearCache() => _webView.clearCache(true);
@@ -609,7 +665,17 @@ class AndroidWebViewController extends PlatformWebViewController {
   Future<void> setPlatformNavigationDelegate(
     covariant AndroidNavigationDelegate handler,
   ) async {
+    final AndroidNavigationDelegate? previousDelegate =
+        _currentNavigationDelegate;
+    if (previousDelegate != null) {
+      _androidNavigationStartCallbacks[previousDelegate]?.remove(
+        _navigationStartCallback,
+      );
+    }
     _currentNavigationDelegate = handler;
+    (_androidNavigationStartCallbacks[handler] ??= <VoidCallback>{}).add(
+      _navigationStartCallback,
+    );
     await Future.wait(<Future<void>>[
       handler.setOnLoadRequest(loadRequest),
       _webView.setWebViewClient(handler.androidWebViewClient),
@@ -638,6 +704,122 @@ class AndroidWebViewController extends PlatformWebViewController {
   }
 
   @override
+  Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
+    await _asyncJavaScriptBridgeReady;
+    final String identifier = _createAndroidOpaqueIdentifier(
+      'async_${++_nextAsyncJavaScriptInvocationIdentifier}',
+    );
+    final Completer<Object?> completer = Completer<Object?>();
+    _pendingAsyncJavaScriptInvocations[identifier] = completer;
+
+    final Future<Object?> completion = completer.future.timeout(
+      params.timeout,
+      onTimeout: () {
+        _pendingAsyncJavaScriptInvocations.remove(identifier);
+        throw TimeoutException(
+          'The asynchronous JavaScript invocation timed out.',
+          params.timeout,
+        );
+      },
+    );
+    try {
+      final List<Object?> values = await Future.wait<Object?>(<Future<Object?>>[
+        _webView.evaluateJavascript(
+          _buildAsyncJavaScriptInvocation(identifier, params),
+        ),
+        completion,
+      ], eagerError: true);
+      return values[1];
+    } catch (error, stackTrace) {
+      _pendingAsyncJavaScriptInvocations.remove(identifier);
+      if (!completer.isCompleted) {
+        completer.completeError(error, stackTrace);
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<bool> isOffscreenWebViewSupported() async => true;
+
+  @override
+  Future<void> closeOffscreenWebView() {
+    return _offscreenCloseFuture ??= _closeOffscreenWebView();
+  }
+
+  Future<void> _closeOffscreenWebView() async {
+    final AndroidNavigationDelegate? previousDelegate =
+        _currentNavigationDelegate;
+    if (previousDelegate != null) {
+      _androidNavigationStartCallbacks[previousDelegate]?.remove(
+        _navigationStartCallback,
+      );
+    }
+    _currentNavigationDelegate = null;
+    _cancelPendingAsyncJavaScriptInvocations(
+      const JavaScriptExecutionException(
+        name: 'AbortError',
+        message: 'The offscreen WebView session was closed.',
+      ),
+    );
+    try {
+      await _asyncJavaScriptBridgeReady;
+    } catch (_) {
+      // Continue releasing a partially initialized native WebView.
+    }
+    await _webView.destroy();
+    android_webview.PigeonInstanceManager.instance.removeWeakReference(
+      _webView,
+    );
+  }
+
+  @override
+  Future<bool> isUserScriptInjectionSupported(
+    WebViewUserScriptInjectionTime injectionTime,
+  ) {
+    if (injectionTime != WebViewUserScriptInjectionTime.documentStart) {
+      return Future<bool>.value(false);
+    }
+    return _webView.isDocumentStartJavaScriptSupported();
+  }
+
+  @override
+  Future<String> addUserScript(WebViewUserScript userScript) async {
+    if (!await isUserScriptInjectionSupported(userScript.injectionTime)) {
+      throw UnsupportedError(
+        'The installed Android System WebView does not support '
+        'document-start script injection.',
+      );
+    }
+    final String identifier = 'webview_all_${++_nextUserScriptIdentifier}';
+    final String source = buildUserScriptSource(
+      userScript,
+      platformHandlesMainFrameOnly: false,
+    );
+    await _webView.addDocumentStartJavaScript(identifier, source);
+    _userScriptIdentifiers.add(identifier);
+    return identifier;
+  }
+
+  @override
+  Future<void> removeUserScript(String identifier) async {
+    if (!_userScriptIdentifiers.contains(identifier)) {
+      return;
+    }
+    await _webView.removeDocumentStartJavaScript(identifier);
+    _userScriptIdentifiers.remove(identifier);
+  }
+
+  @override
+  Future<void> removeAllUserScripts() async {
+    if (_userScriptIdentifiers.isEmpty) {
+      return;
+    }
+    await _webView.removeAllDocumentStartJavaScripts();
+    _userScriptIdentifiers.clear();
+  }
+
+  @override
   Future<void> addJavaScriptChannel(
     JavaScriptChannelParams javaScriptChannelParams,
   ) {
@@ -646,6 +828,13 @@ class AndroidWebViewController extends PlatformWebViewController {
         javaScriptChannelParams.name,
         'javaScriptChannelParams.name',
         'JavaScript channel names must not be empty.',
+      );
+    }
+    if (javaScriptChannelParams.name == _asyncJavaScriptChannelName) {
+      throw ArgumentError.value(
+        javaScriptChannelParams.name,
+        'javaScriptChannelParams.name',
+        'This JavaScript channel name is reserved by webview_all.',
       );
     }
     final AndroidJavaScriptChannelParams androidJavaScriptParams =
@@ -671,6 +860,13 @@ class AndroidWebViewController extends PlatformWebViewController {
 
   @override
   Future<void> removeJavaScriptChannel(String javaScriptChannelName) async {
+    if (javaScriptChannelName == _asyncJavaScriptChannelName) {
+      throw ArgumentError.value(
+        javaScriptChannelName,
+        'javaScriptChannelName',
+        'This JavaScript channel name is reserved by webview_all.',
+      );
+    }
     final AndroidJavaScriptChannelParams? javaScriptChannelParams =
         _javaScriptChannelParams[javaScriptChannelName];
     if (javaScriptChannelParams == null) {
@@ -679,6 +875,98 @@ class AndroidWebViewController extends PlatformWebViewController {
 
     _javaScriptChannelParams.remove(javaScriptChannelName);
     return _webView.removeJavaScriptChannel(javaScriptChannelParams.name);
+  }
+
+  Future<void> _prepareForNavigation() async {
+    _cancelPendingAsyncJavaScriptInvocations();
+    await _asyncJavaScriptBridgeReady;
+  }
+
+  void _cancelPendingAsyncJavaScriptInvocations([
+    JavaScriptExecutionException exception = const JavaScriptExecutionException(
+      name: 'NavigationError',
+      message: 'The page navigated before JavaScript completed.',
+    ),
+  ]) {
+    final List<Completer<Object?>> pending = _pendingAsyncJavaScriptInvocations
+        .values
+        .toList(growable: false);
+    _pendingAsyncJavaScriptInvocations.clear();
+    for (final Completer<Object?> completer in pending) {
+      if (!completer.isCompleted) {
+        completer.completeError(exception);
+      }
+    }
+  }
+
+  void _handleAsyncJavaScriptMessage(String message) {
+    Object? decoded;
+    try {
+      decoded = jsonDecode(message);
+    } on FormatException {
+      return;
+    }
+    if (decoded is! Map<String, dynamic>) {
+      return;
+    }
+    final Object? rawIdentifier = decoded['identifier'];
+    if (rawIdentifier is! String) {
+      return;
+    }
+    final String identifier = rawIdentifier;
+    final Completer<Object?>? completer = _pendingAsyncJavaScriptInvocations
+        .remove(identifier);
+    if (completer == null || completer.isCompleted) {
+      return;
+    }
+    if (decoded['success'] == true) {
+      completer.complete(decoded['value']);
+      return;
+    }
+    completer.completeError(
+      JavaScriptExecutionException(
+        name: decoded['name']?.toString(),
+        message:
+            decoded['message']?.toString() ?? 'JavaScript execution failed.',
+        javaScriptStackTrace: decoded['stack']?.toString(),
+      ),
+    );
+  }
+
+  String _buildAsyncJavaScriptInvocation(
+    String identifier,
+    JavaScriptInvocationParams params,
+  ) {
+    final String argumentNames = params.arguments.keys.join(',');
+    final String argumentValues = params.arguments.keys
+        .map((String name) => '__arguments[${jsonEncode(name)}]')
+        .join(',');
+    return '''
+(()=>{
+  const __identifier=${jsonEncode(identifier)};
+  const __arguments=${jsonEncode(params.arguments)};
+  const __post=(payload)=>window.$_asyncJavaScriptChannelName.postMessage(JSON.stringify(payload));
+  const __postError=(error)=>__post({
+    identifier:__identifier,
+    success:false,
+    name:error&&error.name?String(error.name):null,
+    message:error&&error.message?String(error.message):String(error),
+    stack:error&&error.stack?String(error.stack):null
+  });
+  Promise.resolve()
+    .then(()=>(async function($argumentNames){
+${params.functionBody}
+    })($argumentValues))
+    .then((value)=>{
+      try {
+        const encoded=JSON.stringify(value);
+        __post({identifier:__identifier,success:true,value:encoded===undefined?null:JSON.parse(encoded)});
+      } catch(error) {
+        __postError(error);
+      }
+    },__postError);
+})();
+''';
   }
 
   @override
@@ -1607,6 +1895,15 @@ class AndroidNavigationDelegate extends PlatformNavigationDelegate {
         }
       },
       onPageStarted: (_, android_webview.WebView webView, String url) {
+        final AndroidNavigationDelegate? delegate = weakThis.target;
+        if (delegate != null) {
+          for (final VoidCallback callback in List<VoidCallback>.of(
+            _androidNavigationStartCallbacks[delegate] ??
+                const <VoidCallback>{},
+          )) {
+            callback();
+          }
+        }
         final PageEventCallback? callback = weakThis.target?._onPageStarted;
         if (callback != null) {
           callback(url);

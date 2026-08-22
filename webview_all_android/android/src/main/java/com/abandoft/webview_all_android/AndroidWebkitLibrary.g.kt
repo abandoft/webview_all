@@ -1815,6 +1815,25 @@ abstract class PigeonApiWebView(
       callback: (Result<String?>) -> Unit
   )
 
+  /** Whether the installed WebView supports document-start script injection. */
+  abstract fun isDocumentStartJavaScriptSupported(pigeon_instance: android.webkit.WebView): Boolean
+
+  /** Adds a script that runs before the document begins loading. */
+  abstract fun addDocumentStartJavaScript(
+      pigeon_instance: android.webkit.WebView,
+      identifier: String,
+      source: String
+  )
+
+  /** Removes a document-start script by its plugin identifier. */
+  abstract fun removeDocumentStartJavaScript(
+      pigeon_instance: android.webkit.WebView,
+      identifier: String
+  )
+
+  /** Removes all document-start scripts registered through this plugin. */
+  abstract fun removeAllDocumentStartJavaScripts(pigeon_instance: android.webkit.WebView)
+
   /** Gets the title for the current page. */
   abstract fun getTitle(pigeon_instance: android.webkit.WebView): String?
 
@@ -2197,6 +2216,100 @@ abstract class PigeonApiWebView(
                 reply.reply(AndroidWebkitLibraryPigeonUtils.wrapResult(data))
               }
             }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel =
+            BasicMessageChannel<Any?>(
+                binaryMessenger,
+                "dev.flutter.pigeon.webview_all_android.WebView.isDocumentStartJavaScriptSupported",
+                codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val pigeon_instanceArg = args[0] as android.webkit.WebView
+            val wrapped: List<Any?> =
+                try {
+                  listOf(api.isDocumentStartJavaScriptSupported(pigeon_instanceArg))
+                } catch (exception: Throwable) {
+                  AndroidWebkitLibraryPigeonUtils.wrapError(exception)
+                }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel =
+            BasicMessageChannel<Any?>(
+                binaryMessenger,
+                "dev.flutter.pigeon.webview_all_android.WebView.addDocumentStartJavaScript",
+                codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val pigeon_instanceArg = args[0] as android.webkit.WebView
+            val identifierArg = args[1] as String
+            val sourceArg = args[2] as String
+            val wrapped: List<Any?> =
+                try {
+                  api.addDocumentStartJavaScript(pigeon_instanceArg, identifierArg, sourceArg)
+                  listOf(null)
+                } catch (exception: Throwable) {
+                  AndroidWebkitLibraryPigeonUtils.wrapError(exception)
+                }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel =
+            BasicMessageChannel<Any?>(
+                binaryMessenger,
+                "dev.flutter.pigeon.webview_all_android.WebView.removeDocumentStartJavaScript",
+                codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val pigeon_instanceArg = args[0] as android.webkit.WebView
+            val identifierArg = args[1] as String
+            val wrapped: List<Any?> =
+                try {
+                  api.removeDocumentStartJavaScript(pigeon_instanceArg, identifierArg)
+                  listOf(null)
+                } catch (exception: Throwable) {
+                  AndroidWebkitLibraryPigeonUtils.wrapError(exception)
+                }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel =
+            BasicMessageChannel<Any?>(
+                binaryMessenger,
+                "dev.flutter.pigeon.webview_all_android.WebView.removeAllDocumentStartJavaScripts",
+                codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val pigeon_instanceArg = args[0] as android.webkit.WebView
+            val wrapped: List<Any?> =
+                try {
+                  api.removeAllDocumentStartJavaScripts(pigeon_instanceArg)
+                  listOf(null)
+                } catch (exception: Throwable) {
+                  AndroidWebkitLibraryPigeonUtils.wrapError(exception)
+                }
+            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -5006,6 +5119,16 @@ abstract class PigeonApiWebStorage(
   /** Clears all storage currently being used by the JavaScript storage APIs. */
   abstract fun deleteAllData(pigeon_instance: android.webkit.WebStorage)
 
+  /**
+   * Clears browser cache, cookies, and JavaScript-readable website data.
+   *
+   * Returns false when the installed Android System WebView does not support the operation.
+   */
+  abstract fun deleteBrowsingData(
+      pigeon_instance: android.webkit.WebStorage,
+      callback: (Result<Boolean>) -> Unit
+  )
+
   companion object {
     @Suppress("LocalVariableName")
     fun setUpMessageHandlers(binaryMessenger: BinaryMessenger, api: PigeonApiWebStorage?) {
@@ -5052,6 +5175,30 @@ abstract class PigeonApiWebStorage(
                   AndroidWebkitLibraryPigeonUtils.wrapError(exception)
                 }
             reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel =
+            BasicMessageChannel<Any?>(
+                binaryMessenger,
+                "dev.flutter.pigeon.webview_all_android.WebStorage.deleteBrowsingData",
+                codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val pigeon_instanceArg = args[0] as android.webkit.WebStorage
+            api.deleteBrowsingData(pigeon_instanceArg) { result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(AndroidWebkitLibraryPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(AndroidWebkitLibraryPigeonUtils.wrapResult(data))
+              }
+            }
           }
         } else {
           channel.setMessageHandler(null)

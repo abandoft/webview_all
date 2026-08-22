@@ -7,6 +7,7 @@ import 'dart:async' as _i5;
 import 'dart:ui' as _i4;
 
 import 'package:mockito/mockito.dart' as _i1;
+import 'package:mockito/src/dummies.dart' as _i7;
 import 'package:webview_all_android/src/android_webkit.g.dart' as _i2;
 import 'package:webview_all_android/src/android_webview_controller.dart' as _i6;
 import 'package:webview_platform_interface/webview_platform_interface.dart'
@@ -304,6 +305,57 @@ class MockAndroidWebViewController extends _i1.Mock
             ),
           )
           as _i5.Future<Object>);
+
+  @override
+  _i5.Future<Object?> callAsyncJavaScript(
+    _i3.JavaScriptInvocationParams? params,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#callAsyncJavaScript, [params]),
+            returnValue: _i5.Future<Object?>.value(),
+          )
+          as _i5.Future<Object?>);
+
+  @override
+  _i5.Future<bool> isUserScriptInjectionSupported(
+    _i3.WebViewUserScriptInjectionTime? injectionTime,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#isUserScriptInjectionSupported, [injectionTime]),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<String> addUserScript(_i3.WebViewUserScript? userScript) =>
+      (super.noSuchMethod(
+            Invocation.method(#addUserScript, [userScript]),
+            returnValue: _i5.Future<String>.value(
+              _i7.dummyValue<String>(
+                this,
+                Invocation.method(#addUserScript, [userScript]),
+              ),
+            ),
+          )
+          as _i5.Future<String>);
+
+  @override
+  _i5.Future<void> removeUserScript(String? identifier) =>
+      (super.noSuchMethod(
+            Invocation.method(#removeUserScript, [identifier]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> removeAllUserScripts() =>
+      (super.noSuchMethod(
+            Invocation.method(#removeAllUserScripts, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
 
   @override
   _i5.Future<void> addJavaScriptChannel(

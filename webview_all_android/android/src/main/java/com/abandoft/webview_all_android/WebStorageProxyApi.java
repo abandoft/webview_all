@@ -6,6 +6,11 @@ package com.abandoft.webview_all_android;
 
 import android.webkit.WebStorage;
 import androidx.annotation.NonNull;
+import androidx.webkit.WebStorageCompat;
+import androidx.webkit.WebViewFeature;
+import kotlin.Result;
+import kotlin.Unit;
+import kotlin.jvm.functions.Function1;
 
 /**
  * Host api implementation for {@link WebStorage}.
@@ -27,5 +32,17 @@ public class WebStorageProxyApi extends PigeonApiWebStorage {
   @Override
   public void deleteAllData(@NonNull WebStorage pigeon_instance) {
     pigeon_instance.deleteAllData();
+  }
+
+  @Override
+  public void deleteBrowsingData(
+      @NonNull WebStorage pigeon_instance,
+      @NonNull Function1<? super Result<Boolean>, Unit> callback) {
+    if (!WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) {
+      ResultCompat.success(false, callback);
+      return;
+    }
+    WebStorageCompat.deleteBrowsingData(
+        pigeon_instance, () -> ResultCompat.success(true, callback));
   }
 }

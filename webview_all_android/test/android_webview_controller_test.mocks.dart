@@ -7,11 +7,11 @@ import 'dart:async' as _i8;
 import 'dart:typed_data' as _i12;
 import 'dart:ui' as _i4;
 
-import 'package:flutter/foundation.dart' as _i9;
-import 'package:flutter/gestures.dart' as _i10;
+import 'package:flutter/foundation.dart' as _i10;
+import 'package:flutter/gestures.dart' as _i11;
 import 'package:flutter/services.dart' as _i6;
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:mockito/src/dummies.dart' as _i11;
+import 'package:mockito/src/dummies.dart' as _i9;
 import 'package:webview_all_android/src/android_webkit.g.dart' as _i2;
 import 'package:webview_all_android/src/android_webview_controller.dart' as _i7;
 import 'package:webview_all_android/src/platform_views_service_proxy.dart'
@@ -523,6 +523,65 @@ class MockAndroidWebViewController extends _i1.Mock
           as _i8.Future<Object>);
 
   @override
+  _i8.Future<Object?> callAsyncJavaScript(
+    _i3.JavaScriptInvocationParams? params,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#callAsyncJavaScript, [params]),
+            returnValue: _i8.Future<Object?>.value(),
+            returnValueForMissingStub: _i8.Future<Object?>.value(),
+          )
+          as _i8.Future<Object?>);
+
+  @override
+  _i8.Future<bool> isUserScriptInjectionSupported(
+    _i3.WebViewUserScriptInjectionTime? injectionTime,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#isUserScriptInjectionSupported, [injectionTime]),
+            returnValue: _i8.Future<bool>.value(false),
+            returnValueForMissingStub: _i8.Future<bool>.value(false),
+          )
+          as _i8.Future<bool>);
+
+  @override
+  _i8.Future<String> addUserScript(_i3.WebViewUserScript? userScript) =>
+      (super.noSuchMethod(
+            Invocation.method(#addUserScript, [userScript]),
+            returnValue: _i8.Future<String>.value(
+              _i9.dummyValue<String>(
+                this,
+                Invocation.method(#addUserScript, [userScript]),
+              ),
+            ),
+            returnValueForMissingStub: _i8.Future<String>.value(
+              _i9.dummyValue<String>(
+                this,
+                Invocation.method(#addUserScript, [userScript]),
+              ),
+            ),
+          )
+          as _i8.Future<String>);
+
+  @override
+  _i8.Future<void> removeUserScript(String? identifier) =>
+      (super.noSuchMethod(
+            Invocation.method(#removeUserScript, [identifier]),
+            returnValue: _i8.Future<void>.value(),
+            returnValueForMissingStub: _i8.Future<void>.value(),
+          )
+          as _i8.Future<void>);
+
+  @override
+  _i8.Future<void> removeAllUserScripts() =>
+      (super.noSuchMethod(
+            Invocation.method(#removeAllUserScripts, []),
+            returnValue: _i8.Future<void>.value(),
+            returnValueForMissingStub: _i8.Future<void>.value(),
+          )
+          as _i8.Future<void>);
+
+  @override
   _i8.Future<void> addJavaScriptChannel(
     _i3.JavaScriptChannelParams? javaScriptChannelParams,
   ) =>
@@ -937,14 +996,14 @@ class MockAndroidWebViewWidgetCreationParams extends _i1.Mock
           as _i4.TextDirection);
 
   @override
-  Set<_i9.Factory<_i10.OneSequenceGestureRecognizer>> get gestureRecognizers =>
+  Set<_i10.Factory<_i11.OneSequenceGestureRecognizer>> get gestureRecognizers =>
       (super.noSuchMethod(
             Invocation.getter(#gestureRecognizers),
-            returnValue: <_i9.Factory<_i10.OneSequenceGestureRecognizer>>{},
+            returnValue: <_i10.Factory<_i11.OneSequenceGestureRecognizer>>{},
             returnValueForMissingStub:
-                <_i9.Factory<_i10.OneSequenceGestureRecognizer>>{},
+                <_i10.Factory<_i11.OneSequenceGestureRecognizer>>{},
           )
-          as Set<_i9.Factory<_i10.OneSequenceGestureRecognizer>>);
+          as Set<_i10.Factory<_i11.OneSequenceGestureRecognizer>>);
 }
 
 /// A class which mocks [ExpensiveAndroidViewController].
@@ -1080,7 +1139,7 @@ class MockExpensiveAndroidViewController extends _i1.Mock
           as _i8.Future<void>);
 
   @override
-  _i8.Future<void> dispatchPointerEvent(_i10.PointerEvent? event) =>
+  _i8.Future<void> dispatchPointerEvent(_i11.PointerEvent? event) =>
       (super.noSuchMethod(
             Invocation.method(#dispatchPointerEvent, [event]),
             returnValue: _i8.Future<void>.value(),
@@ -1143,13 +1202,13 @@ class MockFlutterAssetManager extends _i1.Mock
       (super.noSuchMethod(
             Invocation.method(#getAssetFilePathByName, [name]),
             returnValue: _i8.Future<String>.value(
-              _i11.dummyValue<String>(
+              _i9.dummyValue<String>(
                 this,
                 Invocation.method(#getAssetFilePathByName, [name]),
               ),
             ),
             returnValueForMissingStub: _i8.Future<String>.value(
-              _i11.dummyValue<String>(
+              _i9.dummyValue<String>(
                 this,
                 Invocation.method(#getAssetFilePathByName, [name]),
               ),
@@ -1226,11 +1285,11 @@ class MockJavaScriptChannel extends _i1.Mock implements _i2.JavaScriptChannel {
   String get channelName =>
       (super.noSuchMethod(
             Invocation.getter(#channelName),
-            returnValue: _i11.dummyValue<String>(
+            returnValue: _i9.dummyValue<String>(
               this,
               Invocation.getter(#channelName),
             ),
-            returnValueForMissingStub: _i11.dummyValue<String>(
+            returnValueForMissingStub: _i9.dummyValue<String>(
               this,
               Invocation.getter(#channelName),
             ),
@@ -1566,7 +1625,7 @@ class MockSurfaceAndroidViewController extends _i1.Mock
           as _i8.Future<void>);
 
   @override
-  _i8.Future<void> dispatchPointerEvent(_i10.PointerEvent? event) =>
+  _i8.Future<void> dispatchPointerEvent(_i11.PointerEvent? event) =>
       (super.noSuchMethod(
             Invocation.method(#dispatchPointerEvent, [event]),
             returnValue: _i8.Future<void>.value(),
@@ -1895,13 +1954,13 @@ class MockWebSettings extends _i1.Mock implements _i2.WebSettings {
       (super.noSuchMethod(
             Invocation.method(#getUserAgentString, []),
             returnValue: _i8.Future<String>.value(
-              _i11.dummyValue<String>(
+              _i9.dummyValue<String>(
                 this,
                 Invocation.method(#getUserAgentString, []),
               ),
             ),
             returnValueForMissingStub: _i8.Future<String>.value(
-              _i11.dummyValue<String>(
+              _i9.dummyValue<String>(
                 this,
                 Invocation.method(#getUserAgentString, []),
               ),
@@ -2102,6 +2161,48 @@ class MockWebView extends _i1.Mock implements _i2.WebView {
             returnValueForMissingStub: _i8.Future<String?>.value(),
           )
           as _i8.Future<String?>);
+
+  @override
+  _i8.Future<bool> isDocumentStartJavaScriptSupported() =>
+      (super.noSuchMethod(
+            Invocation.method(#isDocumentStartJavaScriptSupported, []),
+            returnValue: _i8.Future<bool>.value(false),
+            returnValueForMissingStub: _i8.Future<bool>.value(false),
+          )
+          as _i8.Future<bool>);
+
+  @override
+  _i8.Future<void> addDocumentStartJavaScript(
+    String? identifier,
+    String? source,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#addDocumentStartJavaScript, [
+              identifier,
+              source,
+            ]),
+            returnValue: _i8.Future<void>.value(),
+            returnValueForMissingStub: _i8.Future<void>.value(),
+          )
+          as _i8.Future<void>);
+
+  @override
+  _i8.Future<void> removeDocumentStartJavaScript(String? identifier) =>
+      (super.noSuchMethod(
+            Invocation.method(#removeDocumentStartJavaScript, [identifier]),
+            returnValue: _i8.Future<void>.value(),
+            returnValueForMissingStub: _i8.Future<void>.value(),
+          )
+          as _i8.Future<void>);
+
+  @override
+  _i8.Future<void> removeAllDocumentStartJavaScripts() =>
+      (super.noSuchMethod(
+            Invocation.method(#removeAllDocumentStartJavaScripts, []),
+            returnValue: _i8.Future<void>.value(),
+            returnValueForMissingStub: _i8.Future<void>.value(),
+          )
+          as _i8.Future<void>);
 
   @override
   _i8.Future<String?> getTitle() =>
@@ -2342,6 +2443,15 @@ class MockWebStorage extends _i1.Mock implements _i2.WebStorage {
             returnValueForMissingStub: _i8.Future<void>.value(),
           )
           as _i8.Future<void>);
+
+  @override
+  _i8.Future<bool> deleteBrowsingData() =>
+      (super.noSuchMethod(
+            Invocation.method(#deleteBrowsingData, []),
+            returnValue: _i8.Future<bool>.value(false),
+            returnValueForMissingStub: _i8.Future<bool>.value(false),
+          )
+          as _i8.Future<bool>);
 
   @override
   _i2.WebStorage pigeon_copy() =>

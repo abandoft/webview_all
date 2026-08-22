@@ -17,9 +17,15 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.webkit.ScriptHandler;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
 import io.flutter.embedding.android.FlutterView;
 import io.flutter.plugin.platform.PlatformView;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.WeakHashMap;
 import kotlin.Result;
 import kotlin.Unit;
 import kotlin.jvm.functions.Function1;
@@ -30,10 +36,15 @@ import kotlin.jvm.functions.Function1;
  * <p>Handles creating {@link WebView}s that intercommunicate with a paired Dart object.
  */
 public class WebViewProxyApi extends PigeonApiWebView {
+  private final Map<WebView, Map<String, ScriptHandler>> documentStartScripts =
+      new WeakHashMap<>();
+
   /** Implementation of {@link WebView} that can be used as a Flutter {@link PlatformView}s. */
   @SuppressLint("ViewConstructor")
   public static class WebViewPlatformView extends WebView implements PlatformView {
     private final WebViewProxyApi api;
+
+    private boolean destroyed;
 
     private WebViewClient currentWebViewClient;
 
@@ -57,6 +68,16 @@ public class WebViewProxyApi extends PigeonApiWebView {
 
     @Override
     public void dispose() {}
+
+    @Override
+    public void destroy() {
+      if (destroyed) {
+        return;
+      }
+      destroyed = true;
+      api.removeAllDocumentStartJavaScripts(this);
+      super.destroy();
+    }
 
     // TODO(bparrishMines): This should be removed once https://github.com/flutter/engine/pull/40771
     // makes it to stable.
@@ -224,6 +245,60 @@ public class WebViewProxyApi extends PigeonApiWebView {
       @NonNull Function1<? super Result<String>, Unit> callback) {
     pigeon_instance.evaluateJavascript(
         javascriptString, result -> ResultCompat.success(result, callback));
+  }
+
+  @Override
+  public boolean isDocumentStartJavaScriptSupported(@NonNull WebView pigeon_instance) {
+    return WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT);
+  }
+
+  @Override
+  public void addDocumentStartJavaScript(
+      @NonNull WebView pigeon_instance,
+      @NonNull String identifier,
+      @NonNull String source) {
+    if (!isDocumentStartJavaScriptSupported(pigeon_instance)) {
+      throw new UnsupportedOperationException(
+          "The installed Android System WebView does not support document-start scripts.");
+    }
+
+    final Map<String, ScriptHandler> scripts =
+        documentStartScripts.computeIfAbsent(pigeon_instance, ignored -> new HashMap<>());
+    final ScriptHandler previous = scripts.remove(identifier);
+    if (previous != null) {
+      previous.remove();
+    }
+    scripts.put(
+        identifier,
+        WebViewCompat.addDocumentStartJavaScript(
+            pigeon_instance, source, Collections.singleton("*")));
+  }
+
+  @Override
+  public void removeDocumentStartJavaScript(
+      @NonNull WebView pigeon_instance, @NonNull String identifier) {
+    final Map<String, ScriptHandler> scripts = documentStartScripts.get(pigeon_instance);
+    if (scripts == null) {
+      return;
+    }
+    final ScriptHandler handler = scripts.remove(identifier);
+    if (handler != null) {
+      handler.remove();
+    }
+    if (scripts.isEmpty()) {
+      documentStartScripts.remove(pigeon_instance);
+    }
+  }
+
+  @Override
+  public void removeAllDocumentStartJavaScripts(@NonNull WebView pigeon_instance) {
+    final Map<String, ScriptHandler> scripts = documentStartScripts.remove(pigeon_instance);
+    if (scripts == null) {
+      return;
+    }
+    for (ScriptHandler handler : scripts.values()) {
+      handler.remove();
+    }
   }
 
   @Nullable

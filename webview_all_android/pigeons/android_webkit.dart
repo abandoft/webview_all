@@ -373,6 +373,18 @@ abstract class WebView extends View {
   @async
   String? evaluateJavascript(String javascriptString);
 
+  /// Whether the installed WebView supports document-start script injection.
+  bool isDocumentStartJavaScriptSupported();
+
+  /// Adds a script that runs before the document begins loading.
+  void addDocumentStartJavaScript(String identifier, String source);
+
+  /// Removes a document-start script by its plugin identifier.
+  void removeDocumentStartJavaScript(String identifier);
+
+  /// Removes all document-start scripts registered through this plugin.
+  void removeAllDocumentStartJavaScripts();
+
   /// Gets the title for the current page.
   String? getTitle();
 
@@ -808,6 +820,13 @@ abstract class WebStorage {
 
   /// Clears all storage currently being used by the JavaScript storage APIs.
   void deleteAllData();
+
+  /// Clears browser cache, cookies, and JavaScript-readable website data.
+  ///
+  /// Returns false when the installed Android System WebView does not support
+  /// the operation.
+  @async
+  bool deleteBrowsingData();
 }
 
 /// Parameters used in the `WebChromeClient.onShowFileChooser` method.

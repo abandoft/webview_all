@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -334,6 +335,19 @@ public class WebViewTest {
 
     registrar.getInstanceManager().remove(0);
     verify(mockWebView).destroy();
+  }
+
+  @Test
+  public void destroyIsIdempotentAndClearsDocumentStartScripts() {
+    final WebViewProxyApi mockApi = mock(WebViewProxyApi.class);
+    when(mockApi.getPigeonRegistrar()).thenReturn(new TestProxyApiRegistrar());
+    final WebViewProxyApi.WebViewPlatformView webView =
+        new WebViewProxyApi.WebViewPlatformView(mockApi);
+
+    webView.destroy();
+    webView.destroy();
+
+    verify(mockApi, times(1)).removeAllDocumentStartJavaScripts(webView);
   }
 
   @Test

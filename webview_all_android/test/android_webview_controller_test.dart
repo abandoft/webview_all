@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -111,6 +113,11 @@ void main() {
     setPaymentRequestEnabled,
     Future<void> Function(android_webview.WebSettings, int)?
     setWebAuthenticationSupport,
+    void Function(
+      String channelName,
+      void Function(android_webview.JavaScriptChannel, String) postMessage,
+    )?
+    onJavaScriptChannelCreated,
   }) {
     final android_webview.WebView nonNullMockWebView =
         mockWebView ?? MockWebView();
@@ -314,7 +321,10 @@ void main() {
           required String channelName,
           required void Function(android_webview.JavaScriptChannel, String)
           postMessage,
-        }) => mockJavaScriptChannel ?? MockJavaScriptChannel();
+        }) {
+          onJavaScriptChannelCreated?.call(channelName, postMessage);
+          return mockJavaScriptChannel ?? MockJavaScriptChannel();
+        };
     android_webview.PigeonOverrides.webViewFeature_isFeatureSupported =
         isWebViewFeatureSupported ?? (_) async => false;
     android_webview.PigeonOverrides.webSettingsCompat_setPaymentRequestEnabled =
@@ -1711,6 +1721,101 @@ void main() {
       expect(message, false);
     });
 
+    test('callAsyncJavaScript correlates a serialized result', () async {
+      final MockWebView mockWebView = MockWebView();
+      void Function(android_webview.JavaScriptChannel, String)? postMessage;
+      String? invocationScript;
+      final AndroidWebViewController controller = createControllerWithMocks(
+        mockWebView: mockWebView,
+        onJavaScriptChannelCreated:
+            (
+              String channelName,
+              void Function(android_webview.JavaScriptChannel, String) callback,
+            ) {
+              if (channelName == '__webview_all_async_javascript') {
+                postMessage = callback;
+              }
+            },
+      );
+      when(mockWebView.evaluateJavascript(any)).thenAnswer((Invocation call) {
+        invocationScript = call.positionalArguments.single as String;
+        return Future<String?>.value();
+      });
+
+      final Future<Object?> result = controller.callAsyncJavaScript(
+        JavaScriptInvocationParams(
+          functionBody: 'return value + 1;',
+          arguments: const <String, Object?>{'value': 6},
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      final String identifier = RegExp(
+        r'const __identifier="([^"]+)"',
+      ).firstMatch(invocationScript!)!.group(1)!;
+      expect(invocationScript, isNot(contains('AsyncFunction')));
+      postMessage!(
+        MockJavaScriptChannel(),
+        jsonEncode(<String, Object?>{
+          'identifier': 42,
+          'success': true,
+          'value': 'ignored',
+        }),
+      );
+      postMessage!(
+        MockJavaScriptChannel(),
+        jsonEncode(<String, Object?>{
+          'identifier': identifier,
+          'success': true,
+          'value': 7,
+        }),
+      );
+
+      await expectLater(result, completion(7));
+    });
+
+    test('registers and removes document-start user scripts', () async {
+      final MockWebView mockWebView = MockWebView();
+      when(
+        mockWebView.isDocumentStartJavaScriptSupported(),
+      ).thenAnswer((_) async => true);
+      final AndroidWebViewController controller = createControllerWithMocks(
+        mockWebView: mockWebView,
+      );
+
+      expect(
+        await controller.isUserScriptInjectionSupported(
+          WebViewUserScriptInjectionTime.documentStart,
+        ),
+        isTrue,
+      );
+      final String identifier = await controller.addUserScript(
+        const WebViewUserScript(source: 'window.provider = {};'),
+      );
+      await controller.removeUserScript(identifier);
+
+      final String source =
+          verify(
+                mockWebView.addDocumentStartJavaScript(identifier, captureAny),
+              ).captured.single
+              as String;
+      expect(source, contains('globalThis.top !== globalThis'));
+      expect(source, contains('window.provider = {};'));
+      expect(source, contains('}).call(globalThis);'));
+      verify(mockWebView.removeDocumentStartJavaScript(identifier)).called(1);
+    });
+
+    test('closes an offscreen WebView exactly once', () async {
+      final MockWebView mockWebView = MockWebView();
+      final AndroidWebViewController controller = createControllerWithMocks(
+        mockWebView: mockWebView,
+      );
+
+      await controller.closeOffscreenWebView();
+      await controller.closeOffscreenWebView();
+
+      verify(mockWebView.destroy()).called(1);
+    });
+
     test('addJavaScriptChannel', () async {
       final mockWebView = MockWebView();
       final AndroidWebViewController controller = createControllerWithMocks(
@@ -1719,11 +1824,7 @@ void main() {
       final AndroidJavaScriptChannelParams paramsWithMock =
           createAndroidJavaScriptChannelParamsWithMocks(name: 'test');
       await controller.addJavaScriptChannel(paramsWithMock);
-      verify(
-        mockWebView.addJavaScriptChannel(
-          argThat(isA<android_webview.JavaScriptChannel>()),
-        ),
-      ).called(1);
+      verify(mockWebView.addJavaScriptChannel(any)).called(2);
     });
 
     test('addJavaScriptChannel rejects an empty name', () async {
@@ -1747,18 +1848,13 @@ void main() {
         final AndroidJavaScriptChannelParams paramsWithMock =
             createAndroidJavaScriptChannelParamsWithMocks(name: 'test');
         await controller.addJavaScriptChannel(paramsWithMock);
-        verify(
-          mockWebView.addJavaScriptChannel(
-            argThat(isA<android_webview.JavaScriptChannel>()),
-          ),
-        ).called(1);
+        verify(mockWebView.addJavaScriptChannel(any)).called(2);
+        clearInteractions(mockWebView);
 
         await controller.addJavaScriptChannel(paramsWithMock);
         verifyInOrder(<Object>[
           mockWebView.removeJavaScriptChannel('test'),
-          mockWebView.addJavaScriptChannel(
-            argThat(isA<android_webview.JavaScriptChannel>()),
-          ),
+          mockWebView.addJavaScriptChannel(any),
         ]);
       },
     );
@@ -1783,11 +1879,8 @@ void main() {
 
       // Make sure channel exists before removing it.
       await controller.addJavaScriptChannel(paramsWithMock);
-      verify(
-        mockWebView.addJavaScriptChannel(
-          argThat(isA<android_webview.JavaScriptChannel>()),
-        ),
-      ).called(1);
+      verify(mockWebView.addJavaScriptChannel(any)).called(2);
+      clearInteractions(mockWebView);
 
       await controller.removeJavaScriptChannel('test');
       verify(mockWebView.removeJavaScriptChannel('test')).called(1);
