@@ -717,6 +717,26 @@ class WindowsWebViewHostApi {
     );
   }
 
+  Future<void> ensureEnvironment(WindowsEnvironmentOptions options) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.ensureEnvironment$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[options],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
   Future<String?> getWebViewVersion() async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.getWebViewVersion$pigeonVar_messageChannelSuffix';
@@ -1254,6 +1274,27 @@ class WindowsWebViewHostApi {
       pigeonVar_channelName,
       isNullValid: true,
     );
+  }
+
+  Future<bool> clearAllWebsiteData(int textureId) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.clearAllWebsiteData$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[textureId],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as bool;
   }
 
   Future<void> setCacheDisabled(int textureId, bool disabled) async {

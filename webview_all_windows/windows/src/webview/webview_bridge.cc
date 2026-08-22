@@ -668,9 +668,9 @@ void WebviewBridge::AddScriptToExecuteOnDocumentCreated(
   webview_->AddScriptToExecuteOnDocumentCreated(script, std::move(result));
 }
 
-void WebviewBridge::RemoveScriptToExecuteOnDocumentCreated(
+bool WebviewBridge::RemoveScriptToExecuteOnDocumentCreated(
     const std::string &script_id) {
-  webview_->RemoveScriptToExecuteOnDocumentCreated(script_id);
+  return webview_->RemoveScriptToExecuteOnDocumentCreated(script_id);
 }
 
 void WebviewBridge::ExecuteScript(
@@ -751,6 +751,11 @@ bool WebviewBridge::ClearCache() { return webview_->ClearCache(); }
 void WebviewBridge::ClearLocalStorage(
     Webview::OperationCompletedCallback callback) {
   webview_->ClearLocalStorage(std::move(callback));
+}
+
+void WebviewBridge::ClearAllWebsiteData(
+    Webview::WebsiteDataClearedCallback callback) {
+  webview_->ClearAllWebsiteData(std::move(callback));
 }
 
 bool WebviewBridge::SetCacheDisabled(bool disabled) {

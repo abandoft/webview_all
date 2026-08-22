@@ -454,6 +454,8 @@ public:
   virtual ~WindowsWebViewHostApi() {}
   virtual std::optional<FlutterError>
   InitializeEnvironment(const WindowsEnvironmentOptions &options) = 0;
+  virtual std::optional<FlutterError>
+  EnsureEnvironment(const WindowsEnvironmentOptions &options) = 0;
   virtual ErrorOr<std::optional<std::string>> GetWebViewVersion() = 0;
   virtual std::optional<FlutterError> OpenWebView2DownloadPage() = 0;
   virtual void
@@ -508,6 +510,9 @@ public:
   virtual void ClearLocalStorage(
       int64_t texture_id,
       std::function<void(std::optional<FlutterError> reply)> result) = 0;
+  virtual void
+  ClearAllWebsiteData(int64_t texture_id,
+                      std::function<void(ErrorOr<bool> reply)> result) = 0;
   virtual std::optional<FlutterError> SetCacheDisabled(int64_t texture_id,
                                                        bool disabled) = 0;
   virtual std::optional<FlutterError> OpenDevTools(int64_t texture_id) = 0;

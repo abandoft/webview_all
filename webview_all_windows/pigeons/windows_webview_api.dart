@@ -124,6 +124,8 @@ class WindowsLoadRequestData {
 abstract class WindowsWebViewHostApi {
   void initializeEnvironment(WindowsEnvironmentOptions options);
 
+  void ensureEnvironment(WindowsEnvironmentOptions options);
+
   String? getWebViewVersion();
 
   void openWebView2DownloadPage();
@@ -186,6 +188,9 @@ abstract class WindowsWebViewHostApi {
 
   @async
   void clearLocalStorage(int textureId);
+
+  @async
+  bool clearAllWebsiteData(int textureId);
 
   void setCacheDisabled(int textureId, bool disabled);
 

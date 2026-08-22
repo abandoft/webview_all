@@ -25,12 +25,35 @@ public:
   ~WindowsHostApi() override;
 
 private:
+  struct EnvironmentConfiguration {
+    std::optional<std::wstring> user_data_path;
+    std::optional<std::wstring> browser_exe_path;
+    std::optional<std::string> additional_arguments;
+
+    bool operator==(const EnvironmentConfiguration &other) const {
+      return PathsEqual(user_data_path, other.user_data_path) &&
+             PathsEqual(browser_exe_path, other.browser_exe_path) &&
+             additional_arguments == other.additional_arguments;
+    }
+
+  private:
+    static bool PathsEqual(const std::optional<std::wstring> &left,
+                           const std::optional<std::wstring> &right) {
+      if (left.has_value() != right.has_value()) {
+        return false;
+      }
+      return !left || CompareStringOrdinal(left->c_str(), -1, right->c_str(),
+                                           -1, TRUE) == CSTR_EQUAL;
+    }
+  };
+
   struct LifetimeState {
     WindowsHostApi *owner = nullptr;
   };
 
   std::unique_ptr<WebviewPlatform> platform_;
   std::shared_ptr<WebviewHost> webview_host_;
+  std::optional<EnvironmentConfiguration> environment_configuration_;
   std::unordered_map<int64_t, std::unique_ptr<WebviewBridge>> instances_;
 
   flutter::TextureRegistrar *textures_;
@@ -42,12 +65,18 @@ private:
       std::make_shared<LifetimeState>();
 
   bool InitPlatform();
+  EnvironmentConfiguration
+  ResolveEnvironmentConfiguration(const WindowsEnvironmentOptions &options);
+  std::optional<FlutterError>
+  CreateEnvironment(const EnvironmentConfiguration &configuration);
   void NotifyParentWindowPositionChanged();
   std::optional<LRESULT> HandleWindowMessage(HWND hwnd, UINT message,
                                              WPARAM wparam, LPARAM lparam);
 
   std::optional<FlutterError>
   InitializeEnvironment(const WindowsEnvironmentOptions &options) override;
+  std::optional<FlutterError>
+  EnsureEnvironment(const WindowsEnvironmentOptions &options) override;
   ErrorOr<std::optional<std::string>> GetWebViewVersion() override;
   std::optional<FlutterError> OpenWebView2DownloadPage() override;
   void CreateWebView(
@@ -101,6 +130,9 @@ private:
   void ClearLocalStorage(
       int64_t texture_id,
       std::function<void(std::optional<FlutterError> reply)> result) override;
+  void
+  ClearAllWebsiteData(int64_t texture_id,
+                      std::function<void(ErrorOr<bool> reply)> result) override;
   std::optional<FlutterError> SetCacheDisabled(int64_t texture_id,
                                                bool disabled) override;
   std::optional<FlutterError> OpenDevTools(int64_t texture_id) override;

@@ -71,6 +71,200 @@ void main() {
       ),
       isA<WindowsWebViewCookieManager>(),
     );
+    expect(
+      platform.createPlatformWebViewDataManager(
+        const PlatformWebViewDataManagerCreationParams(),
+      ),
+      isA<WindowsWebViewDataManager>(),
+    );
+  });
+
+  test(
+    'reports WebView2 website-data coverage and releases its controller',
+    () async {
+      var clearCalls = 0;
+      var disposeCalls = 0;
+      WindowsEnvironmentOptions? environmentOptions;
+      _mockWindowsWebViewCreation(
+        onEnsureEnvironment: (WindowsEnvironmentOptions options) {
+          environmentOptions = options;
+        },
+        onClearAllWebsiteData: () {
+          clearCalls += 1;
+          return true;
+        },
+        onDisposeWebView: () => disposeCalls += 1,
+      );
+      final WindowsWebViewDataManager manager = WindowsWebViewDataManager(
+        const PlatformWebViewDataManagerCreationParams(),
+      );
+
+      final WebViewDataClearingResult result = await manager
+          .clearAllWebsiteData();
+
+      expect(result.isComplete, isFalse);
+      expect(result.clearedDataTypes, <WebViewDataType>{
+        WebViewDataType.cookies,
+        WebViewDataType.cache,
+        WebViewDataType.localStorage,
+        WebViewDataType.indexedDb,
+        WebViewDataType.webSql,
+        WebViewDataType.cacheStorage,
+      });
+      expect(result.unsupportedDataTypes, <WebViewDataType>{
+        WebViewDataType.sessionStorage,
+        WebViewDataType.serviceWorkers,
+      });
+      expect(result.failures, isEmpty);
+      expect(clearCalls, 1);
+      expect(disposeCalls, 1);
+      expect(environmentOptions, isNotNull);
+    },
+  );
+
+  test('website-data manager forwards custom environment options', () async {
+    WindowsEnvironmentOptions? environmentOptions;
+    _mockWindowsWebViewCreation(
+      onEnsureEnvironment: (WindowsEnvironmentOptions options) {
+        environmentOptions = options;
+      },
+    );
+    final WindowsWebViewDataManager manager = WindowsWebViewDataManager(
+      const WindowsWebViewDataManagerCreationParams(
+        userDataPath: r'C:\AppData\WebView2',
+        browserExePath: r'C:\Runtime',
+        additionalArguments: '--disable-features=Example',
+      ),
+    );
+
+    await manager.clearAllWebsiteData();
+
+    expect(environmentOptions?.userDataPath, r'C:\AppData\WebView2');
+    expect(environmentOptions?.browserExePath, r'C:\Runtime');
+    expect(
+      environmentOptions?.additionalArguments,
+      '--disable-features=Example',
+    );
+  });
+
+  test(
+    'reports website-data clearing as unsupported on old runtimes',
+    () async {
+      _mockWindowsWebViewCreation(onClearAllWebsiteData: () => false);
+      final WindowsWebViewDataManager manager = WindowsWebViewDataManager(
+        const PlatformWebViewDataManagerCreationParams(),
+      );
+
+      final WebViewDataClearingResult result = await manager
+          .clearAllWebsiteData();
+
+      expect(result.clearedDataTypes, isEmpty);
+      expect(result.failures, isEmpty);
+      expect(result.unsupportedDataTypes, WebViewDataType.values.toSet());
+    },
+  );
+
+  test('keeps unsupported types distinct from clearing failures', () async {
+    _mockWindowsWebViewCreation(creationFailureCount: 1);
+    final WindowsWebViewDataManager manager = WindowsWebViewDataManager(
+      const PlatformWebViewDataManagerCreationParams(),
+    );
+
+    final WebViewDataClearingResult result = await manager
+        .clearAllWebsiteData();
+
+    expect(result.clearedDataTypes, isEmpty);
+    expect(result.unsupportedDataTypes, <WebViewDataType>{
+      WebViewDataType.sessionStorage,
+      WebViewDataType.serviceWorkers,
+    });
+    expect(result.failures.keys.toSet(), <WebViewDataType>{
+      WebViewDataType.cookies,
+      WebViewDataType.cache,
+      WebViewDataType.localStorage,
+      WebViewDataType.indexedDb,
+      WebViewDataType.webSql,
+      WebViewDataType.cacheStorage,
+    });
+  });
+
+  test('invokes asynchronous JavaScript and correlates its result', () async {
+    String? invocationScript;
+    _mockWindowsWebViewCreation(
+      onExecuteScript: (String script) {
+        invocationScript = script;
+        return 'null';
+      },
+    );
+    final WindowsWebViewController controller = WindowsWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+
+    final Future<Object?> result = controller.callAsyncJavaScript(
+      JavaScriptInvocationParams(
+        functionBody: 'return value + 1;',
+        arguments: const <String, Object?>{'value': 6},
+      ),
+    );
+    await _flushAsyncEvents();
+    final String identifier = RegExp(
+      r'const __identifier="([^"]+)"',
+    ).firstMatch(invocationScript!)!.group(1)!;
+    expect(invocationScript, isNot(contains('AsyncFunction')));
+    await _emitWindowsWebViewEvent(<String, Object?>{
+      'type': 'webMessageReceived',
+      'value': jsonEncode(<String, Object?>{
+        '__windows_webview_all_type': 'asyncJavaScript',
+        'identifier': 42,
+        'success': true,
+        'value': 'ignored',
+      }),
+    });
+    await _emitWindowsWebViewEvent(<String, Object?>{
+      'type': 'webMessageReceived',
+      'value': jsonEncode(<String, Object?>{
+        '__windows_webview_all_type': 'asyncJavaScript',
+        'identifier': identifier,
+        'success': true,
+        'value': 7,
+      }),
+    });
+
+    await expectLater(result, completion(7));
+  });
+
+  test('registers and removes document-start user scripts', () async {
+    final List<String> addedScripts = <String>[];
+    final List<String> removedScripts = <String>[];
+    _mockWindowsWebViewCreation(
+      onAddScript: (String script) {
+        addedScripts.add(script);
+        return 'native-${addedScripts.length}';
+      },
+      onRemoveScript: removedScripts.add,
+    );
+    final WindowsWebViewController controller = WindowsWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+
+    expect(
+      await controller.isUserScriptInjectionSupported(
+        WebViewUserScriptInjectionTime.documentStart,
+      ),
+      isTrue,
+    );
+    final String identifier = await controller.addUserScript(
+      const WebViewUserScript(source: 'window.provider = {};'),
+    );
+    await Future.wait<void>(<Future<void>>[
+      controller.removeUserScript(identifier),
+      controller.removeUserScript(identifier),
+    ]);
+
+    expect(addedScripts.single, contains('window.provider = {};'));
+    expect(addedScripts.single, contains('globalThis.top !== globalThis'));
+    expect(addedScripts.single, contains('}).call(globalThis);'));
+    expect(removedScripts, <String>['native-1']);
   });
 
   test('native controller releases its WebView exactly once', () async {
@@ -1607,6 +1801,7 @@ void main() {
 void _mockWindowsWebViewCreation({
   int creationFailureCount = 0,
   Future<void> Function()? beforeCreateWebView,
+  void Function(WindowsEnvironmentOptions options)? onEnsureEnvironment,
   void Function()? onOpenWebView2DownloadPage,
   void Function(WindowsLoadRequestData request)? onLoadRequest,
   void Function(String url)? onLoadUrl,
@@ -1620,6 +1815,7 @@ void _mockWindowsWebViewCreation({
   void Function(String? userAgent)? onSetUserAgent,
   String? Function()? onGetUserAgent,
   void Function()? onClearLocalStorage,
+  bool Function()? onClearAllWebsiteData,
   void Function(bool enabled)? onSetJavaScriptEnabled,
   void Function(bool enabled)? onSetZoomControlEnabled,
   void Function(bool enabled)? onSetNavigationRequestCallbacksEnabled,
@@ -1636,6 +1832,13 @@ void _mockWindowsWebViewCreation({
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   var remainingCreationFailures = creationFailureCount;
+  messenger.setMockMessageHandler(_hostApiChannel('ensureEnvironment'), (
+    ByteData? message,
+  ) async {
+    final args = _decodePigeonArgs(message);
+    onEnsureEnvironment?.call(args[0]! as WindowsEnvironmentOptions);
+    return _encodePigeonSuccess();
+  });
   messenger.setMockMessageHandler(_hostApiChannel('createWebView'), (
     ByteData? message,
   ) async {
@@ -1757,6 +1960,13 @@ void _mockWindowsWebViewCreation({
     onClearLocalStorage?.call();
     return _encodePigeonSuccess();
   });
+  messenger.setMockMessageHandler(_hostApiChannel('clearAllWebsiteData'), (
+    ByteData? message,
+  ) async {
+    return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
+      onClearAllWebsiteData?.call() ?? true,
+    ]);
+  });
   messenger.setMockMessageHandler(_hostApiChannel('setJavaScriptEnabled'), (
     ByteData? message,
   ) async {
@@ -1816,6 +2026,7 @@ int _activeMockTextureId = 0;
 void _clearWindowsWebViewCreationMock() {
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  messenger.setMockMessageHandler(_hostApiChannel('ensureEnvironment'), null);
   messenger.setMockMessageHandler(_hostApiChannel('createWebView'), null);
   messenger.setMockMessageHandler(
     _hostApiChannel('openWebView2DownloadPage'),
@@ -1852,6 +2063,7 @@ void _clearWindowsWebViewCreationMock() {
   messenger.setMockMessageHandler(_hostApiChannel('setUserAgent'), null);
   messenger.setMockMessageHandler(_hostApiChannel('getUserAgent'), null);
   messenger.setMockMessageHandler(_hostApiChannel('clearLocalStorage'), null);
+  messenger.setMockMessageHandler(_hostApiChannel('clearAllWebsiteData'), null);
   messenger.setMockMessageHandler(
     _hostApiChannel('setJavaScriptEnabled'),
     null,

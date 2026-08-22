@@ -58,7 +58,7 @@ public:
   void AddScriptToExecuteOnDocumentCreated(
       const std::string &script,
       std::function<void(bool success, const std::string &script_id)> result);
-  void RemoveScriptToExecuteOnDocumentCreated(const std::string &script_id);
+  bool RemoveScriptToExecuteOnDocumentCreated(const std::string &script_id);
   void ExecuteScript(
       const std::string &script,
       std::function<void(bool success, const std::string &json_result)> result);
@@ -87,6 +87,7 @@ public:
                                           const std::string &path);
   bool ClearCache();
   void ClearLocalStorage(Webview::OperationCompletedCallback callback);
+  void ClearAllWebsiteData(Webview::WebsiteDataClearedCallback callback);
   bool SetCacheDisabled(bool disabled);
   void SetPopupWindowPolicy(int64_t policy);
   void SetNavigationRequestCallbacksEnabled(bool enabled);

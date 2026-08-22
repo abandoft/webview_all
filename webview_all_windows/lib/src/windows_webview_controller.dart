@@ -149,6 +149,9 @@ class WindowsWebViewController extends PlatformWebViewController {
   final Map<String, JavaScriptChannelParams> _javaScriptChannelParams =
       <String, JavaScriptChannelParams>{};
   final Map<String, String> _javaScriptChannelScriptIds = <String, String>{};
+  final Map<String, String> _userScriptIds = <String, String>{};
+  final Map<String, Completer<Object?>> _pendingAsyncJavaScriptInvocations =
+      <String, Completer<Object?>>{};
   final Map<String, String> _virtualHostMappings = <String, String>{};
   final List<StreamSubscription<dynamic>> _subscriptions =
       <StreamSubscription<dynamic>>[];
@@ -173,6 +176,8 @@ class WindowsWebViewController extends PlatformWebViewController {
   String? _consoleBridgeScriptId;
   String? _scrollBarStyleScriptId;
   String? _overScrollStyleScriptId;
+  int _nextAsyncJavaScriptInvocationIdentifier = 0;
+  int _nextUserScriptIdentifier = 0;
 
   void Function(JavaScriptConsoleMessage)? _onConsoleMessageCallback;
   Future<void> Function(JavaScriptAlertDialogRequest)?
@@ -192,6 +197,7 @@ class WindowsWebViewController extends PlatformWebViewController {
   static const String _javaScriptChannelMessageType = 'javascriptChannel';
   static const String _consoleMessageType = 'consoleMessage';
   static const String _scrollMessageType = 'scrollPositionChange';
+  static const String _asyncJavaScriptMessageType = 'asyncJavaScript';
 
   Future<T> _awaitPendingRequest<T>(
     Future<T> Function() decision, {
@@ -220,12 +226,33 @@ class WindowsWebViewController extends PlatformWebViewController {
   }
 
   /// Explicitly initializes the shared WebView2 environment.
+  ///
+  /// This strict API fails after any environment has already been created.
+  /// Prefer [ensureEnvironment] when independently initialized components may
+  /// request the same configuration.
   static Future<void> initializeEnvironment({
     String? userDataPath,
     String? browserExePath,
     String? additionalArguments,
   }) {
     return native_webview.WebviewController.initializeEnvironment(
+      userDataPath: userDataPath,
+      browserExePath: browserExePath,
+      additionalArguments: additionalArguments,
+    );
+  }
+
+  /// Initializes the shared WebView2 environment idempotently.
+  ///
+  /// Equivalent options reuse the active environment. Conflicting options
+  /// fail without replacing it. Prefer this when multiple application
+  /// components may initialize WebView2 independently.
+  static Future<void> ensureEnvironment({
+    String? userDataPath,
+    String? browserExePath,
+    String? additionalArguments,
+  }) {
+    return native_webview.WebviewController.ensureEnvironment(
       userDataPath: userDataPath,
       browserExePath: browserExePath,
       additionalArguments: additionalArguments,
@@ -376,6 +403,13 @@ class WindowsWebViewController extends PlatformWebViewController {
     }
 
     _isDisposed = true;
+    _cancelPendingAsyncJavaScriptInvocations(
+      const JavaScriptExecutionException(
+        name: 'AbortError',
+        message:
+            'The WebView controller was disposed before JavaScript completed.',
+      ),
+    );
     _finalizer.detach(this);
     final Future<void> Function(bool enabled)? listener =
         _navigationRequestListener;
@@ -428,6 +462,7 @@ class WindowsWebViewController extends PlatformWebViewController {
 
     _javaScriptChannelParams.clear();
     _javaScriptChannelScriptIds.clear();
+    _userScriptIds.clear();
     _virtualHostMappings.clear();
     _onConsoleMessageCallback = null;
     _onJavaScriptAlertDialogCallback = null;
@@ -462,6 +497,12 @@ class WindowsWebViewController extends PlatformWebViewController {
       case native_types.LoadingState.none:
         break;
       case native_types.LoadingState.loading:
+        _cancelPendingAsyncJavaScriptInvocations(
+          const JavaScriptExecutionException(
+            name: 'NavigationError',
+            message: 'The page navigated before JavaScript completed.',
+          ),
+        );
         final url = _currentUrl ?? _pageStartedUrl ?? '';
         _pageStartedUrl = url;
         _currentNavigationDelegate?._onProgress?.call(0);
@@ -544,8 +585,48 @@ class WindowsWebViewController extends PlatformWebViewController {
           );
         }
         break;
+      case _asyncJavaScriptMessageType:
+        _handleAsyncJavaScriptMessage(message);
+        break;
       default:
         break;
+    }
+  }
+
+  void _handleAsyncJavaScriptMessage(Map<dynamic, dynamic> message) {
+    final Object? rawIdentifier = message['identifier'];
+    if (rawIdentifier is! String) {
+      return;
+    }
+    final String identifier = rawIdentifier;
+    final Completer<Object?>? completer = _pendingAsyncJavaScriptInvocations
+        .remove(identifier);
+    if (completer == null || completer.isCompleted) {
+      return;
+    }
+    if (message['success'] == true) {
+      completer.complete(message['value']);
+      return;
+    }
+    completer.completeError(
+      JavaScriptExecutionException(
+        name: message['name']?.toString(),
+        message:
+            message['message']?.toString() ?? 'JavaScript execution failed.',
+        javaScriptStackTrace: message['stack']?.toString(),
+      ),
+    );
+  }
+
+  void _cancelPendingAsyncJavaScriptInvocations(Object error) {
+    final List<Completer<Object?>> pending = _pendingAsyncJavaScriptInvocations
+        .values
+        .toList(growable: false);
+    _pendingAsyncJavaScriptInvocations.clear();
+    for (final Completer<Object?> completer in pending) {
+      if (!completer.isCompleted) {
+        completer.completeError(error);
+      }
     }
   }
 
@@ -988,6 +1069,152 @@ class WindowsWebViewController extends PlatformWebViewController {
       );
     }
     return result as Object;
+  }
+
+  @override
+  Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
+    await _ensureInitialized();
+    final String identifier = _createWindowsVirtualHost(
+      'async-${++_nextAsyncJavaScriptInvocationIdentifier}',
+    );
+    final Completer<Object?> completer = Completer<Object?>();
+    _pendingAsyncJavaScriptInvocations[identifier] = completer;
+
+    final Future<Object?> completion = completer.future.timeout(
+      params.timeout,
+      onTimeout: () {
+        _pendingAsyncJavaScriptInvocations.remove(identifier);
+        throw TimeoutException(
+          'The asynchronous JavaScript invocation timed out.',
+          params.timeout,
+        );
+      },
+    );
+    try {
+      final List<Object?> values = await Future.wait<Object?>(<Future<Object?>>[
+        _webviewController.executeScript(
+          _buildAsyncJavaScriptInvocation(identifier, params),
+        ),
+        completion,
+      ], eagerError: true);
+      return values[1];
+    } catch (error, stackTrace) {
+      _pendingAsyncJavaScriptInvocations.remove(identifier);
+      if (!completer.isCompleted) {
+        completer.completeError(error, stackTrace);
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<bool> isOffscreenWebViewSupported() async => true;
+
+  @override
+  Future<void> closeOffscreenWebView() => dispose();
+
+  @override
+  Future<bool> isUserScriptInjectionSupported(
+    WebViewUserScriptInjectionTime injectionTime,
+  ) async {
+    await _ensureInitialized();
+    return injectionTime == WebViewUserScriptInjectionTime.documentStart;
+  }
+
+  @override
+  Future<String> addUserScript(WebViewUserScript userScript) async {
+    await _ensureInitialized();
+    final String identifier = 'webview_all_${++_nextUserScriptIdentifier}';
+    final String source = buildUserScriptSource(
+      userScript,
+      platformHandlesMainFrameOnly: false,
+    );
+    final String? nativeIdentifier = await _webviewController
+        .addScriptToExecuteOnDocumentCreated(source);
+    if (nativeIdentifier == null) {
+      throw StateError('WebView2 did not return a user-script identifier.');
+    }
+    _userScriptIds[identifier] = nativeIdentifier;
+    return identifier;
+  }
+
+  @override
+  Future<void> removeUserScript(String identifier) async {
+    await _ensureInitialized();
+    final String? nativeIdentifier = _userScriptIds.remove(identifier);
+    if (nativeIdentifier != null) {
+      try {
+        await _webviewController.removeScriptToExecuteOnDocumentCreated(
+          nativeIdentifier,
+        );
+      } catch (_) {
+        _userScriptIds[identifier] = nativeIdentifier;
+        rethrow;
+      }
+    }
+  }
+
+  @override
+  Future<void> removeAllUserScripts() async {
+    await _ensureInitialized();
+    final List<MapEntry<String, String>> scripts = _userScriptIds.entries
+        .toList(growable: false);
+    _userScriptIds.clear();
+    for (int index = 0; index < scripts.length; index++) {
+      final MapEntry<String, String> script = scripts[index];
+      try {
+        await _webviewController.removeScriptToExecuteOnDocumentCreated(
+          script.value,
+        );
+      } catch (_) {
+        for (final MapEntry<String, String> remaining in scripts.skip(index)) {
+          _userScriptIds[remaining.key] = remaining.value;
+        }
+        rethrow;
+      }
+    }
+  }
+
+  String _buildAsyncJavaScriptInvocation(
+    String identifier,
+    JavaScriptInvocationParams params,
+  ) {
+    final String argumentNames = params.arguments.keys.join(',');
+    final String argumentValues = params.arguments.keys
+        .map((String name) => '__arguments[${jsonEncode(name)}]')
+        .join(',');
+    return '''
+(()=>{
+  const __identifier=${jsonEncode(identifier)};
+  const __arguments=${jsonEncode(params.arguments)};
+  const __post=(payload)=>window.chrome.webview.postMessage(payload);
+  const __postError=(error)=>__post({
+    ${jsonEncode(_channelMessageType)}:${jsonEncode(_asyncJavaScriptMessageType)},
+    identifier:__identifier,
+    success:false,
+    name:error&&error.name?String(error.name):null,
+    message:error&&error.message?String(error.message):String(error),
+    stack:error&&error.stack?String(error.stack):null
+  });
+  Promise.resolve()
+    .then(()=>(async function($argumentNames){
+${params.functionBody}
+    })($argumentValues))
+    .then((value)=>{
+      try {
+        const encoded=JSON.stringify(value);
+        __post({
+          ${jsonEncode(_channelMessageType)}:${jsonEncode(_asyncJavaScriptMessageType)},
+          identifier:__identifier,
+          success:true,
+          value:encoded===undefined?null:JSON.parse(encoded)
+        });
+      } catch(error) {
+        __postError(error);
+      }
+    },__postError);
+})();
+''';
   }
 
   @override

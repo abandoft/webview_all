@@ -1303,6 +1303,53 @@ void Webview::ClearLocalStorage(OperationCompletedCallback callback) {
   }
 }
 
+void Webview::ClearAllWebsiteData(WebsiteDataClearedCallback callback) {
+  if (!IsValid()) {
+    callback(true, false);
+    return;
+  }
+
+  auto webview13 = webview_.try_query<ICoreWebView2_13>();
+  if (!webview13) {
+    callback(false, false);
+    return;
+  }
+
+  wil::com_ptr<ICoreWebView2Profile> profile;
+  if (FAILED(webview13->get_Profile(profile.put())) || !profile) {
+    callback(true, false);
+    return;
+  }
+
+  auto profile2 = profile.try_query<ICoreWebView2Profile2>();
+  if (!profile2) {
+    callback(false, false);
+    return;
+  }
+
+  auto completion =
+      std::make_shared<WebsiteDataClearedCallback>(std::move(callback));
+  auto replied = std::make_shared<bool>(false);
+  const auto website_data = static_cast<COREWEBVIEW2_BROWSING_DATA_KINDS>(
+      COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_SITE |
+      COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE);
+  const HRESULT hr = profile2->ClearBrowsingData(
+      website_data, Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
+                        [completion, replied](HRESULT error_code) -> HRESULT {
+                          if (*replied) {
+                            return S_OK;
+                          }
+                          *replied = true;
+                          (*completion)(true, SUCCEEDED(error_code));
+                          return S_OK;
+                        })
+                        .Get());
+  if (FAILED(hr) && !*replied) {
+    *replied = true;
+    (*completion)(true, false);
+  }
+}
+
 bool Webview::SetCacheDisabled(bool disabled) {
   if (!IsValid()) {
     return false;
@@ -1696,8 +1743,11 @@ void Webview::AddScriptToExecuteOnDocumentCreated(
             Callback<
                 ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
                 [callback](HRESULT result, LPCWSTR wsid) -> HRESULT {
-                  std::string sid = util::Utf8FromUtf16(wsid);
-                  callback(SUCCEEDED(result), sid);
+                  if (SUCCEEDED(result) && wsid != nullptr) {
+                    callback(true, util::Utf8FromUtf16(wsid));
+                  } else {
+                    callback(false, std::string());
+                  }
                   return S_OK;
                 })
                 .Get()))) {
@@ -1708,12 +1758,13 @@ void Webview::AddScriptToExecuteOnDocumentCreated(
   callback(false, std::string());
 }
 
-void Webview::RemoveScriptToExecuteOnDocumentCreated(
+bool Webview::RemoveScriptToExecuteOnDocumentCreated(
     const std::string &script_id) {
-  if (IsValid()) {
-    webview_->RemoveScriptToExecuteOnDocumentCreated(
-        util::Utf16FromUtf8(script_id).c_str());
+  if (!IsValid()) {
+    return false;
   }
+  return SUCCEEDED(webview_->RemoveScriptToExecuteOnDocumentCreated(
+      util::Utf16FromUtf8(script_id).c_str()));
 }
 
 void Webview::ExecuteScript(const std::string &script,

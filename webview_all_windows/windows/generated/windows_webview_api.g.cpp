@@ -1418,6 +1418,43 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(binary_messenger,
                                   "dev.flutter.pigeon.webview_all_windows."
+                                  "WindowsWebViewHostApi.ensureEnvironment" +
+                                      prepended_suffix,
+                                  &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler(
+          [api](const EncodableValue &message,
+                const ::flutter::MessageReply<EncodableValue> &reply) {
+            try {
+              const auto &args = std::get<EncodableList>(message);
+              const auto &encodable_options_arg = args.at(0);
+              if (encodable_options_arg.IsNull()) {
+                reply(WrapError("options_arg unexpectedly null."));
+                return;
+              }
+              const auto &options_arg =
+                  std::any_cast<const WindowsEnvironmentOptions &>(
+                      std::get<CustomEncodableValue>(encodable_options_arg));
+              std::optional<FlutterError> output =
+                  api->EnsureEnvironment(options_arg);
+              if (output.has_value()) {
+                reply(WrapError(output.value()));
+                return;
+              }
+              EncodableList wrapped;
+              wrapped.push_back(EncodableValue());
+              reply(EncodableValue(std::move(wrapped)));
+            } catch (const std::exception &exception) {
+              reply(WrapError(exception.what()));
+            }
+          });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger,
+                                  "dev.flutter.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.getWebViewVersion" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2461,6 +2498,44 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
                     }
                     EncodableList wrapped;
                     wrapped.push_back(EncodableValue());
+                    reply(EncodableValue(std::move(wrapped)));
+                  });
+            } catch (const std::exception &exception) {
+              reply(WrapError(exception.what()));
+            }
+          });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger,
+                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "WindowsWebViewHostApi.clearAllWebsiteData" +
+                                      prepended_suffix,
+                                  &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler(
+          [api](const EncodableValue &message,
+                const ::flutter::MessageReply<EncodableValue> &reply) {
+            try {
+              const auto &args = std::get<EncodableList>(message);
+              const auto &encodable_texture_id_arg = args.at(0);
+              if (encodable_texture_id_arg.IsNull()) {
+                reply(WrapError("texture_id_arg unexpectedly null."));
+                return;
+              }
+              const int64_t texture_id_arg =
+                  encodable_texture_id_arg.LongValue();
+              api->ClearAllWebsiteData(
+                  texture_id_arg, [reply](ErrorOr<bool> &&output) {
+                    if (output.has_error()) {
+                      reply(WrapError(output.error()));
+                      return;
+                    }
+                    EncodableList wrapped;
+                    wrapped.push_back(
+                        EncodableValue(std::move(output).TakeValue()));
                     reply(EncodableValue(std::move(wrapped)));
                   });
             } catch (const std::exception &exception) {

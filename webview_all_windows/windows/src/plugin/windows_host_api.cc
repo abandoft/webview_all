@@ -4,6 +4,7 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <iomanip>
 #include <optional>
@@ -24,6 +25,8 @@ constexpr auto kErrorCodeEnvironmentCreationFailed =
     "environment_creation_failed";
 constexpr auto kErrorCodeEnvironmentAlreadyInitialized =
     "environment_already_initialized";
+constexpr auto kErrorCodeEnvironmentConfigurationConflict =
+    "environment_configuration_conflict";
 constexpr auto kErrorCodeWebviewCreationFailed = "webview_creation_failed";
 constexpr auto kErrorCodeInvalidParentWindow = "invalid_parent_window";
 constexpr auto kErrorCodeOpenUrlFailed = "open_url_failed";
@@ -38,6 +41,32 @@ std::string FormatWebviewCreationError(const WebviewCreationError &error) {
           << std::hex << std::setw(8) << std::setfill('0')
           << static_cast<uint32_t>(error.hr) << ')';
   return message.str();
+}
+
+std::optional<std::wstring>
+NormalizeEnvironmentPath(std::optional<std::wstring> path) {
+  if (!path || path->empty()) {
+    return std::nullopt;
+  }
+  std::error_code error;
+  std::filesystem::path normalized =
+      std::filesystem::absolute(std::filesystem::path(*path), error);
+  if (error) {
+    normalized = std::filesystem::path(*path);
+  }
+  normalized = normalized.lexically_normal();
+  while (!normalized.has_filename() && normalized != normalized.root_path()) {
+    normalized = normalized.parent_path();
+  }
+  return normalized.make_preferred().wstring();
+}
+
+std::optional<std::string>
+NormalizeEnvironmentArguments(const std::string *arguments) {
+  if (arguments == nullptr || arguments->empty()) {
+    return std::nullopt;
+  }
+  return *arguments;
 }
 
 } // namespace
@@ -120,30 +149,63 @@ WindowsHostApi::InitializeEnvironment(
                                              "The platform is not supported");
   }
 
-  std::optional<std::wstring> browser_exe_wpath = std::nullopt;
-  if (options.browser_exe_path()) {
-    browser_exe_wpath = util::Utf16FromUtf8(*options.browser_exe_path());
+  return CreateEnvironment(ResolveEnvironmentConfiguration(options));
+}
+
+std::optional<webview_all_windows::FlutterError>
+WindowsHostApi::EnsureEnvironment(
+    const webview_all_windows::WindowsEnvironmentOptions &options) {
+  if (!InitPlatform()) {
+    return webview_all_windows::FlutterError(kErrorUnsupportedPlatform,
+                                             "The platform is not supported");
   }
 
-  std::optional<std::wstring> user_data_wpath = std::nullopt;
-  if (options.user_data_path()) {
-    user_data_wpath = util::Utf16FromUtf8(*options.user_data_path());
+  const EnvironmentConfiguration requested =
+      ResolveEnvironmentConfiguration(options);
+  if (!webview_host_) {
+    return CreateEnvironment(requested);
+  }
+  if (environment_configuration_ && *environment_configuration_ == requested) {
+    return std::nullopt;
+  }
+  return webview_all_windows::FlutterError(
+      kErrorCodeEnvironmentConfigurationConflict,
+      "The active WebView2 environment uses different configuration options.");
+}
+
+WindowsHostApi::EnvironmentConfiguration
+WindowsHostApi::ResolveEnvironmentConfiguration(
+    const webview_all_windows::WindowsEnvironmentOptions &options) {
+  std::optional<std::wstring> user_data_path;
+  if (options.user_data_path() != nullptr &&
+      !options.user_data_path()->empty()) {
+    user_data_path = util::Utf16FromUtf8(*options.user_data_path());
   } else {
-    user_data_wpath = platform_->GetDefaultDataDirectory();
+    user_data_path = platform_->GetDefaultDataDirectory();
   }
-
-  std::optional<std::string> additional_args = std::nullopt;
-  if (options.additional_arguments()) {
-    additional_args = *options.additional_arguments();
+  std::optional<std::wstring> browser_exe_path;
+  if (options.browser_exe_path() != nullptr &&
+      !options.browser_exe_path()->empty()) {
+    browser_exe_path = util::Utf16FromUtf8(*options.browser_exe_path());
   }
+  return EnvironmentConfiguration{
+      NormalizeEnvironmentPath(std::move(user_data_path)),
+      NormalizeEnvironmentPath(std::move(browser_exe_path)),
+      NormalizeEnvironmentArguments(options.additional_arguments())};
+}
 
+std::optional<webview_all_windows::FlutterError>
+WindowsHostApi::CreateEnvironment(
+    const EnvironmentConfiguration &configuration) {
   webview_host_ = std::move(WebviewHost::Create(
-      platform_.get(), user_data_wpath, browser_exe_wpath, additional_args));
+      platform_.get(), configuration.user_data_path,
+      configuration.browser_exe_path, configuration.additional_arguments));
   if (!webview_host_) {
     return webview_all_windows::FlutterError(
         kErrorCodeEnvironmentCreationFailed);
   }
 
+  environment_configuration_ = configuration;
   return std::nullopt;
 }
 
@@ -190,11 +252,11 @@ void WindowsHostApi::CreateWebView(
   }
 
   if (!webview_host_) {
-    webview_host_ = std::move(WebviewHost::Create(
-        platform_.get(), platform_->GetDefaultDataDirectory()));
-    if (!webview_host_) {
-      return result(webview_all_windows::FlutterError(
-          kErrorCodeEnvironmentCreationFailed));
+    const WindowsEnvironmentOptions default_options;
+    const std::optional<FlutterError> environment_error =
+        CreateEnvironment(ResolveEnvironmentConfiguration(default_options));
+    if (environment_error) {
+      return result(*environment_error);
     }
   }
 
@@ -370,7 +432,10 @@ WindowsHostApi::RemoveScriptToExecuteOnDocumentCreated(
   if (!bridge) {
     return InvalidIdError();
   }
-  bridge->RemoveScriptToExecuteOnDocumentCreated(script_id);
+  if (!bridge->RemoveScriptToExecuteOnDocumentCreated(script_id)) {
+    return webview_all_windows::FlutterError(
+        kErrorScriptFailed, "Removing the document-created script failed.");
+  }
   return std::nullopt;
 }
 
@@ -604,6 +669,26 @@ void WindowsHostApi::ClearLocalStorage(
     }
     result(webview_all_windows::FlutterError(kErrorMethodFailed));
   });
+}
+
+void WindowsHostApi::ClearAllWebsiteData(
+    int64_t texture_id,
+    std::function<void(webview_all_windows::ErrorOr<bool> reply)> result) {
+  auto bridge = FindBridge(texture_id);
+  if (!bridge) {
+    return result(webview_all_windows::FlutterError(kErrorCodeInvalidId));
+  }
+
+  bridge->ClearAllWebsiteData(
+      [result = std::move(result)](bool supported, bool success) mutable {
+        if (!supported) {
+          return result(false);
+        }
+        if (success) {
+          return result(true);
+        }
+        result(webview_all_windows::FlutterError(kErrorMethodFailed));
+      });
 }
 
 std::optional<webview_all_windows::FlutterError>

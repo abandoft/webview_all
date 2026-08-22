@@ -151,6 +151,24 @@ class WebviewController extends ValueNotifier<WebviewValue> {
     );
   }
 
+  /// Initializes the shared environment or validates an existing one.
+  ///
+  /// Repeated calls with equivalent options succeed. A conflicting
+  /// configuration fails without replacing the active environment.
+  static Future<void> ensureEnvironment({
+    String? userDataPath,
+    String? browserExePath,
+    String? additionalArguments,
+  }) async {
+    return _hostApi.ensureEnvironment(
+      WindowsEnvironmentOptions(
+        userDataPath: userDataPath,
+        browserExePath: browserExePath,
+        additionalArguments: additionalArguments,
+      ),
+    );
+  }
+
   /// Get the browser version info including channel name if it is not the
   /// WebView2 Runtime.
   /// Returns [null] if the webview2 runtime is not installed.
@@ -952,6 +970,15 @@ class WebviewController extends ValueNotifier<WebviewValue> {
     }
     assert(value.isInitialized);
     return _hostApi.clearLocalStorage(_textureId);
+  }
+
+  /// Clears cookies, cache, and DOM-accessible website data for this profile.
+  Future<bool> clearAllWebsiteData() async {
+    if (_isDisposed) {
+      return false;
+    }
+    assert(value.isInitialized);
+    return _hostApi.clearAllWebsiteData(_textureId);
   }
 
   /// Toggles ignoring cache for each request. If true, cache will not be used.

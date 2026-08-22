@@ -178,6 +178,8 @@ public:
       AddScriptToExecuteOnDocumentCreatedCallback;
   typedef std::function<void(bool, const std::string &)> ScriptExecutedCallback;
   typedef std::function<void(bool)> OperationCompletedCallback;
+  typedef std::function<void(bool supported, bool success)>
+      WebsiteDataClearedCallback;
   typedef std::function<void(const std::string &)> WebMessageReceivedCallback;
   typedef std::function<void(WebviewPermissionState state)>
       WebviewPermissionRequestedCompleter;
@@ -242,7 +244,7 @@ public:
   void AddScriptToExecuteOnDocumentCreated(
       const std::string &script,
       AddScriptToExecuteOnDocumentCreatedCallback callback);
-  void RemoveScriptToExecuteOnDocumentCreated(const std::string &script_id);
+  bool RemoveScriptToExecuteOnDocumentCreated(const std::string &script_id);
   void ExecuteScript(const std::string &script,
                      ScriptExecutedCallback callback);
   bool PostWebMessage(const std::string &json);
@@ -257,6 +259,7 @@ public:
                                           const std::string &path);
   bool ClearCache();
   void ClearLocalStorage(OperationCompletedCallback callback);
+  void ClearAllWebsiteData(WebsiteDataClearedCallback callback);
   bool SetCacheDisabled(bool disabled);
   void SetPopupWindowPolicy(WebviewPopupWindowPolicy policy);
   void SetNavigationRequestCallbacksEnabled(bool enabled);
