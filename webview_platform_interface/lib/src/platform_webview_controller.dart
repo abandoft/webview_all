@@ -210,6 +210,90 @@ abstract class PlatformWebViewController extends PlatformInterface {
     );
   }
 
+  /// Invokes an asynchronous JavaScript function and waits for its result.
+  Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) {
+    throw UnsupportedError(
+      'Asynchronous JavaScript invocation is not supported on the current platform.',
+    );
+  }
+
+  /// Whether this controller can operate without a platform WebView widget.
+  Future<bool> isOffscreenWebViewSupported() async {
+    return false;
+  }
+
+  /// Releases a controller owned by an offscreen session.
+  ///
+  /// This lifecycle hook is for the app-facing offscreen-session abstraction;
+  /// it does not define the lifetime of controllers attached to widgets.
+  Future<void> closeOffscreenWebView() {
+    throw UnsupportedError(
+      'Offscreen WebView lifecycle management is not supported on the current platform.',
+    );
+  }
+
+  /// Whether deterministic user-script injection is supported.
+  Future<bool> isUserScriptInjectionSupported(
+    WebViewUserScriptInjectionTime injectionTime,
+  ) async {
+    return false;
+  }
+
+  /// Builds the source installed by a platform user-script implementation.
+  ///
+  /// Registered scripts execute in a consistent private function scope. Scripts that
+  /// need to expose state to later page code must assign it explicitly through
+  /// `globalThis`. Set [platformHandlesMainFrameOnly] when the native API can
+  /// perform frame filtering without changing the script source.
+  @protected
+  String buildUserScriptSource(
+    WebViewUserScript userScript, {
+    required bool platformHandlesMainFrameOnly,
+  }) {
+    final String scopedSource =
+        '''
+(function() {
+${userScript.source}
+}).call(globalThis);
+''';
+    final String globalThisCompatibility = '''
+if (typeof globalThis === 'undefined') {
+  window.globalThis = window;
+}
+''';
+    if (userScript.forMainFrameOnly && !platformHandlesMainFrameOnly) {
+      return '''
+(function() {
+$globalThisCompatibility
+  if (globalThis.top !== globalThis) {
+    return;
+  }
+$scopedSource
+}).call(globalThis);
+''';
+    }
+    return '''
+$globalThisCompatibility
+$scopedSource''';
+  }
+
+  /// Registers [userScript] for injection into future documents.
+  ///
+  /// Returns an opaque identifier that can be passed to [removeUserScript].
+  Future<String> addUserScript(WebViewUserScript userScript) {
+    throw UnsupportedError(
+      'User-script injection is not supported on the current platform.',
+    );
+  }
+
+  /// Removes a user script previously registered by [addUserScript].
+  Future<void> removeUserScript(String identifier) async {}
+
+  /// Removes all scripts registered through [addUserScript].
+  ///
+  /// Scripts managed internally by the platform implementation are preserved.
+  Future<void> removeAllUserScripts() async {}
+
   /// Adds a new JavaScript channel to the set of enabled channels.
   Future<void> addJavaScriptChannel(
     JavaScriptChannelParams javaScriptChannelParams,

@@ -71,6 +71,13 @@ void main() {
       );
 
       expect(
+        () => PlatformWebViewDataManager(
+          const PlatformWebViewDataManagerCreationParams(),
+        ),
+        throwsA(isA<AssertionError>()),
+      );
+
+      expect(
         () => PlatformWebViewWidget(
           PlatformWebViewWidgetCreationParams(
             controller: MockWebViewControllerDelegate(),
@@ -105,6 +112,10 @@ void main() {
 
   test('Can be extended', () {
     WebViewPlatform.instance = ExtendsWebViewPlatform();
+  });
+
+  test('Offscreen WebViews are unsupported by default', () {
+    expect(ExtendsWebViewPlatform().supportsOffscreenWebViews, isFalse);
   });
 
   test('Can be mocked with `implements`', () {
@@ -168,6 +179,17 @@ void main() {
       );
     },
   );
+
+  test('Default implementation of createPlatformWebViewDataManager throws', () {
+    final WebViewPlatform webViewPlatform = ExtendsWebViewPlatform();
+
+    expect(
+      () => webViewPlatform.createPlatformWebViewDataManager(
+        const PlatformWebViewDataManagerCreationParams(),
+      ),
+      throwsUnimplementedError,
+    );
+  });
 }
 
 class ImplementsWebViewPlatform implements WebViewPlatform {

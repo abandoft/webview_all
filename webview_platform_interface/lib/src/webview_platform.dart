@@ -7,6 +7,7 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'platform_navigation_delegate.dart';
 import 'platform_webview_controller.dart';
 import 'platform_webview_cookie_manager.dart';
+import 'platform_webview_data_manager.dart';
 import 'platform_webview_widget.dart';
 import 'types/types.dart';
 
@@ -39,6 +40,13 @@ abstract class WebViewPlatform extends PlatformInterface {
     _instance = instance;
   }
 
+  /// Whether controllers created by this platform support owned offscreen
+  /// sessions and deterministic [PlatformWebViewController.closeOffscreenWebView].
+  ///
+  /// The app-facing package checks this before constructing a controller, so
+  /// unsupported platforms do not allocate native or browser resources.
+  bool get supportsOffscreenWebViews => false;
+
   /// Creates a new [PlatformWebViewCookieManager].
   ///
   /// This function should only be called by the app-facing package.
@@ -48,6 +56,17 @@ abstract class WebViewPlatform extends PlatformInterface {
   ) {
     throw UnimplementedError(
       'createPlatformCookieManager is not implemented on the current platform.',
+    );
+  }
+
+  /// Creates a new [PlatformWebViewDataManager].
+  ///
+  /// This function should only be called by the app-facing package.
+  PlatformWebViewDataManager createPlatformWebViewDataManager(
+    PlatformWebViewDataManagerCreationParams params,
+  ) {
+    throw UnimplementedError(
+      'createPlatformWebViewDataManager is not implemented on the current platform.',
     );
   }
 

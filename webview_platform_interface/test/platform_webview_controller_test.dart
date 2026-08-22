@@ -48,6 +48,32 @@ void main() {
     expect(PlatformWebViewController(params), isNotNull);
   });
 
+  test('builds user scripts with a consistent private scope', () {
+    final UserScriptSourcePlatformWebViewController controller =
+        UserScriptSourcePlatformWebViewController(
+          const PlatformWebViewControllerCreationParams(),
+        );
+    const WebViewUserScript script = WebViewUserScript(
+      source: 'globalThis.provider = {};',
+    );
+
+    final String nativeFiltered = controller.buildSource(
+      script,
+      platformHandlesMainFrameOnly: true,
+    );
+    expect(nativeFiltered, contains('(function() {'));
+    expect(nativeFiltered, contains('globalThis.provider = {};'));
+    expect(nativeFiltered, isNot(contains('globalThis.top !== globalThis')));
+
+    final String sourceFiltered = controller.buildSource(
+      script,
+      platformHandlesMainFrameOnly: false,
+    );
+    expect(sourceFiltered, contains('globalThis.top !== globalThis'));
+    expect(sourceFiltered, contains('globalThis.provider = {};'));
+    expect(sourceFiltered, contains('}).call(globalThis);'));
+  });
+
   test('Can be mocked with `implements`', () {
     when(
       (WebViewPlatform.instance! as MockWebViewPlatform)
@@ -261,6 +287,30 @@ void main() {
       );
     },
   );
+
+  test('New JavaScript defaults fail safely for older implementations', () {
+    final PlatformWebViewController controller =
+        ExtendsPlatformWebViewController(
+          const PlatformWebViewControllerCreationParams(),
+        );
+
+    expect(
+      () => controller.callAsyncJavaScript(
+        JavaScriptInvocationParams(functionBody: 'return 1;'),
+      ),
+      throwsUnsupportedError,
+    );
+    expect(
+      controller.isUserScriptInjectionSupported(
+        WebViewUserScriptInjectionTime.documentStart,
+      ),
+      completion(isFalse),
+    );
+    expect(controller.isOffscreenWebViewSupported(), completion(isFalse));
+    expect(() => controller.closeOffscreenWebView(), throwsUnsupportedError);
+    expect(controller.removeUserScript('missing'), completes);
+    expect(controller.removeAllUserScripts(), completes);
+  });
 
   test(
     'Default implementation of addJavaScriptChannel should throw unimplemented error',
@@ -575,6 +625,22 @@ class LoadFileSpyPlatformWebViewController extends PlatformWebViewController {
   @override
   Future<void> loadFile(String absoluteFilePath) async {
     loadFilePath = absoluteFilePath;
+  }
+}
+
+class UserScriptSourcePlatformWebViewController
+    extends PlatformWebViewController {
+  UserScriptSourcePlatformWebViewController(super.params)
+    : super.implementation();
+
+  String buildSource(
+    WebViewUserScript script, {
+    required bool platformHandlesMainFrameOnly,
+  }) {
+    return buildUserScriptSource(
+      script,
+      platformHandlesMainFrameOnly: platformHandlesMainFrameOnly,
+    );
   }
 }
 
