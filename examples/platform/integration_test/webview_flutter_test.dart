@@ -74,6 +74,157 @@ Future<void> main() async {
   final headersUrl = '$prefixUrl/headers';
   final basicAuthUrl = '$prefixUrl/http-basic-authentication';
 
+  testWidgets('website data can be cleared without a controller', (
+    WidgetTester tester,
+  ) async {
+    final WebViewDataClearingResult result = await WebViewDataManager()
+        .clearAllWebsiteData();
+    final Set<WebViewDataType> classified = <WebViewDataType>{
+      ...result.clearedDataTypes,
+      ...result.unsupportedDataTypes,
+      ...result.failures.keys,
+    };
+
+    expect(classified, WebViewDataType.values.toSet());
+    expect(result.failures, isEmpty);
+    expect(
+      result.clearedDataTypes.intersection(result.unsupportedDataTypes),
+      isEmpty,
+    );
+    expect(
+      result.clearedDataTypes.intersection(result.failures.keys.toSet()),
+      isEmpty,
+    );
+    expect(
+      result.unsupportedDataTypes.intersection(result.failures.keys.toSet()),
+      isEmpty,
+    );
+    if (Platform.isIOS || Platform.isMacOS || Platform.isLinux) {
+      expect(result.isComplete, isTrue);
+    }
+  });
+
+  testWidgets('Windows environment configuration is idempotent', (
+    WidgetTester tester,
+  ) async {
+    if (!Platform.isWindows) {
+      return;
+    }
+
+    await WindowsWebViewController.ensureEnvironment();
+    await WindowsWebViewController.ensureEnvironment();
+    await expectLater(
+      WindowsWebViewController.ensureEnvironment(
+        userDataPath:
+            '${Directory.systemTemp.path}\\webview-all-conflict-probe',
+      ),
+      throwsA(
+        isA<PlatformException>().having(
+          (PlatformException error) => error.code,
+          'code',
+          'environment_configuration_conflict',
+        ),
+      ),
+    );
+  });
+
+  testWidgets('controller supports native offscreen workflows', (
+    WidgetTester tester,
+  ) async {
+    if (WebViewPlatform.instance?.supportsOffscreenWebViews != true) {
+      return;
+    }
+    final OffscreenWebViewSession session =
+        await OffscreenWebViewSession.create();
+    final WebViewController controller = session.controller;
+    expect(await controller.isOffscreenWebViewSupported(), isTrue);
+    final Completer<void> loaded = Completer<void>();
+    String? userScriptIdentifier;
+    addTearDown(() async {
+      try {
+        if (userScriptIdentifier != null) {
+          await controller.removeUserScript(userScriptIdentifier);
+        }
+      } finally {
+        await session.close();
+      }
+    });
+
+    await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    await controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageFinished: (_) {
+          if (!loaded.isCompleted) {
+            loaded.complete();
+          }
+        },
+      ),
+    );
+
+    final bool supportsDocumentStart = await controller
+        .isUserScriptInjectionSupported(
+          WebViewUserScriptInjectionTime.documentStart,
+        );
+    if (supportsDocumentStart) {
+      userScriptIdentifier = await controller.addUserScript(
+        const WebViewUserScript(
+          source: 'globalThis.__webviewAllProvider = "ready";',
+        ),
+      );
+    }
+
+    await controller.loadHtmlString('''
+<!doctype html>
+<html>
+  <head>
+    <script>
+      window.__webviewAllPageSawProvider =
+          window.__webviewAllProvider === 'ready';
+    </script>
+  </head>
+  <body>offscreen test</body>
+</html>
+''', baseUrl: 'https://webview-all.test/');
+    await loaded.future.timeout(const Duration(seconds: 30));
+
+    final Object? result = await controller.callAsyncJavaScript(
+      '''
+await new Promise((resolve) => setTimeout(resolve, delay));
+return {
+  sum: left + right,
+  providerSeen: window.__webviewAllPageSawProvider === true
+};
+''',
+      arguments: const <String, Object?>{'left': 19, 'right': 23, 'delay': 10},
+      timeout: const Duration(seconds: 10),
+    );
+
+    expect(result, isA<Map<Object?, Object?>>());
+    final Map<Object?, Object?> values = result! as Map<Object?, Object?>;
+    expect(values['sum'], 42);
+    expect(values['providerSeen'], supportsDocumentStart);
+
+    await expectLater(
+      controller.callAsyncJavaScript(
+        'throw new TypeError("expected failure");',
+        timeout: const Duration(seconds: 10),
+      ),
+      throwsA(
+        isA<JavaScriptExecutionException>()
+            .having(
+              (JavaScriptExecutionException error) => error.name,
+              'name',
+              'TypeError',
+            )
+            .having(
+              (JavaScriptExecutionException error) => error.message,
+              'message',
+              contains('expected failure'),
+            ),
+      ),
+    );
+  });
+
   testWidgets('Windows controller releases its renderer process', (
     WidgetTester tester,
   ) async {
