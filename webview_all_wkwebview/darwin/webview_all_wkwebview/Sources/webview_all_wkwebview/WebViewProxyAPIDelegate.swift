@@ -4,6 +4,30 @@
 
 import WebKit
 
+private func normalizedJavaScriptError(_ error: NSError) -> (
+  name: String?, message: String, stack: String?
+) {
+  var name = error.userInfo["WKJavaScriptExceptionName"] as? String
+  var message =
+    error.userInfo["WKJavaScriptExceptionMessage"] as? String
+    ?? error.localizedDescription
+  let stack = error.userInfo["WKJavaScriptExceptionStackTrace"] as? String
+
+  if name == nil, let separator = message.firstIndex(of: ":") {
+    let candidate = String(message[..<separator])
+    if candidate.hasSuffix("Error") && !candidate.contains(where: { $0.isWhitespace }) {
+      name = candidate
+      let remainder = message[message.index(after: separator)...]
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      if !remainder.isEmpty {
+        message = remainder
+      }
+    }
+  }
+
+  return (name, message, stack)
+}
+
 #if os(macOS)
   import AppKit
 #endif
@@ -337,6 +361,59 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
     }
   }
 
+  func callAsyncJavaScript(
+    pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView, functionBody: String,
+    arguments: [String: Any?], completion: @escaping (Result<Any?, Error>) -> Void
+  ) {
+    guard #available(iOS 14.0, macOS 11.0, *) else {
+      completion(
+        .failure(
+          PigeonError(
+            code: "FWFCallAsyncJavaScriptUnavailable",
+            message: "WKWebView.callAsyncJavaScript is unavailable on this operating system.",
+            details: nil)))
+      return
+    }
+
+    let nativeArguments = arguments.mapValues { value in value ?? NSNull() }
+    pigeonInstance.callAsyncJavaScript(
+      functionBody, arguments: nativeArguments, in: nil, in: .page
+    ) { result in
+      switch result {
+      case .success(let value):
+        completion(.success(value))
+      case .failure(let error):
+        let nativeError = error as NSError
+        let normalizedError = normalizedJavaScriptError(nativeError)
+        var details: [String: Any] = [
+          "domain": nativeError.domain,
+          "code": nativeError.code,
+          "description": nativeError.localizedDescription,
+          "message": normalizedError.message,
+        ]
+        if let name = normalizedError.name {
+          details["name"] = name
+        }
+        if let stack = normalizedError.stack {
+          details["stack"] = stack
+        }
+        completion(
+          .failure(
+            PigeonError(
+              code: "FWFCallAsyncJavaScriptError",
+              message: nativeError.localizedDescription,
+              details: details)))
+      }
+    }
+  }
+
+  func dispose(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView) throws {
+    pigeonInstance.stopLoading()
+    pigeonInstance.navigationDelegate = nil
+    pigeonInstance.uiDelegate = nil
+    pigeonInstance.removeFromSuperview()
+  }
+
   func evaluateJavaScript(
     pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, javaScriptString: String,
     completion: @escaping (Result<Any?, Error>) -> Void
@@ -344,6 +421,20 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
     evaluateJavaScript(
       pigeonApi: getUIViewWKWebViewAPI(pigeonApi), pigeonInstance: pigeonInstance,
       javaScriptString: javaScriptString, completion: completion)
+  }
+
+  func callAsyncJavaScript(
+    pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, functionBody: String,
+    arguments: [String: Any?], completion: @escaping (Result<Any?, Error>) -> Void
+  ) {
+    callAsyncJavaScript(
+      pigeonApi: getUIViewWKWebViewAPI(pigeonApi), pigeonInstance: pigeonInstance,
+      functionBody: functionBody, arguments: arguments, completion: completion)
+  }
+
+  func dispose(pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView) throws {
+    try dispose(
+      pigeonApi: getUIViewWKWebViewAPI(pigeonApi), pigeonInstance: pigeonInstance)
   }
 
   func setInspectable(

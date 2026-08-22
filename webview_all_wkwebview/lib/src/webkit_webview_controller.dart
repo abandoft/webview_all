@@ -4,6 +4,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +17,19 @@ import 'common/weak_reference_utils.dart';
 import 'common/web_kit.g.dart';
 import 'common/webkit_constants.dart';
 import 'webkit_ssl_auth_error.dart';
+
+final Expando<Set<VoidCallback>> _webKitNavigationStartCallbacks =
+    Expando<Set<VoidCallback>>();
+
+String _createWebKitOpaqueIdentifier(String prefix) {
+  final Random random = Random.secure();
+  final String token = List<String>.generate(
+    16,
+    (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    growable: false,
+  ).join();
+  return '${prefix}_$token';
+}
 
 /// Media types that can require a user gesture to begin playing.
 ///
@@ -330,6 +344,24 @@ class WebKitWebViewController extends PlatformWebViewController {
 
   static const String _onConsoleMessageChannelName = 'fltConsoleMessage';
 
+  int _nextUserScriptIdentifier = 0;
+  int _navigationGeneration = 0;
+  Future<void>? _offscreenCloseFuture;
+  late final VoidCallback _navigationStartCallback = withWeakReferenceTo(this, (
+    WeakReference<WebKitWebViewController> weakReference,
+  ) {
+    return () {
+      final WebKitWebViewController? controller = weakReference.target;
+      if (controller != null) {
+        controller._navigationGeneration += 1;
+      }
+    };
+  });
+  final Map<String, WebViewUserScript> _registeredUserScripts =
+      <String, WebViewUserScript>{};
+  final Set<String> _installedJavaScriptChannelNames = <String>{};
+  Future<void> _scriptUpdateTail = Future<void>.value();
+
   /// The WebKit WebView being controlled.
   late final PlatformWebView _webView = PlatformWebView(
     initialConfiguration: _webKitParams._configuration,
@@ -490,6 +522,7 @@ class WebKitWebViewController extends PlatformWebViewController {
   Future<void> loadFileWithParams(LoadFileParams params) {
     switch (params) {
       case final WebKitLoadFileParams params:
+        _navigationGeneration += 1;
         return _webView.loadFileUrl(
           params.absoluteFilePath,
           params.readAccessPath,
@@ -505,11 +538,13 @@ class WebKitWebViewController extends PlatformWebViewController {
   @override
   Future<void> loadFlutterAsset(String key) {
     assert(key.isNotEmpty);
+    _navigationGeneration += 1;
     return _webView.loadFlutterAsset(key);
   }
 
   @override
   Future<void> loadHtmlString(String html, {String? baseUrl}) {
+    _navigationGeneration += 1;
     return _webView.loadHtmlString(html, baseUrl);
   }
 
@@ -521,6 +556,7 @@ class WebKitWebViewController extends PlatformWebViewController {
       );
     }
 
+    _navigationGeneration += 1;
     return _webView.load(
       URLRequest(url: params.uri.toString())
         ..setAllHttpHeaderFields(params.headers)
@@ -541,12 +577,6 @@ class WebKitWebViewController extends PlatformWebViewController {
         'JavaScript channel names must not be empty.',
       );
     }
-    if (_javaScriptChannelParams.containsKey(channelName)) {
-      throw ArgumentError(
-        'A JavaScriptChannel with name `$channelName` already exists.',
-      );
-    }
-
     final WebKitJavaScriptChannelParams webKitParams =
         javaScriptChannelParams is WebKitJavaScriptChannelParams
         ? javaScriptChannelParams
@@ -554,37 +584,40 @@ class WebKitWebViewController extends PlatformWebViewController {
             javaScriptChannelParams,
           );
 
-    _javaScriptChannelParams[webKitParams.name] = webKitParams;
-
-    final String encodedName = jsonEncode(webKitParams.name);
-    final wrapperSource =
-        'window[$encodedName] = window.webkit.messageHandlers[$encodedName];';
-    final wrapperScript = WKUserScript(
-      source: wrapperSource,
-      injectionTime: UserScriptInjectionTime.atDocumentStart,
-      isForMainFrameOnly: false,
-    );
-
-    final WKUserContentController contentController = await _webView
-        .configuration
-        .getUserContentController();
-
-    await Future.wait(<Future<void>>[
-      contentController.addUserScript(wrapperScript),
-      contentController.addScriptMessageHandler(
-        webKitParams._messageHandler,
-        webKitParams.name,
-      ),
-    ]);
+    await _serializeScriptUpdate(() async {
+      if (_javaScriptChannelParams.containsKey(channelName)) {
+        throw ArgumentError(
+          'A JavaScriptChannel with name `$channelName` already exists.',
+        );
+      }
+      _javaScriptChannelParams[webKitParams.name] = webKitParams;
+      try {
+        await _resetUserScripts();
+      } catch (_) {
+        _javaScriptChannelParams.remove(webKitParams.name);
+        await _restoreUserScriptsBestEffort();
+        rethrow;
+      }
+    });
   }
 
   @override
   Future<void> removeJavaScriptChannel(String javaScriptChannelName) async {
     assert(javaScriptChannelName.isNotEmpty);
-    if (!_javaScriptChannelParams.containsKey(javaScriptChannelName)) {
-      return;
-    }
-    await _resetUserScripts(removedJavaScriptChannel: javaScriptChannelName);
+    await _serializeScriptUpdate(() async {
+      final WebKitJavaScriptChannelParams? removed = _javaScriptChannelParams
+          .remove(javaScriptChannelName);
+      if (removed == null) {
+        return;
+      }
+      try {
+        await _resetUserScripts();
+      } catch (_) {
+        _javaScriptChannelParams[javaScriptChannelName] = removed;
+        await _restoreUserScriptsBestEffort();
+        rethrow;
+      }
+    });
   }
 
   @override
@@ -597,13 +630,22 @@ class WebKitWebViewController extends PlatformWebViewController {
   Future<bool> canGoForward() => _webView.canGoForward();
 
   @override
-  Future<void> goBack() => _webView.goBack();
+  Future<void> goBack() {
+    _navigationGeneration += 1;
+    return _webView.goBack();
+  }
 
   @override
-  Future<void> goForward() => _webView.goForward();
+  Future<void> goForward() {
+    _navigationGeneration += 1;
+    return _webView.goForward();
+  }
 
   @override
-  Future<void> reload() => _webView.reload();
+  Future<void> reload() {
+    _navigationGeneration += 1;
+    return _webView.reload();
+  }
 
   @override
   Future<void> clearCache() async {
@@ -652,6 +694,353 @@ class WebKitWebViewController extends PlatformWebViewController {
       );
     }
     return result;
+  }
+
+  @override
+  Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
+    final int navigationGeneration = _navigationGeneration;
+    final Stopwatch stopwatch = Stopwatch()..start();
+    Duration remainingTime() => params.timeout - stopwatch.elapsed;
+    try {
+      final Duration remaining = remainingTime();
+      if (remaining <= Duration.zero) {
+        throw TimeoutException(
+          'The JavaScript invocation did not complete before the timeout.',
+          params.timeout,
+        );
+      }
+      final String normalizedFunctionBody =
+          '''
+        const __webviewAllValue = await (async () => {
+${params.functionBody}
+        })();
+        const __webviewAllEncoded = JSON.stringify(__webviewAllValue);
+        return JSON.stringify({
+          value: __webviewAllEncoded === undefined
+              ? null
+              : __webviewAllEncoded
+        });
+      ''';
+      final Object? result = await _webView
+          .callAsyncJavaScript(normalizedFunctionBody, params.arguments)
+          .timeout(remaining);
+      if (navigationGeneration != _navigationGeneration) {
+        throw const JavaScriptExecutionException(
+          name: 'NavigationError',
+          message: 'The page navigated before JavaScript completed.',
+        );
+      }
+      if (result is! String) {
+        throw const JavaScriptExecutionException(
+          name: 'SerializationError',
+          message: 'WebKit returned an invalid asynchronous JavaScript result.',
+        );
+      }
+      try {
+        final Object? envelope = jsonDecode(result);
+        if (envelope is! Map<String, Object?> ||
+            !envelope.containsKey('value')) {
+          throw const FormatException();
+        }
+        final Object? encodedValue = envelope['value'];
+        return encodedValue is String ? jsonDecode(encodedValue) : null;
+      } on FormatException {
+        throw const JavaScriptExecutionException(
+          name: 'SerializationError',
+          message: 'WebKit returned an invalid asynchronous JavaScript result.',
+        );
+      }
+    } on PlatformException catch (exception) {
+      if (navigationGeneration != _navigationGeneration) {
+        throw const JavaScriptExecutionException(
+          name: 'NavigationError',
+          message: 'The page navigated before JavaScript completed.',
+        );
+      }
+      if (exception.code == 'FWFCallAsyncJavaScriptUnavailable') {
+        return _callAsyncJavaScriptLegacy(
+          params,
+          navigationGeneration,
+          stopwatch,
+        );
+      }
+      final Map<Object?, Object?>? details =
+          exception.details is Map<Object?, Object?>
+          ? exception.details as Map<Object?, Object?>
+          : null;
+      throw JavaScriptExecutionException(
+        name: details?['name']?.toString() ?? exception.code,
+        message:
+            details?['message']?.toString() ??
+            exception.message ??
+            'The JavaScript invocation failed.',
+        javaScriptStackTrace: details?['stack']?.toString(),
+      );
+    }
+  }
+
+  @override
+  Future<bool> isOffscreenWebViewSupported() async => true;
+
+  @override
+  Future<void> closeOffscreenWebView() {
+    return _offscreenCloseFuture ??= _closeOffscreenWebView();
+  }
+
+  Future<void> _closeOffscreenWebView() async {
+    _navigationGeneration += 1;
+    final WebKitNavigationDelegate? previousDelegate =
+        _currentNavigationDelegate;
+    if (previousDelegate != null) {
+      _webKitNavigationStartCallbacks[previousDelegate]?.remove(
+        _navigationStartCallback,
+      );
+    }
+    _currentNavigationDelegate = null;
+
+    Object? firstError;
+    StackTrace? firstStackTrace;
+    try {
+      await _scriptUpdateTail;
+    } catch (error, stackTrace) {
+      firstError = error;
+      firstStackTrace = stackTrace;
+    }
+    for (final String keyPath in <String>[
+      'estimatedProgress',
+      'URL',
+      'canGoBack',
+    ]) {
+      try {
+        await _webView.removeObserver(_webView.nativeWebView, keyPath);
+      } catch (error, stackTrace) {
+        firstError ??= error;
+        firstStackTrace ??= stackTrace;
+      }
+    }
+    try {
+      await _webView.dispose();
+      PigeonInstanceManager.instance.removeWeakReference(
+        _webView.nativeWebView,
+      );
+    } catch (error, stackTrace) {
+      firstError ??= error;
+      firstStackTrace ??= stackTrace;
+    }
+    if (firstError != null) {
+      Error.throwWithStackTrace(firstError, firstStackTrace!);
+    }
+  }
+
+  Future<Object?> _callAsyncJavaScriptLegacy(
+    JavaScriptInvocationParams params,
+    int navigationGeneration,
+    Stopwatch stopwatch,
+  ) async {
+    final String identifier = _createWebKitOpaqueIdentifier(
+      'webview_all_async',
+    );
+    final String encodedIdentifier = jsonEncode(identifier);
+    final String argumentNames = params.arguments.keys.join(',');
+    final String argumentValues = params.arguments.keys
+        .map((String name) => 'args[${jsonEncode(name)}]')
+        .join(',');
+    Duration remainingTime() => params.timeout - stopwatch.elapsed;
+    Future<Object?> evaluateWithinDeadline(String javaScript) {
+      final Duration remaining = remainingTime();
+      if (remaining <= Duration.zero) {
+        return Future<Object?>.error(
+          TimeoutException(
+            'The JavaScript invocation did not complete before the timeout.',
+            params.timeout,
+          ),
+        );
+      }
+      return _webView.evaluateJavaScript(javaScript).timeout(remaining);
+    }
+
+    final Duration setupRemaining = remainingTime();
+    if (setupRemaining <= Duration.zero) {
+      throw TimeoutException(
+        'The JavaScript invocation did not complete before the timeout.',
+        params.timeout,
+      );
+    }
+    final int timeoutMilliseconds = max(1, setupRemaining.inMilliseconds);
+    await evaluateWithinDeadline('''
+      (function() {
+        const results = window.__webviewAllAsyncResults =
+            window.__webviewAllAsyncResults || Object.create(null);
+        const slot = {result: null};
+        results[$encodedIdentifier] = slot;
+        const expiresAt = Date.now() + $timeoutMilliseconds;
+        const release = function() {
+          if (results[$encodedIdentifier] === slot) {
+            delete results[$encodedIdentifier];
+          }
+        };
+        const settle = function(result) {
+          if (results[$encodedIdentifier] !== slot || Date.now() >= expiresAt) {
+            release();
+            return;
+          }
+          slot.result = result;
+        };
+        setTimeout(release, $timeoutMilliseconds);
+        const args = ${jsonEncode(params.arguments)};
+        Promise.resolve().then(function() {
+          return (async function($argumentNames) {
+${params.functionBody}
+          })($argumentValues);
+        }).then(function(value) {
+          try {
+            const encoded = JSON.stringify(value);
+            settle({
+              state: 'fulfilled',
+              value: encoded === undefined ? null : encoded
+            });
+          } catch (error) {
+            settle({
+              state: 'rejected',
+              name: error && error.name ? String(error.name) : 'Error',
+              message: error && error.message ? String(error.message) : String(error),
+              stack: error && error.stack ? String(error.stack) : null
+            });
+          }
+        }, function(error) {
+          settle({
+            state: 'rejected',
+            name: error && error.name ? String(error.name) : 'Error',
+            message: error && error.message ? String(error.message) : String(error),
+            stack: error && error.stack ? String(error.stack) : null
+          });
+        });
+      })();
+    ''');
+
+    try {
+      while (stopwatch.elapsed < params.timeout) {
+        if (navigationGeneration != _navigationGeneration) {
+          throw const JavaScriptExecutionException(
+            name: 'NavigationError',
+            message: 'The page navigated before JavaScript completed.',
+          );
+        }
+        final Object? rawResult = await evaluateWithinDeadline('''
+          (function() {
+            const values = window.__webviewAllAsyncResults;
+            const slot = values && values[$encodedIdentifier];
+            const value = slot && slot.result;
+            return value ? JSON.stringify(value) : null;
+          })();
+        ''');
+        if (rawResult is String && rawResult.isNotEmpty) {
+          final Object? decoded = jsonDecode(rawResult);
+          if (decoded is Map<String, Object?>) {
+            if (decoded['state'] == 'fulfilled') {
+              final Object? encodedValue = decoded['value'];
+              return encodedValue is String ? jsonDecode(encodedValue) : null;
+            }
+            throw JavaScriptExecutionException(
+              name: decoded['name']?.toString(),
+              message:
+                  decoded['message']?.toString() ??
+                  'The JavaScript promise was rejected.',
+              javaScriptStackTrace: decoded['stack']?.toString(),
+            );
+          }
+        }
+        final Duration delayRemaining = remainingTime();
+        if (delayRemaining <= Duration.zero) {
+          break;
+        }
+        const Duration pollingInterval = Duration(milliseconds: 20);
+        await Future<void>.delayed(
+          delayRemaining.compareTo(pollingInterval) < 0
+              ? delayRemaining
+              : pollingInterval,
+        );
+      }
+      throw TimeoutException(
+        'The JavaScript invocation did not complete before the timeout.',
+        params.timeout,
+      );
+    } finally {
+      if (navigationGeneration == _navigationGeneration &&
+          remainingTime() > Duration.zero) {
+        try {
+          await evaluateWithinDeadline('''
+          if (window.__webviewAllAsyncResults) {
+            delete window.__webviewAllAsyncResults[$encodedIdentifier];
+          }
+        ''');
+        } catch (_) {
+          // Navigation can replace the document before cleanup completes.
+        }
+      }
+    }
+  }
+
+  @override
+  Future<bool> isUserScriptInjectionSupported(
+    WebViewUserScriptInjectionTime injectionTime,
+  ) async {
+    return injectionTime == WebViewUserScriptInjectionTime.documentStart;
+  }
+
+  @override
+  Future<String> addUserScript(WebViewUserScript userScript) async {
+    final String identifier =
+        'webview_all_user_script_${_nextUserScriptIdentifier++}';
+    await _serializeScriptUpdate(() async {
+      _registeredUserScripts[identifier] = userScript;
+      try {
+        await _resetUserScripts();
+      } catch (_) {
+        _registeredUserScripts.remove(identifier);
+        await _restoreUserScriptsBestEffort();
+        rethrow;
+      }
+    });
+    return identifier;
+  }
+
+  @override
+  Future<void> removeUserScript(String identifier) async {
+    await _serializeScriptUpdate(() async {
+      final WebViewUserScript? removed = _registeredUserScripts.remove(
+        identifier,
+      );
+      if (removed == null) {
+        return;
+      }
+      try {
+        await _resetUserScripts();
+      } catch (_) {
+        _registeredUserScripts[identifier] = removed;
+        await _restoreUserScriptsBestEffort();
+        rethrow;
+      }
+    });
+  }
+
+  @override
+  Future<void> removeAllUserScripts() async {
+    await _serializeScriptUpdate(() async {
+      if (_registeredUserScripts.isEmpty) {
+        return;
+      }
+      final Map<String, WebViewUserScript> removed =
+          Map<String, WebViewUserScript>.of(_registeredUserScripts);
+      _registeredUserScripts.clear();
+      try {
+        await _resetUserScripts();
+      } catch (_) {
+        _registeredUserScripts.addAll(removed);
+        await _restoreUserScriptsBestEffort();
+        rethrow;
+      }
+    });
   }
 
   @override
@@ -806,24 +1195,44 @@ class WebKitWebViewController extends PlatformWebViewController {
       return;
     }
 
-    _zoomEnabled = enabled;
     if (defaultTargetPlatform == TargetPlatform.macOS) {
       await _webView.setAllowsMagnification(enabled);
+      _zoomEnabled = enabled;
       return;
     }
 
-    if (enabled) {
-      await _resetUserScripts();
-    } else {
-      await _disableZoom();
-    }
+    await _serializeScriptUpdate(() async {
+      final bool previous = _zoomEnabled;
+      _zoomEnabled = enabled;
+      try {
+        if (enabled) {
+          await _resetUserScripts();
+        } else {
+          await _disableZoom();
+        }
+      } catch (_) {
+        _zoomEnabled = previous;
+        await _restoreUserScriptsBestEffort();
+        rethrow;
+      }
+    });
   }
 
   @override
   Future<void> setPlatformNavigationDelegate(
     covariant WebKitNavigationDelegate handler,
   ) {
+    final WebKitNavigationDelegate? previousDelegate =
+        _currentNavigationDelegate;
+    if (previousDelegate != null) {
+      _webKitNavigationStartCallbacks[previousDelegate]?.remove(
+        _navigationStartCallback,
+      );
+    }
     _currentNavigationDelegate = handler;
+    (_webKitNavigationStartCallbacks[handler] ??= <VoidCallback>{}).add(
+      _navigationStartCallback,
+    );
     return _webView.setNavigationDelegate(handler._navigationDelegate);
   }
 
@@ -839,48 +1248,57 @@ class WebKitWebViewController extends PlatformWebViewController {
   Future<void> setOnConsoleMessage(
     void Function(JavaScriptConsoleMessage consoleMessage) onConsoleMessage,
   ) async {
-    _onConsoleMessageCallback = onConsoleMessage;
+    final WebKitJavaScriptChannelParams channelParams =
+        WebKitJavaScriptChannelParams(
+          name: _onConsoleMessageChannelName,
+          onMessageReceived: (JavaScriptMessage message) {
+            if (_onConsoleMessageCallback == null) {
+              return;
+            }
 
-    // If channel name is already present, the callback is already registered.
-    if (_javaScriptChannelParams.containsKey(_onConsoleMessageChannelName)) {
-      return;
-    }
+            final consoleLog =
+                jsonDecode(message.message) as Map<String, dynamic>;
 
-    final JavaScriptChannelParams channelParams = WebKitJavaScriptChannelParams(
-      name: _onConsoleMessageChannelName,
-      onMessageReceived: (JavaScriptMessage message) {
-        if (_onConsoleMessageCallback == null) {
-          return;
-        }
+            JavaScriptLogLevel level;
+            switch (consoleLog['level']) {
+              case 'error':
+                level = JavaScriptLogLevel.error;
+              case 'warning':
+                level = JavaScriptLogLevel.warning;
+              case 'debug':
+                level = JavaScriptLogLevel.debug;
+              case 'info':
+                level = JavaScriptLogLevel.info;
+              case 'log':
+              default:
+                level = JavaScriptLogLevel.log;
+            }
 
-        final consoleLog = jsonDecode(message.message) as Map<String, dynamic>;
-
-        JavaScriptLogLevel level;
-        switch (consoleLog['level']) {
-          case 'error':
-            level = JavaScriptLogLevel.error;
-          case 'warning':
-            level = JavaScriptLogLevel.warning;
-          case 'debug':
-            level = JavaScriptLogLevel.debug;
-          case 'info':
-            level = JavaScriptLogLevel.info;
-          case 'log':
-          default:
-            level = JavaScriptLogLevel.log;
-        }
-
-        _onConsoleMessageCallback!(
-          JavaScriptConsoleMessage(
-            level: level,
-            message: consoleLog['message']! as String,
-          ),
+            _onConsoleMessageCallback!(
+              JavaScriptConsoleMessage(
+                level: level,
+                message: consoleLog['message']! as String,
+              ),
+            );
+          },
         );
-      },
-    );
-
-    await addJavaScriptChannel(channelParams);
-    return _injectConsoleOverride();
+    await _serializeScriptUpdate(() async {
+      final void Function(JavaScriptConsoleMessage)? previousCallback =
+          _onConsoleMessageCallback;
+      _onConsoleMessageCallback = onConsoleMessage;
+      if (_javaScriptChannelParams.containsKey(_onConsoleMessageChannelName)) {
+        return;
+      }
+      _javaScriptChannelParams[_onConsoleMessageChannelName] = channelParams;
+      try {
+        await _resetUserScripts();
+      } catch (_) {
+        _javaScriptChannelParams.remove(_onConsoleMessageChannelName);
+        _onConsoleMessageCallback = previousCallback;
+        await _restoreUserScriptsBestEffort();
+        rethrow;
+      }
+    });
   }
 
   @override
@@ -981,12 +1399,57 @@ class WebKitWebViewController extends PlatformWebViewController {
     _onJavaScriptTextInputDialog = onJavaScriptTextInputDialog;
   }
 
-  // WKWebView does not support removing a single user script, so all user
-  // scripts and all message handlers are removed instead. And the JavaScript
-  // channels that shouldn't be removed are re-registered. Note that this
-  // workaround could interfere with exposing support for custom scripts from
-  // applications.
-  Future<void> _resetUserScripts({String? removedJavaScriptChannel}) async {
+  Future<T> _serializeScriptUpdate<T>(Future<T> Function() operation) {
+    final Completer<T> completer = Completer<T>();
+    _scriptUpdateTail = _scriptUpdateTail.then((_) async {
+      try {
+        completer.complete(await operation());
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    });
+    return completer.future;
+  }
+
+  Future<void> _restoreUserScriptsBestEffort() async {
+    try {
+      await _resetUserScripts();
+    } catch (error) {
+      debugPrint(
+        'webview_all_wkwebview: failed to restore WebKit user scripts: '
+        '${error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ')}',
+      );
+    }
+  }
+
+  Future<void> _installJavaScriptChannel(
+    WKUserContentController controller,
+    WebKitJavaScriptChannelParams params,
+  ) async {
+    final String encodedName = jsonEncode(params.name);
+    await controller.addScriptMessageHandler(
+      params._messageHandler,
+      params.name,
+    );
+    try {
+      await controller.addUserScript(
+        WKUserScript(
+          source:
+              'window[$encodedName] = window.webkit.messageHandlers[$encodedName];',
+          injectionTime: UserScriptInjectionTime.atDocumentStart,
+          isForMainFrameOnly: false,
+        ),
+      );
+      _installedJavaScriptChannelNames.add(params.name);
+    } catch (_) {
+      await controller.removeScriptMessageHandler(params.name);
+      rethrow;
+    }
+  }
+
+  // WKWebView does not support removing a single script on every supported OS
+  // version, so the internal and application registries are rebuilt together.
+  Future<void> _resetUserScripts() async {
     final WKUserContentController controller = await _webView.configuration
         .getUserContentController();
     await controller.removeAllUserScripts();
@@ -994,27 +1457,33 @@ class WebKitWebViewController extends PlatformWebViewController {
     // `removeAllScriptMessageHandlers` once Dart supports runtime version
     // checking. (e.g. The equivalent to @availability in Objective-C.)
     await Future.wait(<Future<void>>[
-      for (final String channelName in _javaScriptChannelParams.keys)
+      for (final String channelName in _installedJavaScriptChannelNames)
         controller.removeScriptMessageHandler(channelName),
     ]);
-    final remainingChannelParams =
-        Map<String, WebKitJavaScriptChannelParams>.from(
-          _javaScriptChannelParams,
-        );
-    remainingChannelParams.remove(removedJavaScriptChannel);
-    _javaScriptChannelParams.clear();
+    _installedJavaScriptChannelNames.clear();
 
-    await Future.wait(<Future<void>>[
-      for (final JavaScriptChannelParams params
-          in remainingChannelParams.values)
-        addJavaScriptChannel(params),
-      // Zoom is disabled with a WKUserScript, so this adds it back if it was
-      // removed above.
-      if (!_zoomEnabled) _disableZoom(),
-      // Console logs are forwarded with a WKUserScript, so this adds it back
-      // if a console callback was registered with [setOnConsoleMessage].
-      if (_onConsoleMessageCallback != null) _injectConsoleOverride(),
-    ]);
+    for (final WebKitJavaScriptChannelParams params
+        in _javaScriptChannelParams.values) {
+      await _installJavaScriptChannel(controller, params);
+    }
+    if (!_zoomEnabled) {
+      await _disableZoom();
+    }
+    if (_onConsoleMessageCallback != null) {
+      await _injectConsoleOverride();
+    }
+    for (final WebViewUserScript userScript in _registeredUserScripts.values) {
+      await controller.addUserScript(
+        WKUserScript(
+          source: buildUserScriptSource(
+            userScript,
+            platformHandlesMainFrameOnly: true,
+          ),
+          injectionTime: UserScriptInjectionTime.atDocumentStart,
+          isForMainFrameOnly: userScript.forMainFrameOnly,
+        ),
+      );
+    }
   }
 
   Future<void> _disableZoom() async {
@@ -1308,6 +1777,14 @@ class WebKitNavigationDelegate extends PlatformNavigationDelegate {
         }
       },
       didStartProvisionalNavigation: (_, __, String? url) {
+        final WebKitNavigationDelegate? delegate = weakThis.target;
+        if (delegate != null) {
+          for (final VoidCallback callback in List<VoidCallback>.of(
+            _webKitNavigationStartCallbacks[delegate] ?? const <VoidCallback>{},
+          )) {
+            callback();
+          }
+        }
         if (weakThis.target?._onPageStarted != null) {
           weakThis.target!._onPageStarted!(url ?? '');
         }

@@ -43,6 +43,10 @@ class WebsiteDataStoreProxyAPIDelegate: PigeonApiDelegateWKWebsiteDataStore {
           return WKWebsiteDataTypeWebSQLDatabases
         case .indexedDBDatabases:
           return WKWebsiteDataTypeIndexedDBDatabases
+        case .fetchCache:
+          return WKWebsiteDataTypeFetchCache
+        case .serviceWorkerRegistrations:
+          return WKWebsiteDataTypeServiceWorkerRegistrations
         }
       })
 

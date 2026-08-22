@@ -154,6 +154,12 @@ enum WebsiteDataType {
 
   /// IndexedDB databases.
   indexedDBDatabases,
+
+  /// Cache Storage entries used by the Fetch API and service workers.
+  fetchCache,
+
+  /// Service worker registrations.
+  serviceWorkerRegistrations,
 }
 
 /// Constants that indicate whether to allow or cancel navigation to a webpage
@@ -880,6 +886,9 @@ abstract class UIViewWKWebView extends UIView implements WKWebView {
   /// The object you use to manage navigation behavior for the web view.
   void setNavigationDelegate(WKNavigationDelegate delegate);
 
+  /// Stops loading and detaches delegates and the native view.
+  void dispose();
+
   /// The URL for the current webpage.
   String? getUrl();
 
@@ -929,6 +938,13 @@ abstract class UIViewWKWebView extends UIView implements WKWebView {
   /// Evaluates the specified JavaScript string.
   @async
   Object? evaluateJavaScript(String javaScriptString);
+
+  /// Invokes an asynchronous JavaScript function with named arguments.
+  @async
+  Object? callAsyncJavaScript(
+    String functionBody,
+    Map<String, Object?> arguments,
+  );
 
   /// A Boolean value that indicates whether you can inspect the view with
   /// Safari Web Inspector.
@@ -969,6 +985,9 @@ abstract class NSViewWKWebView extends NSObject implements WKWebView {
   /// The object you use to manage navigation behavior for the web view.
   void setNavigationDelegate(WKNavigationDelegate delegate);
 
+  /// Stops loading and detaches delegates and the native view.
+  void dispose();
+
   /// The URL for the current webpage.
   String? getUrl();
 
@@ -1018,6 +1037,13 @@ abstract class NSViewWKWebView extends NSObject implements WKWebView {
   /// Evaluates the specified JavaScript string.
   @async
   Object? evaluateJavaScript(String javaScriptString);
+
+  /// Invokes an asynchronous JavaScript function with named arguments.
+  @async
+  Object? callAsyncJavaScript(
+    String functionBody,
+    Map<String, Object?> arguments,
+  );
 
   /// A Boolean value that indicates whether you can inspect the view with
   /// Safari Web Inspector.

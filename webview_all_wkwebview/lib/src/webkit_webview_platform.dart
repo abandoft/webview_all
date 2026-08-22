@@ -6,9 +6,13 @@ import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'webkit_webview_controller.dart';
 import 'webkit_webview_cookie_manager.dart';
+import 'webkit_webview_data_manager.dart';
 
 /// Implementation of [WebViewPlatform] using the WebKit API.
 class WebKitWebViewPlatform extends WebViewPlatform {
+  @override
+  bool get supportsOffscreenWebViews => true;
+
   /// Registers this class as the default instance of [WebViewPlatform].
   static void registerWith() {
     WebViewPlatform.instance = WebKitWebViewPlatform();
@@ -40,5 +44,12 @@ class WebKitWebViewPlatform extends WebViewPlatform {
     PlatformWebViewCookieManagerCreationParams params,
   ) {
     return WebKitWebViewCookieManager(params);
+  }
+
+  @override
+  WebKitWebViewDataManager createPlatformWebViewDataManager(
+    PlatformWebViewDataManagerCreationParams params,
+  ) {
+    return WebKitWebViewDataManager(params);
   }
 }

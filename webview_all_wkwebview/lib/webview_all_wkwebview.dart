@@ -5,4 +5,5 @@
 export 'src/webkit_ssl_auth_error.dart';
 export 'src/webkit_webview_controller.dart';
 export 'src/webkit_webview_cookie_manager.dart';
+export 'src/webkit_webview_data_manager.dart';
 export 'src/webkit_webview_platform.dart';

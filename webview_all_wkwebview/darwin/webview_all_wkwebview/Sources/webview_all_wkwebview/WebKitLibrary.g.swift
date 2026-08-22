@@ -1270,6 +1270,10 @@ enum WebsiteDataType: Int {
   case webSQLDatabases = 6
   /// IndexedDB databases.
   case indexedDBDatabases = 7
+  /// Cache Storage entries used by the Fetch API and service workers.
+  case fetchCache = 8
+  /// Service worker registrations.
+  case serviceWorkerRegistrations = 9
 }
 
 /// Constants that indicate whether to allow or cancel navigation to a webpage
@@ -2699,8 +2703,7 @@ final class PigeonApiAuthenticationChallengeResponse:
       pigeonDefaultConstructorChannel.setMessageHandler(nil)
     }
     let createAsyncChannel = FlutterBasicMessageChannel(
-      name:
-        "dev.flutter.pigeon.webview_all_wkwebview.AuthenticationChallengeResponse.createAsync",
+      name: "dev.flutter.pigeon.webview_all_wkwebview.AuthenticationChallengeResponse.createAsync",
       binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       createAsyncChannel.setMessageHandler { message, reply in
@@ -3548,8 +3551,7 @@ final class PigeonApiWKWebViewConfiguration: PigeonApiProtocolWKWebViewConfigura
       getUserContentControllerChannel.setMessageHandler(nil)
     }
     let setWebsiteDataStoreChannel = FlutterBasicMessageChannel(
-      name:
-        "dev.flutter.pigeon.webview_all_wkwebview.WKWebViewConfiguration.setWebsiteDataStore",
+      name: "dev.flutter.pigeon.webview_all_wkwebview.WKWebViewConfiguration.setWebsiteDataStore",
       binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       setWebsiteDataStoreChannel.setMessageHandler { message, reply in
@@ -3568,8 +3570,7 @@ final class PigeonApiWKWebViewConfiguration: PigeonApiProtocolWKWebViewConfigura
       setWebsiteDataStoreChannel.setMessageHandler(nil)
     }
     let getWebsiteDataStoreChannel = FlutterBasicMessageChannel(
-      name:
-        "dev.flutter.pigeon.webview_all_wkwebview.WKWebViewConfiguration.getWebsiteDataStore",
+      name: "dev.flutter.pigeon.webview_all_wkwebview.WKWebViewConfiguration.getWebsiteDataStore",
       binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       getWebsiteDataStoreChannel.setMessageHandler { message, reply in
@@ -3873,8 +3874,7 @@ final class PigeonApiWKUserContentController: PigeonApiProtocolWKUserContentCont
       addUserScriptChannel.setMessageHandler(nil)
     }
     let removeAllUserScriptsChannel = FlutterBasicMessageChannel(
-      name:
-        "dev.flutter.pigeon.webview_all_wkwebview.WKUserContentController.removeAllUserScripts",
+      name: "dev.flutter.pigeon.webview_all_wkwebview.WKUserContentController.removeAllUserScripts",
       binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       removeAllUserScriptsChannel.setMessageHandler { message, reply in
@@ -4889,6 +4889,10 @@ protocol PigeonApiDelegateUIViewWKWebView {
     ) throws
   #endif
   #if !os(macOS)
+    /// Stops loading and detaches delegates and the native view.
+    func dispose(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView) throws
+  #endif
+  #if !os(macOS)
     /// The URL for the current webpage.
     func getUrl(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView) throws -> String?
   #endif
@@ -4965,6 +4969,12 @@ protocol PigeonApiDelegateUIViewWKWebView {
       completion: @escaping (Result<Any?, Error>) -> Void)
   #endif
   #if !os(macOS)
+    /// Invokes an asynchronous JavaScript function with named arguments.
+    func callAsyncJavaScript(
+      pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView, functionBody: String,
+      arguments: [String: Any?], completion: @escaping (Result<Any?, Error>) -> Void)
+  #endif
+  #if !os(macOS)
     /// A Boolean value that indicates whether you can inspect the view with
     /// Safari Web Inspector.
     func setInspectable(
@@ -5020,8 +5030,7 @@ final class PigeonApiUIViewWKWebView: PigeonApiProtocolUIViewWKWebView {
       : FlutterStandardMessageCodec.sharedInstance()
     #if !os(macOS)
       let pigeonDefaultConstructorChannel = FlutterBasicMessageChannel(
-        name:
-          "dev.flutter.pigeon.webview_all_wkwebview.UIViewWKWebView.pigeon_defaultConstructor",
+        name: "dev.flutter.pigeon.webview_all_wkwebview.UIViewWKWebView.pigeon_defaultConstructor",
         binaryMessenger: binaryMessenger, codec: codec)
       if let api = api {
         pigeonDefaultConstructorChannel.setMessageHandler { message, reply in
@@ -5127,6 +5136,25 @@ final class PigeonApiUIViewWKWebView: PigeonApiProtocolUIViewWKWebView {
         }
       } else {
         setNavigationDelegateChannel.setMessageHandler(nil)
+      }
+    #endif
+    #if !os(macOS)
+      let disposeChannel = FlutterBasicMessageChannel(
+        name: "dev.flutter.pigeon.webview_all_wkwebview.UIViewWKWebView.dispose",
+        binaryMessenger: binaryMessenger, codec: codec)
+      if let api = api {
+        disposeChannel.setMessageHandler { message, reply in
+          let args = message as! [Any?]
+          let pigeonInstanceArg = args[0] as! WKWebView
+          do {
+            try api.pigeonDelegate.dispose(pigeonApi: api, pigeonInstance: pigeonInstanceArg)
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      } else {
+        disposeChannel.setMessageHandler(nil)
       }
     #endif
     #if !os(macOS)
@@ -5442,6 +5470,32 @@ final class PigeonApiUIViewWKWebView: PigeonApiProtocolUIViewWKWebView {
       }
     #endif
     #if !os(macOS)
+      let callAsyncJavaScriptChannel = FlutterBasicMessageChannel(
+        name: "dev.flutter.pigeon.webview_all_wkwebview.UIViewWKWebView.callAsyncJavaScript",
+        binaryMessenger: binaryMessenger, codec: codec)
+      if let api = api {
+        callAsyncJavaScriptChannel.setMessageHandler { message, reply in
+          let args = message as! [Any?]
+          let pigeonInstanceArg = args[0] as! WKWebView
+          let functionBodyArg = args[1] as! String
+          let argumentsArg = args[2] as! [String: Any?]
+          api.pigeonDelegate.callAsyncJavaScript(
+            pigeonApi: api, pigeonInstance: pigeonInstanceArg, functionBody: functionBodyArg,
+            arguments: argumentsArg
+          ) { result in
+            switch result {
+            case .success(let res):
+              reply(wrapResult(res))
+            case .failure(let error):
+              reply(wrapError(error))
+            }
+          }
+        }
+      } else {
+        callAsyncJavaScriptChannel.setMessageHandler(nil)
+      }
+    #endif
+    #if !os(macOS)
       let setInspectableChannel = FlutterBasicMessageChannel(
         name: "dev.flutter.pigeon.webview_all_wkwebview.UIViewWKWebView.setInspectable",
         binaryMessenger: binaryMessenger, codec: codec)
@@ -5569,6 +5623,10 @@ protocol PigeonApiDelegateNSViewWKWebView {
     ) throws
   #endif
   #if !os(iOS)
+    /// Stops loading and detaches delegates and the native view.
+    func dispose(pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView) throws
+  #endif
+  #if !os(iOS)
     /// The URL for the current webpage.
     func getUrl(pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView) throws -> String?
   #endif
@@ -5645,6 +5703,12 @@ protocol PigeonApiDelegateNSViewWKWebView {
       completion: @escaping (Result<Any?, Error>) -> Void)
   #endif
   #if !os(iOS)
+    /// Invokes an asynchronous JavaScript function with named arguments.
+    func callAsyncJavaScript(
+      pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, functionBody: String,
+      arguments: [String: Any?], completion: @escaping (Result<Any?, Error>) -> Void)
+  #endif
+  #if !os(iOS)
     /// A Boolean value that indicates whether you can inspect the view with
     /// Safari Web Inspector.
     func setInspectable(
@@ -5716,8 +5780,7 @@ final class PigeonApiNSViewWKWebView: PigeonApiProtocolNSViewWKWebView {
       : FlutterStandardMessageCodec.sharedInstance()
     #if !os(iOS)
       let pigeonDefaultConstructorChannel = FlutterBasicMessageChannel(
-        name:
-          "dev.flutter.pigeon.webview_all_wkwebview.NSViewWKWebView.pigeon_defaultConstructor",
+        name: "dev.flutter.pigeon.webview_all_wkwebview.NSViewWKWebView.pigeon_defaultConstructor",
         binaryMessenger: binaryMessenger, codec: codec)
       if let api = api {
         pigeonDefaultConstructorChannel.setMessageHandler { message, reply in
@@ -5801,6 +5864,25 @@ final class PigeonApiNSViewWKWebView: PigeonApiProtocolNSViewWKWebView {
         }
       } else {
         setNavigationDelegateChannel.setMessageHandler(nil)
+      }
+    #endif
+    #if !os(iOS)
+      let disposeChannel = FlutterBasicMessageChannel(
+        name: "dev.flutter.pigeon.webview_all_wkwebview.NSViewWKWebView.dispose",
+        binaryMessenger: binaryMessenger, codec: codec)
+      if let api = api {
+        disposeChannel.setMessageHandler { message, reply in
+          let args = message as! [Any?]
+          let pigeonInstanceArg = args[0] as! WKWebView
+          do {
+            try api.pigeonDelegate.dispose(pigeonApi: api, pigeonInstance: pigeonInstanceArg)
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      } else {
+        disposeChannel.setMessageHandler(nil)
       }
     #endif
     #if !os(iOS)
@@ -6113,6 +6195,32 @@ final class PigeonApiNSViewWKWebView: PigeonApiProtocolNSViewWKWebView {
         }
       } else {
         evaluateJavaScriptChannel.setMessageHandler(nil)
+      }
+    #endif
+    #if !os(iOS)
+      let callAsyncJavaScriptChannel = FlutterBasicMessageChannel(
+        name: "dev.flutter.pigeon.webview_all_wkwebview.NSViewWKWebView.callAsyncJavaScript",
+        binaryMessenger: binaryMessenger, codec: codec)
+      if let api = api {
+        callAsyncJavaScriptChannel.setMessageHandler { message, reply in
+          let args = message as! [Any?]
+          let pigeonInstanceArg = args[0] as! WKWebView
+          let functionBodyArg = args[1] as! String
+          let argumentsArg = args[2] as! [String: Any?]
+          api.pigeonDelegate.callAsyncJavaScript(
+            pigeonApi: api, pigeonInstance: pigeonInstanceArg, functionBody: functionBodyArg,
+            arguments: argumentsArg
+          ) { result in
+            switch result {
+            case .success(let res):
+              reply(wrapResult(res))
+            case .failure(let error):
+              reply(wrapError(error))
+            }
+          }
+        }
+      } else {
+        callAsyncJavaScriptChannel.setMessageHandler(nil)
       }
     #endif
     #if !os(iOS)
@@ -7384,8 +7492,7 @@ final class PigeonApiURL: PigeonApiProtocolURL {
         pigeonInstance as AnyObject)
       let binaryMessenger = pigeonRegistrar.binaryMessenger
       let codec = pigeonRegistrar.codec
-      let channelName: String =
-        "dev.flutter.pigeon.webview_all_wkwebview.URL.pigeon_newInstance"
+      let channelName: String = "dev.flutter.pigeon.webview_all_wkwebview.URL.pigeon_newInstance"
       let channel = FlutterBasicMessageChannel(
         name: channelName, binaryMessenger: binaryMessenger, codec: codec)
       channel.sendMessage([pigeonIdentifierArg] as [Any?]) { response in

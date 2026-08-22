@@ -117,6 +117,35 @@ class PlatformWebView {
     throw UnimplementedError('${webView.runtimeType} is not supported.');
   }
 
+  /// Invokes an asynchronous JavaScript function with named [arguments].
+  Future<Object?> callAsyncJavaScript(
+    String functionBody,
+    Map<String, Object?> arguments,
+  ) {
+    final WKWebView webView = nativeWebView;
+    switch (webView) {
+      case UIViewWKWebView():
+        return webView.callAsyncJavaScript(functionBody, arguments);
+      case NSViewWKWebView():
+        return webView.callAsyncJavaScript(functionBody, arguments);
+    }
+
+    throw UnimplementedError('${webView.runtimeType} is not supported.');
+  }
+
+  /// Stops loading and detaches the native WebView from its delegates and view.
+  Future<void> dispose() {
+    final WKWebView webView = nativeWebView;
+    switch (webView) {
+      case UIViewWKWebView():
+        return webView.dispose();
+      case NSViewWKWebView():
+        return webView.dispose();
+    }
+
+    throw UnimplementedError('${webView.runtimeType} is not supported.');
+  }
+
   /// The custom user agent string.
   Future<String?> getCustomUserAgent() {
     final WKWebView webView = nativeWebView;

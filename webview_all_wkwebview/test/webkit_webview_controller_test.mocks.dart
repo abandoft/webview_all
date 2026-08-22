@@ -1320,6 +1320,15 @@ class MockUIViewWKWebView extends _i1.Mock implements _i2.UIViewWKWebView {
           as _i3.Future<void>);
 
   @override
+  _i3.Future<void> dispose() =>
+      (super.noSuchMethod(
+            Invocation.method(#dispose, []),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
   _i3.Future<String?> getUrl() =>
       (super.noSuchMethod(
             Invocation.method(#getUrl, []),
@@ -1449,6 +1458,18 @@ class MockUIViewWKWebView extends _i1.Mock implements _i2.UIViewWKWebView {
   _i3.Future<Object?> evaluateJavaScript(String? javaScriptString) =>
       (super.noSuchMethod(
             Invocation.method(#evaluateJavaScript, [javaScriptString]),
+            returnValue: _i3.Future<Object?>.value(),
+            returnValueForMissingStub: _i3.Future<Object?>.value(),
+          )
+          as _i3.Future<Object?>);
+
+  @override
+  _i3.Future<Object?> callAsyncJavaScript(
+    String? functionBody,
+    Map<String, Object?>? arguments,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#callAsyncJavaScript, [functionBody, arguments]),
             returnValue: _i3.Future<Object?>.value(),
             returnValueForMissingStub: _i3.Future<Object?>.value(),
           )
@@ -1605,6 +1626,15 @@ class MockNSViewWKWebView extends _i1.Mock implements _i2.NSViewWKWebView {
           as _i3.Future<void>);
 
   @override
+  _i3.Future<void> dispose() =>
+      (super.noSuchMethod(
+            Invocation.method(#dispose, []),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
   _i3.Future<String?> getUrl() =>
       (super.noSuchMethod(
             Invocation.method(#getUrl, []),
@@ -1734,6 +1764,18 @@ class MockNSViewWKWebView extends _i1.Mock implements _i2.NSViewWKWebView {
   _i3.Future<Object?> evaluateJavaScript(String? javaScriptString) =>
       (super.noSuchMethod(
             Invocation.method(#evaluateJavaScript, [javaScriptString]),
+            returnValue: _i3.Future<Object?>.value(),
+            returnValueForMissingStub: _i3.Future<Object?>.value(),
+          )
+          as _i3.Future<Object?>);
+
+  @override
+  _i3.Future<Object?> callAsyncJavaScript(
+    String? functionBody,
+    Map<String, Object?>? arguments,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#callAsyncJavaScript, [functionBody, arguments]),
             returnValue: _i3.Future<Object?>.value(),
             returnValueForMissingStub: _i3.Future<Object?>.value(),
           )

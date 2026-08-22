@@ -707,6 +707,219 @@ void main() {
       );
     });
 
+    test('callAsyncJavaScript forwards function body and arguments', () async {
+      final MockUIViewWKWebView mockWebView = MockUIViewWKWebView();
+      final WebKitWebViewController controller = createControllerWithMocks(
+        createMockWebView: (_, {dynamic observeValue}) => mockWebView,
+      );
+      String? nativeFunctionBody;
+      when(
+        mockWebView.callAsyncJavaScript(any, <String, Object?>{'value': 6}),
+      ).thenAnswer((Invocation call) async {
+        nativeFunctionBody = call.positionalArguments.first as String;
+        return '{"value":"7"}';
+      });
+
+      final Object? result = await controller.callAsyncJavaScript(
+        JavaScriptInvocationParams(
+          functionBody: 'return value + 1;',
+          arguments: const <String, Object?>{'value': 6},
+        ),
+      );
+
+      expect(result, 7);
+      expect(nativeFunctionBody, contains('return value + 1;'));
+      expect(nativeFunctionBody, contains('JSON.stringify(__webviewAllValue)'));
+      verify(
+        mockWebView.callAsyncJavaScript(any, <String, Object?>{'value': 6}),
+      ).called(1);
+    });
+
+    test('callAsyncJavaScript normalizes structured native results', () async {
+      final MockUIViewWKWebView mockWebView = MockUIViewWKWebView();
+      final WebKitWebViewController controller = createControllerWithMocks(
+        createMockWebView: (_, {dynamic observeValue}) => mockWebView,
+      );
+      when(
+        mockWebView.callAsyncJavaScript(any, const <String, Object?>{}),
+      ).thenAnswer(
+        (_) async => r'{"value":"{\"items\":[1,true,null],\"name\":\"test\"}"}',
+      );
+
+      final Object? result = await controller.callAsyncJavaScript(
+        JavaScriptInvocationParams(functionBody: 'return {};'),
+      );
+
+      expect(result, <String, Object?>{
+        'items': <Object?>[1, true, null],
+        'name': 'test',
+      });
+    });
+
+    test('callAsyncJavaScript rejects malformed native results', () async {
+      final MockUIViewWKWebView mockWebView = MockUIViewWKWebView();
+      final WebKitWebViewController controller = createControllerWithMocks(
+        createMockWebView: (_, {dynamic observeValue}) => mockWebView,
+      );
+      when(
+        mockWebView.callAsyncJavaScript(any, const <String, Object?>{}),
+      ).thenAnswer((_) async => 7);
+
+      await expectLater(
+        controller.callAsyncJavaScript(
+          JavaScriptInvocationParams(functionBody: 'return 7;'),
+        ),
+        throwsA(
+          isA<JavaScriptExecutionException>().having(
+            (JavaScriptExecutionException error) => error.name,
+            'name',
+            'SerializationError',
+          ),
+        ),
+      );
+    });
+
+    test('callAsyncJavaScript preserves JavaScript error details', () async {
+      final MockUIViewWKWebView mockWebView = MockUIViewWKWebView();
+      final WebKitWebViewController controller = createControllerWithMocks(
+        createMockWebView: (_, {dynamic observeValue}) => mockWebView,
+      );
+      when(
+        mockWebView.callAsyncJavaScript(any, const <String, Object?>{}),
+      ).thenThrow(
+        PlatformException(
+          code: 'FWFJavaScriptException',
+          message: 'fallback',
+          details: const <String, Object?>{
+            'name': 'TypeError',
+            'message': 'invalid value',
+            'stack': 'function@page.js:1',
+          },
+        ),
+      );
+
+      final Future<Object?> invocation = controller.callAsyncJavaScript(
+        JavaScriptInvocationParams(functionBody: 'throw new TypeError();'),
+      );
+
+      await expectLater(
+        invocation,
+        throwsA(
+          isA<JavaScriptExecutionException>()
+              .having(
+                (JavaScriptExecutionException error) => error.name,
+                'name',
+                'TypeError',
+              )
+              .having(
+                (JavaScriptExecutionException error) => error.message,
+                'message',
+                'invalid value',
+              )
+              .having(
+                (JavaScriptExecutionException error) =>
+                    error.javaScriptStackTrace,
+                'javaScriptStackTrace',
+                'function@page.js:1',
+              ),
+        ),
+      );
+    });
+
+    test(
+      'legacy async JavaScript expires and isolates its result slot',
+      () async {
+        final MockUIViewWKWebView mockWebView = MockUIViewWKWebView();
+        final WebKitWebViewController controller = createControllerWithMocks(
+          createMockWebView: (_, {dynamic observeValue}) => mockWebView,
+        );
+        final List<String> evaluatedScripts = <String>[];
+        when(
+          mockWebView.callAsyncJavaScript(any, const <String, Object?>{
+            'value': 6,
+          }),
+        ).thenThrow(
+          PlatformException(code: 'FWFCallAsyncJavaScriptUnavailable'),
+        );
+        when(mockWebView.evaluateJavaScript(any)).thenAnswer((Invocation call) {
+          final String script = call.positionalArguments.single as String;
+          evaluatedScripts.add(script);
+          if (script.contains('const slot = values && values[')) {
+            return Future<Object?>.value('{"state":"fulfilled","value":"7"}');
+          }
+          return Future<Object?>.value();
+        });
+
+        final Object? result = await controller.callAsyncJavaScript(
+          JavaScriptInvocationParams(
+            functionBody: 'return value + 1;',
+            arguments: const <String, Object?>{'value': 6},
+          ),
+        );
+
+        expect(result, 7);
+        final String setupScript = evaluatedScripts.first;
+        expect(setupScript, contains('const slot = {result: null};'));
+        expect(setupScript, contains('results['));
+        expect(setupScript, contains('] !== slot'));
+        expect(setupScript, contains('setTimeout(release,'));
+        expect(
+          evaluatedScripts,
+          contains(contains('delete window.__webviewAllAsyncResults[')),
+        );
+      },
+    );
+
+    test('registers and removes document-start user scripts', () async {
+      final MockWKUserContentController userContentController =
+          MockWKUserContentController();
+      final WebKitWebViewController controller = createControllerWithMocks(
+        mockUserContentController: userContentController,
+      );
+
+      expect(
+        await controller.isUserScriptInjectionSupported(
+          WebViewUserScriptInjectionTime.documentStart,
+        ),
+        isTrue,
+      );
+      final String identifier = await controller.addUserScript(
+        const WebViewUserScript(source: 'window.provider = {};'),
+      );
+      final WKUserScript script =
+          verify(
+                userContentController.addUserScript(captureAny),
+              ).captured.single
+              as WKUserScript;
+      expect(script.source, contains('window.provider = {};'));
+      expect(script.source, contains('}).call(globalThis);'));
+      expect(script.source, isNot(contains('globalThis.top !== globalThis')));
+      expect(script.injectionTime, UserScriptInjectionTime.atDocumentStart);
+      expect(script.isForMainFrameOnly, isTrue);
+
+      clearInteractions(userContentController);
+      await controller.removeUserScript(identifier);
+      verify(userContentController.removeAllUserScripts()).called(1);
+      verifyNever(userContentController.addUserScript(any));
+    });
+
+    test('closes an offscreen WebView exactly once', () async {
+      final MockUIViewWKWebView mockWebView = MockUIViewWKWebView();
+      final WebKitWebViewController controller = createControllerWithMocks(
+        createMockWebView: (_, {dynamic observeValue}) => mockWebView,
+      );
+
+      await controller.closeOffscreenWebView();
+      await controller.closeOffscreenWebView();
+
+      verify(mockWebView.dispose()).called(1);
+      verify(
+        mockWebView.removeObserver(mockWebView, 'estimatedProgress'),
+      ).called(1);
+      verify(mockWebView.removeObserver(mockWebView, 'URL')).called(1);
+      verify(mockWebView.removeObserver(mockWebView, 'canGoBack')).called(1);
+    });
+
     test('runJavaScript', () {
       final mockWebView = MockUIViewWKWebView();
 
@@ -1292,7 +1505,7 @@ void main() {
       );
     });
 
-    test('addJavaScriptChannel requires channel with a unique name', () async {
+    test('addJavaScriptChannel rejects a concurrent duplicate name', () async {
       PigeonOverrides.wKScriptMessageHandler_new =
           ({
             required void Function(
@@ -1318,17 +1531,19 @@ void main() {
         name: nonUniqueName,
         onMessageReceived: (JavaScriptMessage message) {},
       );
-      await controller.addJavaScriptChannel(javaScriptChannelParams);
-
-      expect(
-        () => controller.addJavaScriptChannel(
-          JavaScriptChannelParams(
-            name: nonUniqueName,
-            onMessageReceived: (_) {},
-          ),
-        ),
-        throwsArgumentError,
+      final Future<void> firstRegistration = controller.addJavaScriptChannel(
+        javaScriptChannelParams,
       );
+      final Future<void> duplicateRegistration = controller
+          .addJavaScriptChannel(
+            JavaScriptChannelParams(
+              name: nonUniqueName,
+              onMessageReceived: (_) {},
+            ),
+          );
+
+      await firstRegistration;
+      await expectLater(duplicateRegistration, throwsArgumentError);
     });
 
     test('removeJavaScriptChannel', () async {
@@ -2264,12 +2479,10 @@ window.addEventListener("error", function(e) {
           mockUserContentController: mockUserContentController,
         );
 
-        await controller.setOnConsoleMessage(
-          (JavaScriptConsoleMessage message) {},
-        );
-        await controller.setOnConsoleMessage(
-          (JavaScriptConsoleMessage message) {},
-        );
+        await Future.wait(<Future<void>>[
+          controller.setOnConsoleMessage((JavaScriptConsoleMessage message) {}),
+          controller.setOnConsoleMessage((JavaScriptConsoleMessage message) {}),
+        ]);
 
         verifyNever(
           mockUserContentController.removeScriptMessageHandler(
