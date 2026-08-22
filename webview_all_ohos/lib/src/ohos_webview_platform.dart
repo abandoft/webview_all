@@ -6,6 +6,7 @@ import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'ohos_webview_controller.dart';
 import 'ohos_webview_cookie_manager.dart';
+import 'ohos_webview_data_manager.dart';
 
 /// Implementation of [WebViewPlatform] using the WebKit API.
 class OhosWebViewPlatform extends WebViewPlatform {
@@ -40,5 +41,12 @@ class OhosWebViewPlatform extends WebViewPlatform {
     PlatformWebViewCookieManagerCreationParams params,
   ) {
     return OhosWebViewCookieManager(params);
+  }
+
+  @override
+  OhosWebViewDataManager createPlatformWebViewDataManager(
+    PlatformWebViewDataManagerCreationParams params,
+  ) {
+    return OhosWebViewDataManager(params);
   }
 }

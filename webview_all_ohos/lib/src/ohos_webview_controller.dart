@@ -8,6 +8,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,21 @@ import 'channels/constants.dart';
 import 'core/instance_manager.dart';
 import 'ohos_platform_views.dart';
 import 'core/weak_reference.dart';
+
+final Expando<Set<PageEventCallback>> _ohosControllerPageStartedCallbacks =
+    Expando<Set<PageEventCallback>>();
+final Expando<Set<PageEventCallback>> _ohosControllerPageFinishedCallbacks =
+    Expando<Set<PageEventCallback>>();
+
+String _createOhosOpaqueIdentifier(String prefix) {
+  final Random random = Random.secure();
+  final String token = List<String>.generate(
+    16,
+    (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    growable: false,
+  ).join();
+  return '${prefix}_$token';
+}
 
 void _reportOhosCallbackError(String callbackName, Object error) {
   debugPrint(
@@ -538,6 +554,33 @@ class OhosWebViewController extends PlatformWebViewController {
   bool _verticalScrollBarEnabled = true;
   bool _horizontalScrollBarEnabled = true;
   WebViewOverScrollMode _overScrollMode = WebViewOverScrollMode.always;
+  int _nextAsyncJavaScriptInvocationIdentifier = 0;
+  int _navigationGeneration = 0;
+  late final PageEventCallback _controllerPageStartedCallback =
+      withWeakReferenceTo(this, (
+        WeakReference<OhosWebViewController> weakReference,
+      ) {
+        return (_) {
+          final OhosWebViewController? controller = weakReference.target;
+          if (controller != null) {
+            controller._navigationGeneration += 1;
+          }
+        };
+      });
+  late final PageEventCallback _controllerPageFinishedCallback =
+      withWeakReferenceTo(this, (
+        WeakReference<OhosWebViewController> weakReference,
+      ) {
+        return (_) {
+          final OhosWebViewController? controller = weakReference.target;
+          if (controller != null) {
+            _runOhosAsyncCallbackSafely(
+              'viewport style update',
+              controller._applyViewportStyle,
+            );
+          }
+        };
+      });
 
   static const String _viewportStyleElementId =
       '__webview_all_ohos_viewport_style';
@@ -572,6 +615,7 @@ class OhosWebViewController extends PlatformWebViewController {
     // channel calls ordered also ensures that a settings failure is surfaced
     // instead of racing an apparently successful load.
     await _webView.settings.setAllowFileAccess(true);
+    _navigationGeneration += 1;
     await _webView.loadUrl(url, <String, String>{});
   }
 
@@ -595,11 +639,13 @@ class OhosWebViewController extends PlatformWebViewController {
     }
     await _webView.settings.setAllowFileAccess(true);
     final String url = 'resources/rawfile/$assetFilePath';
+    _navigationGeneration += 1;
     return _webView.loadUrl(url, <String, String>{});
   }
 
   @override
   Future<void> loadHtmlString(String html, {String? baseUrl}) {
+    _navigationGeneration += 1;
     return _webView.loadDataWithBaseUrl(
       baseUrl: baseUrl,
       data: html,
@@ -616,6 +662,7 @@ class OhosWebViewController extends PlatformWebViewController {
 
     switch (params.method) {
       case LoadRequestMethod.get:
+        _navigationGeneration += 1;
         return _webView.loadUrl(params.uri.toString(), params.headers);
       case LoadRequestMethod.post:
         if (params.headers.isNotEmpty) {
@@ -624,6 +671,7 @@ class OhosWebViewController extends PlatformWebViewController {
             'the OHOS ArkWeb postUrl API.',
           );
         }
+        _navigationGeneration += 1;
         return _webView.postUrl(
           params.uri.toString(),
           params.body ?? Uint8List(0),
@@ -641,13 +689,22 @@ class OhosWebViewController extends PlatformWebViewController {
   Future<bool> canGoForward() => _webView.canGoForward();
 
   @override
-  Future<void> goBack() => _webView.goBack();
+  Future<void> goBack() {
+    _navigationGeneration += 1;
+    return _webView.goBack();
+  }
 
   @override
-  Future<void> goForward() => _webView.goForward();
+  Future<void> goForward() {
+    _navigationGeneration += 1;
+    return _webView.goForward();
+  }
 
   @override
-  Future<void> reload() => _webView.reload();
+  Future<void> reload() {
+    _navigationGeneration += 1;
+    return _webView.reload();
+  }
 
   @override
   Future<void> clearCache() => _webView.clearCache(true);
@@ -660,10 +717,20 @@ class OhosWebViewController extends PlatformWebViewController {
   Future<void> setPlatformNavigationDelegate(
     covariant OhosNavigationDelegate handler,
   ) async {
+    final OhosNavigationDelegate? previousDelegate = _currentNavigationDelegate;
+    if (previousDelegate != null) {
+      _ohosControllerPageStartedCallbacks[previousDelegate]?.remove(
+        _controllerPageStartedCallback,
+      );
+      _ohosControllerPageFinishedCallbacks[previousDelegate]?.remove(
+        _controllerPageFinishedCallback,
+      );
+    }
     _currentNavigationDelegate = handler;
-    handler._onControllerPageFinished = (_) {
-      _runOhosAsyncCallbackSafely('viewport style update', _applyViewportStyle);
-    };
+    (_ohosControllerPageStartedCallbacks[handler] ??= <PageEventCallback>{})
+        .add(_controllerPageStartedCallback);
+    (_ohosControllerPageFinishedCallbacks[handler] ??= <PageEventCallback>{})
+        .add(_controllerPageFinishedCallback);
     await Future.wait(<Future<void>>[
       handler.setOnLoadRequest(loadRequest),
       _webView.setWebViewClient(handler.ohosWebViewClient),
@@ -698,6 +765,180 @@ class OhosWebViewController extends PlatformWebViewController {
     } on FormatException {
       return num.tryParse(result) ?? result;
     }
+  }
+
+  @override
+  Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
+    final int generation = _navigationGeneration;
+    final Stopwatch stopwatch = Stopwatch()..start();
+    final String identifier = _createOhosOpaqueIdentifier(
+      'webview_all_${++_nextAsyncJavaScriptInvocationIdentifier}',
+    );
+    final String encodedIdentifier = jsonEncode(identifier);
+    final String argumentNames = params.arguments.keys.join(',');
+    final String argumentValues = params.arguments.keys
+        .map((String name) => 'args[${jsonEncode(name)}]')
+        .join(',');
+    Duration remainingTime() => params.timeout - stopwatch.elapsed;
+    Future<String?> evaluateWithinDeadline(String javaScript) {
+      final Duration remaining = remainingTime();
+      if (remaining <= Duration.zero) {
+        return Future<String?>.error(
+          TimeoutException(
+            'The asynchronous JavaScript invocation timed out.',
+            params.timeout,
+          ),
+        );
+      }
+      return _webView
+          .evaluateJavascript(javaScript)
+          .timeout(
+            remaining,
+            onTimeout: () => throw TimeoutException(
+              'The asynchronous JavaScript invocation timed out.',
+              params.timeout,
+            ),
+          );
+    }
+
+    try {
+      final Duration setupRemaining = remainingTime();
+      if (setupRemaining <= Duration.zero) {
+        throw TimeoutException(
+          'The asynchronous JavaScript invocation timed out.',
+          params.timeout,
+        );
+      }
+      final int timeoutMilliseconds = max(1, setupRemaining.inMilliseconds);
+      await evaluateWithinDeadline('''
+      (()=>{
+        const results = window.__webviewAllAsyncResults =
+            window.__webviewAllAsyncResults || Object.create(null);
+        const slot = {result: null};
+        results[$encodedIdentifier] = slot;
+        const expiresAt = Date.now() + $timeoutMilliseconds;
+        const release = () => {
+          if (results[$encodedIdentifier] === slot) {
+            delete results[$encodedIdentifier];
+          }
+        };
+        const settle = (result) => {
+          if (results[$encodedIdentifier] !== slot || Date.now() >= expiresAt) {
+            release();
+            return;
+          }
+          slot.result = result;
+        };
+        setTimeout(release, $timeoutMilliseconds);
+        const args = ${jsonEncode(params.arguments)};
+        const postError = (error) => {
+          settle({
+            state: 'rejected',
+            name: error && error.name ? String(error.name) : 'Error',
+            message: error && error.message ? String(error.message) : String(error),
+            stack: error && error.stack ? String(error.stack) : null
+          });
+        };
+        Promise.resolve().then(() => (async function($argumentNames) {
+${params.functionBody}
+        })($argumentValues)).then((value) => {
+          try {
+            const encoded = JSON.stringify(value);
+            settle({
+              state: 'fulfilled',
+              value: encoded === undefined ? null : encoded
+            });
+          } catch (error) {
+            postError(error);
+          }
+        }, postError);
+      })();
+    ''');
+
+      while (stopwatch.elapsed < params.timeout) {
+        if (generation != _navigationGeneration) {
+          throw const JavaScriptExecutionException(
+            name: 'NavigationError',
+            message: 'The page navigated before JavaScript completed.',
+          );
+        }
+        final String? rawResult = await evaluateWithinDeadline('''
+          (()=>{
+            const values = window.__webviewAllAsyncResults;
+            const slot = values && values[$encodedIdentifier];
+            const value = slot && slot.result;
+            return value ? JSON.stringify(value) : null;
+          })();
+        ''');
+        final Map<String, dynamic>? result = _decodeAsyncJavaScriptPollResult(
+          rawResult,
+        );
+        if (result != null) {
+          if (result['state'] == 'fulfilled') {
+            final Object? encodedValue = result['value'];
+            return encodedValue is String ? jsonDecode(encodedValue) : null;
+          }
+          throw JavaScriptExecutionException(
+            name: result['name']?.toString(),
+            message:
+                result['message']?.toString() ??
+                'The JavaScript promise was rejected.',
+            javaScriptStackTrace: result['stack']?.toString(),
+          );
+        }
+        final Duration delayRemaining = remainingTime();
+        if (delayRemaining <= Duration.zero) {
+          break;
+        }
+        const Duration pollingInterval = Duration(milliseconds: 20);
+        await Future<void>.delayed(
+          delayRemaining.compareTo(pollingInterval) < 0
+              ? delayRemaining
+              : pollingInterval,
+        );
+      }
+      throw TimeoutException(
+        'The asynchronous JavaScript invocation timed out.',
+        params.timeout,
+      );
+    } finally {
+      if (generation == _navigationGeneration &&
+          remainingTime() > Duration.zero) {
+        try {
+          await evaluateWithinDeadline('''
+            if (window.__webviewAllAsyncResults) {
+              delete window.__webviewAllAsyncResults[$encodedIdentifier];
+            }
+          ''');
+        } catch (_) {
+          // Navigation can replace the document before cleanup completes.
+        }
+      }
+    }
+  }
+
+  Map<String, dynamic>? _decodeAsyncJavaScriptPollResult(String? rawResult) {
+    if (rawResult == null || rawResult == 'null') {
+      return null;
+    }
+    try {
+      Object? decoded = jsonDecode(rawResult);
+      if (decoded is String) {
+        decoded = jsonDecode(decoded);
+      }
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } on FormatException {
+      return null;
+    }
+  }
+
+  @override
+  Future<bool> isUserScriptInjectionSupported(
+    WebViewUserScriptInjectionTime injectionTime,
+  ) async {
+    // The current ArkWeb bridge does not expose deterministic document-start
+    // injection, so advertising it would create a race with page scripts.
+    return false;
   }
 
   @override
@@ -1631,10 +1872,28 @@ class OhosNavigationDelegate extends PlatformNavigationDelegate {
             if (callback != null) {
               callback(url);
             }
-            target?._onControllerPageFinished?.call(url);
+            if (target != null) {
+              for (final PageEventCallback controllerCallback
+                  in List<PageEventCallback>.of(
+                    _ohosControllerPageFinishedCallbacks[target] ??
+                        const <PageEventCallback>{},
+                  )) {
+                controllerCallback(url);
+              }
+            }
           },
           onPageStarted: (ohos_webview.WebView webView, String url) {
-            final PageEventCallback? callback = weakThis.target?._onPageStarted;
+            final OhosNavigationDelegate? target = weakThis.target;
+            if (target != null) {
+              for (final PageEventCallback controllerCallback
+                  in List<PageEventCallback>.of(
+                    _ohosControllerPageStartedCallbacks[target] ??
+                        const <PageEventCallback>{},
+                  )) {
+                controllerCallback(url);
+              }
+            }
+            final PageEventCallback? callback = target?._onPageStarted;
             if (callback != null) {
               callback(url);
             }
@@ -1904,7 +2163,6 @@ class OhosNavigationDelegate extends PlatformNavigationDelegate {
   UrlChangeCallback? _onUrlChange;
   HttpAuthRequestCallback? _onHttpAuthRequest;
   SslAuthErrorCallback? _onSslAuthError;
-  PageEventCallback? _onControllerPageFinished;
 
   void _handleNavigation(
     String url, {
