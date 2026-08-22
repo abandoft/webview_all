@@ -38,3 +38,7 @@ Widget build(BuildContext context) {
 ```
 
 For detailed usage, API coverage, and platform limits, see the [Documentation](https://abandoft.github.io/webview_all).
+
+The latest API also supports Promise-aware JavaScript calls, document-start
+user scripts, controller-independent website-data cleanup, and deterministically
+closable offscreen sessions on supported native platforms.
