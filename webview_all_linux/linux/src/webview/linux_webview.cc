@@ -748,15 +748,12 @@ void destroy_linux_webview(gpointer data) {
   g_hash_table_destroy(webview->pending_request_timeouts);
   g_hash_table_destroy(webview->js_channel_signal_ids);
   g_hash_table_destroy(webview->js_channels);
+  g_hash_table_destroy(webview->user_scripts);
+  g_ptr_array_unref(webview->user_script_order);
   g_free(webview);
 }
 
 LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
-  GtkOverlay *overlay = ensure_overlay(self);
-  if (overlay == nullptr) {
-    return nullptr;
-  }
-
   LinuxWebView *webview = g_new0(LinuxWebView, 1);
   webview->plugin = self;
   webview->id = self->next_webview_id++;
@@ -786,6 +783,10 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
       g_hash_table_new_full(g_str_hash, g_str_equal, g_free, nullptr);
   webview->js_channels =
       g_hash_table_new_full(g_str_hash, g_str_equal, g_free, nullptr);
+  webview->user_scripts = g_hash_table_new_full(
+      g_str_hash, g_str_equal, g_free,
+      reinterpret_cast<GDestroyNotify>(webkit_user_script_unref));
+  webview->user_script_order = g_ptr_array_new_with_free_func(g_free);
   webview->next_request_id = 1;
   webview->java_script_alert_dialog_enabled = FALSE;
   webview->java_script_confirm_dialog_enabled = FALSE;
@@ -820,12 +821,17 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
       webview->content_manager, "__webview_all_console");
   webkit_user_content_manager_register_script_message_handler(
       webview->content_manager, "__webview_all_scroll");
+  webkit_user_content_manager_register_script_message_handler(
+      webview->content_manager, "__webview_all_async_javascript");
   g_signal_connect(webview->content_manager,
                    "script-message-received::__webview_all_console",
                    G_CALLBACK(console_message_received_cb), webview);
   g_signal_connect(webview->content_manager,
                    "script-message-received::__webview_all_scroll",
                    G_CALLBACK(scroll_message_received_cb), webview);
+  g_signal_connect(webview->content_manager,
+                   "script-message-received::__webview_all_async_javascript",
+                   G_CALLBACK(async_javascript_message_received_cb), webview);
 
   rebuild_user_scripts(webview);
 
@@ -877,10 +883,6 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
                             GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK |
                             GDK_POINTER_MOTION_MASK);
   gtk_widget_set_size_request(GTK_WIDGET(webview->web_view), 1, 1);
-  gtk_widget_hide(GTK_WIDGET(webview->web_view));
-  gtk_overlay_add_overlay(overlay, GTK_WIDGET(webview->web_view));
-  gtk_overlay_set_overlay_pass_through(overlay, GTK_WIDGET(webview->web_view),
-                                       FALSE);
   gtk_widget_hide(GTK_WIDGET(webview->web_view));
 
   g_hash_table_insert(self->webviews, GINT_TO_POINTER(webview->id), webview);

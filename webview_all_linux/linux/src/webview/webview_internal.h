@@ -22,6 +22,9 @@ void console_message_received_cb(WebKitUserContentManager *manager,
 void scroll_message_received_cb(WebKitUserContentManager *manager,
                                 WebKitJavascriptResult *result,
                                 gpointer user_data);
+void async_javascript_message_received_cb(WebKitUserContentManager *manager,
+                                          WebKitJavascriptResult *result,
+                                          gpointer user_data);
 void javascript_channel_message_received_cb(WebKitUserContentManager *manager,
                                             WebKitJavascriptResult *result,
                                             gpointer user_data);

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -52,6 +53,12 @@ void main() {
         const PlatformWebViewCookieManagerCreationParams(),
       ),
       isA<LinuxWebViewCookieManager>(),
+    );
+    expect(
+      platform.createPlatformWebViewDataManager(
+        const PlatformWebViewDataManagerCreationParams(),
+      ),
+      isA<LinuxWebViewDataManager>(),
     );
   });
 
@@ -453,6 +460,26 @@ void main() {
     await expectLater(controller.reload(), throwsStateError);
   });
 
+  test('controller operations do not require a WebView widget', () async {
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+
+    await controller.loadHtmlString('<p>headless</p>');
+    await controller.runJavaScript('window.ready = true;');
+
+    expect(
+      calls.map((MethodCall call) => call.method),
+      containsAll(<String>['loadHtmlString', 'runJavaScript']),
+    );
+    expect(
+      calls.where((MethodCall call) => call.method == 'setFrame'),
+      isEmpty,
+    );
+  });
+
   test('rejects invalid cookies before root channel setCookie', () async {
     final List<MethodCall> rootCalls = <MethodCall>[];
     _mockLinuxWebViewCreation(onRootCall: rootCalls.add);
@@ -718,6 +745,96 @@ void main() {
     expect(calls, hasLength(1));
     expect(calls.single.method, 'clearLocalStorage');
     expect(calls.single.arguments, isNull);
+  });
+
+  test('clears all website data without creating a controller', () async {
+    final List<MethodCall> rootCalls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onRootCall: rootCalls.add);
+    final LinuxWebViewDataManager manager = LinuxWebViewDataManager(
+      const PlatformWebViewDataManagerCreationParams(),
+    );
+
+    final WebViewDataClearingResult result = await manager
+        .clearAllWebsiteData();
+
+    expect(result.isComplete, isTrue);
+    expect(rootCalls, hasLength(1));
+    expect(rootCalls.single.method, 'clearAllWebsiteData');
+  });
+
+  test('invokes asynchronous JavaScript and correlates its result', () async {
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+
+    final Future<Object?> result = controller.callAsyncJavaScript(
+      JavaScriptInvocationParams(
+        functionBody: 'return value + 1;',
+        arguments: const <String, Object?>{'value': 6},
+      ),
+    );
+    await _flushAsyncEvents();
+    final MethodCall invocation = calls.singleWhere(
+      (MethodCall call) => call.method == 'runJavaScript',
+    );
+    final String script =
+        (invocation.arguments as Map<Object?, Object?>)['script']! as String;
+    final String identifier = RegExp(
+      r'const __identifier="([^"]+)"',
+    ).firstMatch(script)!.group(1)!;
+    expect(script, isNot(contains('AsyncFunction')));
+    await _emitLinuxWebViewEvent(<String, Object?>{
+      'type': 'asyncJavaScriptResult',
+      'message': jsonEncode(<String, Object?>{
+        'identifier': 42,
+        'success': true,
+        'value': 'ignored',
+      }),
+    });
+    await _emitLinuxWebViewEvent(<String, Object?>{
+      'type': 'asyncJavaScriptResult',
+      'message': jsonEncode(<String, Object?>{
+        'identifier': identifier,
+        'success': true,
+        'value': 7,
+      }),
+    });
+
+    await expectLater(result, completion(7));
+  });
+
+  test('registers and removes document-start user scripts', () async {
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+
+    expect(
+      await controller.isUserScriptInjectionSupported(
+        WebViewUserScriptInjectionTime.documentStart,
+      ),
+      isTrue,
+    );
+    final String identifier = await controller.addUserScript(
+      const WebViewUserScript(source: 'window.provider = {};'),
+    );
+    await controller.removeUserScript(identifier);
+
+    expect(
+      calls.map((MethodCall call) => call.method),
+      containsAllInOrder(<String>['addUserScript', 'removeUserScript']),
+    );
+    final MethodCall addCall = calls.firstWhere(
+      (MethodCall call) => call.method == 'addUserScript',
+    );
+    final Map<Object?, Object?> arguments =
+        addCall.arguments! as Map<Object?, Object?>;
+    expect(arguments['source'], contains('window.provider = {};'));
+    expect(arguments['source'], contains('}).call(globalThis);'));
+    expect(arguments['mainFrameOnly'], isTrue);
   });
 
   test('dispatches HTTP response errors from Linux events', () async {

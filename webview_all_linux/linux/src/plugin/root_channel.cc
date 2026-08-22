@@ -37,6 +37,23 @@ static void clear_cookies_finished_cb(GObject* object,
   g_object_unref(method_call);
 }
 
+static void clear_website_data_finished_cb(GObject* object,
+                                           GAsyncResult* result,
+                                           gpointer user_data) {
+  FlMethodCall* method_call = FL_METHOD_CALL(user_data);
+  GError* error = nullptr;
+  webkit_website_data_manager_clear_finish(
+      WEBKIT_WEBSITE_DATA_MANAGER(object), result, &error);
+  if (error != nullptr) {
+    respond(method_call,
+            error_response("website_data_error", error->message));
+    g_clear_error(&error);
+  } else {
+    respond(method_call, success_response());
+  }
+  g_object_unref(method_call);
+}
+
 static void get_cookies_finished_cb(GObject* object,
                                     GAsyncResult* result,
                                     gpointer user_data) {
@@ -112,6 +129,14 @@ void root_method_call_cb(FlMethodChannel* channel,
     webkit_website_data_manager_clear(
         website_data_manager, WEBKIT_WEBSITE_DATA_COOKIES, 0, nullptr,
         clear_cookies_finished_cb, method_call);
+    return;
+  }
+
+  if (strcmp(method, "clearAllWebsiteData") == 0) {
+    g_object_ref(method_call);
+    webkit_website_data_manager_clear(
+        website_data_manager, WEBKIT_WEBSITE_DATA_ALL, 0, nullptr,
+        clear_website_data_finished_cb, method_call);
     return;
   }
 

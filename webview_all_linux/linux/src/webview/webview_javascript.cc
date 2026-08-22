@@ -183,6 +183,22 @@ void scroll_message_received_cb(WebKitUserContentManager *manager,
   g_free(text);
 }
 
+void async_javascript_message_received_cb(WebKitUserContentManager *manager,
+                                          WebKitJavascriptResult *result,
+                                          gpointer user_data) {
+  LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
+  JSCValue *js_value = webkit_javascript_result_get_js_value(result);
+  gchar *text = jsc_value_to_string(js_value);
+  if (text == nullptr) {
+    return;
+  }
+
+  FlValue *event = make_event("asyncJavaScriptResult");
+  fl_value_set_string_take(event, "message", fl_value_new_string(text));
+  send_event(webview, event);
+  g_free(text);
+}
+
 void javascript_channel_message_received_cb(WebKitUserContentManager *manager,
                                             WebKitJavascriptResult *result,
                                             gpointer user_data) {
@@ -359,5 +375,15 @@ void rebuild_user_scripts(LinuxWebView *webview) {
         name, name);
     add_user_script(webview->content_manager, source);
     g_free(source);
+  }
+
+  for (guint index = 0; index < webview->user_script_order->len; ++index) {
+    const gchar *identifier = static_cast<const gchar *>(
+        g_ptr_array_index(webview->user_script_order, index));
+    WebKitUserScript *script = static_cast<WebKitUserScript *>(
+        g_hash_table_lookup(webview->user_scripts, identifier));
+    if (script != nullptr) {
+      webkit_user_content_manager_add_script(webview->content_manager, script);
+    }
   }
 }

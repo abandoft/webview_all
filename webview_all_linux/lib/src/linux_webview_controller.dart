@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +14,16 @@ import 'linux_webview_creation_params.dart';
 import 'linux_webview_requests.dart';
 
 part 'linux_webview_events.dart';
+
+String _createLinuxOpaqueIdentifier(String prefix) {
+  final Random random = Random.secure();
+  final String token = List<String>.generate(
+    16,
+    (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    growable: false,
+  ).join();
+  return '${prefix}_$token';
+}
 
 Future<void> _disposeFinalizedLinuxWebView(
   _LinuxWebViewDisposal disposal,
@@ -58,6 +69,9 @@ class LinuxWebViewController extends PlatformWebViewController {
   LinuxNavigationDelegate? _navigationDelegate;
   final Map<String, JavaScriptChannelParams> _javaScriptChannels =
       <String, JavaScriptChannelParams>{};
+  final Map<String, Completer<Object?>> _pendingAsyncJavaScriptInvocations =
+      <String, Completer<Object?>>{};
+  final Set<String> _userScriptIdentifiers = <String>{};
 
   String? _currentUrl;
   String? _title;
@@ -67,6 +81,8 @@ class LinuxWebViewController extends PlatformWebViewController {
   bool _disposed = false;
   int _frameSequence = 0;
   Future<void>? _disposeFuture;
+  int _nextAsyncJavaScriptInvocationIdentifier = 0;
+  int _nextUserScriptIdentifier = 0;
 
   void Function(JavaScriptConsoleMessage consoleMessage)? _onConsoleMessage;
   void Function(ScrollPositionChange scrollPositionChange)?
@@ -196,7 +212,11 @@ class LinuxWebViewController extends PlatformWebViewController {
     Object error,
     StackTrace stackTrace,
   ) {
-    debugPrint('webview_all_linux: $operation failed: $error');
+    final String diagnostic = error.toString().replaceAll(
+      RegExp(r'[\r\n]+'),
+      ' ',
+    );
+    debugPrint('webview_all_linux: $operation failed: $diagnostic');
   }
 
   @override
@@ -346,6 +366,91 @@ class LinuxWebViewController extends PlatformWebViewController {
     }
 
     return result;
+  }
+
+  @override
+  Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
+    await _ensureReady();
+    final String identifier = _createLinuxOpaqueIdentifier(
+      'async_${++_nextAsyncJavaScriptInvocationIdentifier}',
+    );
+    final Completer<Object?> completer = Completer<Object?>();
+    _pendingAsyncJavaScriptInvocations[identifier] = completer;
+
+    final Future<Object?> completion = completer.future.timeout(
+      params.timeout,
+      onTimeout: () {
+        _pendingAsyncJavaScriptInvocations.remove(identifier);
+        throw TimeoutException(
+          'The asynchronous JavaScript invocation timed out.',
+          params.timeout,
+        );
+      },
+    );
+    try {
+      final List<Object?> values = await Future.wait<Object?>(<Future<Object?>>[
+        _channel!.invokeMethod<void>('runJavaScript', <String, Object?>{
+          'script': _buildAsyncJavaScriptInvocation(identifier, params),
+        }),
+        completion,
+      ], eagerError: true);
+      return values[1];
+    } catch (error, stackTrace) {
+      _pendingAsyncJavaScriptInvocations.remove(identifier);
+      if (!completer.isCompleted) {
+        completer.completeError(error, stackTrace);
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<bool> isOffscreenWebViewSupported() async => true;
+
+  @override
+  Future<void> closeOffscreenWebView() => dispose();
+
+  @override
+  Future<bool> isUserScriptInjectionSupported(
+    WebViewUserScriptInjectionTime injectionTime,
+  ) async {
+    await _ensureReady();
+    return injectionTime == WebViewUserScriptInjectionTime.documentStart;
+  }
+
+  @override
+  Future<String> addUserScript(WebViewUserScript userScript) async {
+    final String identifier = 'webview_all_${++_nextUserScriptIdentifier}';
+    await _invoke<void>('addUserScript', <String, Object?>{
+      'identifier': identifier,
+      'source': buildUserScriptSource(
+        userScript,
+        platformHandlesMainFrameOnly: true,
+      ),
+      'mainFrameOnly': userScript.forMainFrameOnly,
+    });
+    _userScriptIdentifiers.add(identifier);
+    return identifier;
+  }
+
+  @override
+  Future<void> removeUserScript(String identifier) async {
+    if (!_userScriptIdentifiers.contains(identifier)) {
+      return;
+    }
+    await _invoke<void>('removeUserScript', <String, Object?>{
+      'identifier': identifier,
+    });
+    _userScriptIdentifiers.remove(identifier);
+  }
+
+  @override
+  Future<void> removeAllUserScripts() async {
+    if (_userScriptIdentifiers.isEmpty) {
+      return;
+    }
+    await _invoke<void>('removeAllUserScripts');
+    _userScriptIdentifiers.clear();
   }
 
   @override
@@ -646,6 +751,13 @@ class LinuxWebViewController extends PlatformWebViewController {
 
   Future<void> _dispose() async {
     _disposed = true;
+    _cancelPendingAsyncJavaScriptInvocations(
+      const JavaScriptExecutionException(
+        name: 'AbortError',
+        message:
+            'The WebView controller was disposed before JavaScript completed.',
+      ),
+    );
     _finalizer.detach(this);
     Object? initializationError;
     StackTrace? initializationStackTrace;
@@ -658,6 +770,7 @@ class LinuxWebViewController extends PlatformWebViewController {
     await _nativeDisposal?.dispose();
     _eventSubscription = null;
     _javaScriptChannels.clear();
+    _userScriptIdentifiers.clear();
     _navigationDelegate = null;
     _onConsoleMessage = null;
     _onScrollPositionChange = null;
@@ -671,6 +784,88 @@ class LinuxWebViewController extends PlatformWebViewController {
         initializationStackTrace ?? StackTrace.current,
       );
     }
+  }
+
+  void _cancelPendingAsyncJavaScriptInvocations(Object error) {
+    final List<Completer<Object?>> pending = _pendingAsyncJavaScriptInvocations
+        .values
+        .toList(growable: false);
+    _pendingAsyncJavaScriptInvocations.clear();
+    for (final Completer<Object?> completer in pending) {
+      if (!completer.isCompleted) {
+        completer.completeError(error);
+      }
+    }
+  }
+
+  void _handleAsyncJavaScriptMessage(String message) {
+    Object? decoded;
+    try {
+      decoded = jsonDecode(message);
+    } on FormatException {
+      return;
+    }
+    if (decoded is! Map<String, dynamic>) {
+      return;
+    }
+    final Object? rawIdentifier = decoded['identifier'];
+    if (rawIdentifier is! String) {
+      return;
+    }
+    final String identifier = rawIdentifier;
+    final Completer<Object?>? completer = _pendingAsyncJavaScriptInvocations
+        .remove(identifier);
+    if (completer == null || completer.isCompleted) {
+      return;
+    }
+    if (decoded['success'] == true) {
+      completer.complete(decoded['value']);
+      return;
+    }
+    completer.completeError(
+      JavaScriptExecutionException(
+        name: decoded['name']?.toString(),
+        message:
+            decoded['message']?.toString() ?? 'JavaScript execution failed.',
+        javaScriptStackTrace: decoded['stack']?.toString(),
+      ),
+    );
+  }
+
+  String _buildAsyncJavaScriptInvocation(
+    String identifier,
+    JavaScriptInvocationParams params,
+  ) {
+    final String argumentNames = params.arguments.keys.join(',');
+    final String argumentValues = params.arguments.keys
+        .map((String name) => '__arguments[${jsonEncode(name)}]')
+        .join(',');
+    return '''
+(()=>{
+  const __identifier=${jsonEncode(identifier)};
+  const __arguments=${jsonEncode(params.arguments)};
+  const __post=(payload)=>window.webkit.messageHandlers.__webview_all_async_javascript.postMessage(JSON.stringify(payload));
+  const __postError=(error)=>__post({
+    identifier:__identifier,
+    success:false,
+    name:error&&error.name?String(error.name):null,
+    message:error&&error.message?String(error.message):String(error),
+    stack:error&&error.stack?String(error.stack):null
+  });
+  Promise.resolve()
+    .then(()=>(async function($argumentNames){
+${params.functionBody}
+    })($argumentValues))
+    .then((value)=>{
+      try {
+        const encoded=JSON.stringify(value);
+        __post({identifier:__identifier,success:true,value:encoded===undefined?null:JSON.parse(encoded)});
+      } catch(error) {
+        __postError(error);
+      }
+    },__postError);
+})();
+''';
   }
 
   String get _flutterAssetsRootPath {

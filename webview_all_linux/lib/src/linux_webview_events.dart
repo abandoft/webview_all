@@ -14,6 +14,12 @@ extension LinuxWebViewControllerEventHandling on LinuxWebViewController {
         _navigationDelegate?.handleUrlChange(url);
         break;
       case 'pageStarted':
+        _cancelPendingAsyncJavaScriptInvocations(
+          const JavaScriptExecutionException(
+            name: 'NavigationError',
+            message: 'The page navigated before JavaScript completed.',
+          ),
+        );
         final String url = '${event['url'] ?? ''}';
         _currentUrl = url;
         _navigationDelegate?.handlePageStarted(url);
@@ -77,6 +83,9 @@ extension LinuxWebViewControllerEventHandling on LinuxWebViewController {
             JavaScriptMessage(message: '${event['message'] ?? ''}'),
           );
         }
+        break;
+      case 'asyncJavaScriptResult':
+        _handleAsyncJavaScriptMessage('${event['message'] ?? ''}');
         break;
       case 'consoleMessage':
         final callback = _onConsoleMessage;

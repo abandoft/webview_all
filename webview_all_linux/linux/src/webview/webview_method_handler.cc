@@ -10,6 +10,18 @@
 
 namespace {
 
+void remove_user_script_from_order(LinuxWebView *webview,
+                                   const gchar *identifier) {
+  for (guint index = 0; index < webview->user_script_order->len; ++index) {
+    const gchar *existing = static_cast<const gchar *>(
+        g_ptr_array_index(webview->user_script_order, index));
+    if (g_strcmp0(existing, identifier) == 0) {
+      g_ptr_array_remove_index(webview->user_script_order, index);
+      return;
+    }
+  }
+}
+
 typedef struct {
   WebKitWebView *web_view;
   FlMethodCall *method_call;
@@ -346,6 +358,17 @@ void instance_method_call_cb(FlMethodChannel *channel,
       respond(method_call, success_response());
       return;
     }
+    if (gtk_widget_get_parent(widget) == nullptr) {
+      GtkOverlay *overlay = ensure_overlay(webview->plugin);
+      if (overlay == nullptr) {
+        respond(method_call,
+                error_response("attachment_error",
+                               "Unable to attach the Linux WebView."));
+        return;
+      }
+      gtk_overlay_add_overlay(overlay, widget);
+      gtk_overlay_set_overlay_pass_through(overlay, widget, FALSE);
+    }
     webview->frame_sequence = frame_sequence;
     const double x = map_lookup_double(args, "x", 0);
     const double y = map_lookup_double(args, "y", 0);
@@ -539,6 +562,50 @@ void instance_method_call_cb(FlMethodChannel *channel,
         webview->content_manager, name);
     g_hash_table_remove(webview->js_channels, name);
     rebuild_user_scripts(webview);
+    respond(method_call, success_response());
+    return;
+  }
+
+  if (strcmp(method, "addUserScript") == 0) {
+    const gchar *identifier = map_lookup_string(args, "identifier");
+    const gchar *source = map_lookup_string(args, "source");
+    if (identifier == nullptr || *identifier == '\0' || source == nullptr) {
+      respond(method_call,
+              error_response("invalid_user_script",
+                             "A script identifier and source are required."));
+      return;
+    }
+    WebKitUserScript *script = webkit_user_script_new(
+        source,
+        map_lookup_bool(args, "mainFrameOnly", TRUE)
+            ? WEBKIT_USER_CONTENT_INJECT_TOP_FRAME
+            : WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
+        WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, nullptr, nullptr);
+    remove_user_script_from_order(webview, identifier);
+    g_hash_table_insert(webview->user_scripts, g_strdup(identifier), script);
+    g_ptr_array_add(webview->user_script_order, g_strdup(identifier));
+    rebuild_user_scripts(webview);
+    respond(method_call, success_response());
+    return;
+  }
+
+  if (strcmp(method, "removeUserScript") == 0) {
+    const gchar *identifier = map_lookup_string(args, "identifier");
+    if (identifier != nullptr &&
+        g_hash_table_remove(webview->user_scripts, identifier)) {
+      remove_user_script_from_order(webview, identifier);
+      rebuild_user_scripts(webview);
+    }
+    respond(method_call, success_response());
+    return;
+  }
+
+  if (strcmp(method, "removeAllUserScripts") == 0) {
+    if (g_hash_table_size(webview->user_scripts) > 0) {
+      g_hash_table_remove_all(webview->user_scripts);
+      g_ptr_array_set_size(webview->user_script_order, 0);
+      rebuild_user_scripts(webview);
+    }
     respond(method_call, success_response());
     return;
   }
