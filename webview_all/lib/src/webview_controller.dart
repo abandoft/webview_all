@@ -12,7 +12,9 @@ import 'webview_widget.dart';
 
 /// Controls a WebView provided by the host platform.
 ///
-/// Pass this to a [WebViewWidget] to display the WebView.
+/// Pass this to a [WebViewWidget] to display the WebView. Native platform
+/// implementations can also load content and execute JavaScript without a
+/// widget when an offscreen WebView is required.
 ///
 /// A [WebViewController] can only be used by a single [WebViewWidget] at a
 /// time.
@@ -250,6 +252,77 @@ class WebViewController {
   /// or `null` on iOS 14+.
   Future<Object> runJavaScriptReturningResult(String javaScript) {
     return platform.runJavaScriptReturningResult(javaScript);
+  }
+
+  /// Invokes an asynchronous JavaScript function and waits for its result.
+  ///
+  /// [arguments] are exposed as named local variables in [functionBody]. Only
+  /// recursively JSON-compatible values are accepted. A JavaScript throw or
+  /// rejected promise completes with [JavaScriptExecutionException].
+  Future<Object?> callAsyncJavaScript(
+    String functionBody, {
+    Map<String, Object?> arguments = const <String, Object?>{},
+    Duration timeout = const Duration(seconds: 30),
+  }) {
+    return platform.callAsyncJavaScript(
+      JavaScriptInvocationParams(
+        functionBody: functionBody,
+        arguments: arguments,
+        timeout: timeout,
+      ),
+    );
+  }
+
+  /// Whether this controller can operate without a [WebViewWidget].
+  Future<bool> isOffscreenWebViewSupported() {
+    return platform.isOffscreenWebViewSupported();
+  }
+
+  /// Whether deterministic injection at [injectionTime] is supported.
+  Future<bool> isUserScriptInjectionSupported(
+    WebViewUserScriptInjectionTime injectionTime,
+  ) {
+    return platform.isUserScriptInjectionSupported(injectionTime);
+  }
+
+  /// Registers [userScript] for injection into future documents.
+  ///
+  /// This method must complete before the document is loaded. The returned
+  /// opaque identifier can be passed to [removeUserScript].
+  Future<String> addUserScript(WebViewUserScript userScript) async {
+    if (userScript.source.trim().isEmpty) {
+      throw ArgumentError.value(
+        userScript.source,
+        'userScript.source',
+        'The user script source must not be empty.',
+      );
+    }
+    if (!await isUserScriptInjectionSupported(userScript.injectionTime)) {
+      throw UnsupportedError(
+        '${userScript.injectionTime.name} user-script injection is not '
+        'supported on the current platform.',
+      );
+    }
+    return platform.addUserScript(userScript);
+  }
+
+  /// Removes a user script previously registered by [addUserScript].
+  Future<void> removeUserScript(String identifier) {
+    if (identifier.isEmpty) {
+      throw ArgumentError.value(
+        identifier,
+        'identifier',
+        'The user-script identifier must not be empty.',
+      );
+    }
+    return platform.removeUserScript(identifier);
+  }
+
+  /// Removes every user script registered through [addUserScript].
+  ///
+  /// JavaScript channels and other scripts managed by the plugin are kept.
+  Future<void> removeAllUserScripts() {
+    return platform.removeAllUserScripts();
   }
 
   /// Adds a new JavaScript channel to the set of enabled channels.

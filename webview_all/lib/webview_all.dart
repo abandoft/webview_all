@@ -6,6 +6,8 @@ export 'package:webview_platform_interface/webview_platform_interface.dart'
         JavaScriptAlertDialogRequest,
         JavaScriptConfirmDialogRequest,
         JavaScriptConsoleMessage,
+        JavaScriptExecutionException,
+        JavaScriptInvocationParams,
         JavaScriptLogLevel,
         JavaScriptMessage,
         JavaScriptMode,
@@ -18,6 +20,7 @@ export 'package:webview_platform_interface/webview_platform_interface.dart'
         PlatformNavigationDelegateCreationParams,
         PlatformWebViewControllerCreationParams,
         PlatformWebViewCookieManagerCreationParams,
+        PlatformWebViewDataManagerCreationParams,
         PlatformWebViewPermissionRequest,
         PlatformWebViewWidgetCreationParams,
         ProgressCallback,
@@ -30,12 +33,18 @@ export 'package:webview_platform_interface/webview_platform_interface.dart'
         WebResourceResponse,
         WebViewCookie,
         WebViewCredential,
+        WebViewDataClearingResult,
+        WebViewDataType,
         WebViewOverScrollMode,
         WebViewPermissionResourceType,
         WebViewPlatform,
+        WebViewUserScript,
+        WebViewUserScriptInjectionTime,
         X509Certificate;
 
 export 'src/navigation_delegate.dart';
+export 'src/offscreen_webview_session.dart';
 export 'src/webview_controller.dart';
 export 'src/webview_cookie_manager.dart';
+export 'src/webview_data_manager.dart';
 export 'src/webview_widget.dart';

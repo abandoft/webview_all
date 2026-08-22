@@ -43,6 +43,22 @@ void main() {
     final Object result = await controller.runJavaScriptReturningResult(
       'window.value',
     );
+    final Object? asyncResult = await controller.callAsyncJavaScript(
+      'return value;',
+      arguments: const <String, Object?>{'value': 7},
+      timeout: const Duration(seconds: 2),
+    );
+    final bool supportsOffscreen = await controller
+        .isOffscreenWebViewSupported();
+    final bool supportsUserScripts = await controller
+        .isUserScriptInjectionSupported(
+          WebViewUserScriptInjectionTime.documentStart,
+        );
+    final String userScriptIdentifier = await controller.addUserScript(
+      const WebViewUserScript(source: 'window.provider = {};'),
+    );
+    await controller.removeUserScript(userScriptIdentifier);
+    await controller.removeAllUserScripts();
     await controller.addJavaScriptChannel(
       'TestChannel',
       onMessageReceived: (JavaScriptMessage message) {
@@ -132,6 +148,17 @@ void main() {
     expect(platform.loadRequestParams!.body, body);
     expect(platform.navigationDelegate, navigationDelegate);
     expect(result, 42);
+    expect(asyncResult, 7);
+    expect(platform.asyncJavaScriptParams?.functionBody, 'return value;');
+    expect(platform.asyncJavaScriptParams?.arguments, <String, Object?>{
+      'value': 7,
+    });
+    expect(platform.asyncJavaScriptParams?.timeout, const Duration(seconds: 2));
+    expect(supportsOffscreen, isTrue);
+    expect(supportsUserScripts, isTrue);
+    expect(platform.addedUserScript?.source, 'window.provider = {};');
+    expect(platform.removedUserScriptIdentifier, userScriptIdentifier);
+    expect(platform.removedAllUserScripts, isTrue);
     expect(platform.javaScript, 'window.value = 1');
     expect(platform.javaScriptReturningResult, 'window.value');
     expect(platform.javaScriptChannelParams!.name, 'TestChannel');
@@ -156,6 +183,102 @@ void main() {
     expect(supportsScrollbars, isTrue);
     expect(platform.overScrollMode, WebViewOverScrollMode.never);
   });
+
+  test('WebViewDataManager forwards clearing and preserves outcomes', () async {
+    final _FakePlatformWebViewDataManager platform =
+        _FakePlatformWebViewDataManager();
+    final WebViewDataClearingResult result =
+        await WebViewDataManager.fromPlatform(platform).clearAllWebsiteData();
+
+    expect(platform.clearCalls, 1);
+    expect(result.clearedDataTypes, contains(WebViewDataType.cookies));
+    expect(
+      result.unsupportedDataTypes,
+      contains(WebViewDataType.serviceWorkers),
+    );
+  });
+
+  test('OffscreenWebViewSession owns and closes its controller', () async {
+    final _FakePlatformWebViewController platform =
+        _FakePlatformWebViewController();
+    final WebViewController controller = WebViewController.fromPlatform(
+      platform,
+    );
+    final OffscreenWebViewSession session =
+        await OffscreenWebViewSession.fromController(controller);
+
+    expect(session.controller, same(controller));
+    expect(session.isClosed, isFalse);
+    await session.close();
+    await session.close();
+
+    expect(session.isClosed, isTrue);
+    expect(() => session.controller, throwsStateError);
+    expect(platform.offscreenCloseCalls, 1);
+  });
+
+  test('OffscreenWebViewSession caches synchronous close failures', () async {
+    final _FakePlatformWebViewController platform =
+        _FakePlatformWebViewController(closeError: StateError('close failed'));
+    final OffscreenWebViewSession session =
+        await OffscreenWebViewSession.fromController(
+          WebViewController.fromPlatform(platform),
+        );
+
+    final Future<void> firstClose = session.close();
+    final Future<void> secondClose = session.close();
+
+    expect(secondClose, same(firstClose));
+    await expectLater(firstClose, throwsStateError);
+    expect(platform.offscreenCloseCalls, 1);
+  });
+
+  test('OffscreenWebViewSession rejects unsupported platforms', () async {
+    final WebViewController controller = WebViewController.fromPlatform(
+      _FakePlatformWebViewController(supportsOffscreen: false),
+    );
+
+    await expectLater(
+      OffscreenWebViewSession.fromController(controller),
+      throwsUnsupportedError,
+    );
+  });
+
+  test(
+    'OffscreenWebViewSession rejects unsupported platforms before allocation',
+    () async {
+      final _FakeWebViewPlatform platform = _FakeWebViewPlatform(
+        supportsOffscreen: false,
+      );
+      WebViewPlatform.instance = platform;
+
+      await expectLater(
+        OffscreenWebViewSession.create(),
+        throwsUnsupportedError,
+      );
+
+      expect(platform.controllerCreationCalls, 0);
+    },
+  );
+
+  test(
+    'OffscreenWebViewSession releases an inconsistently unsupported controller',
+    () async {
+      final _FakeWebViewPlatform platform = _FakeWebViewPlatform(
+        supportsOffscreen: true,
+        controllerSupportsOffscreen: false,
+      );
+      WebViewPlatform.instance = platform;
+
+      await expectLater(
+        OffscreenWebViewSession.create(),
+        throwsUnsupportedError,
+      );
+
+      expect(platform.controllerCreationCalls, 1);
+      expect(platform.lastController?.offscreenCloseCalls, 1);
+    },
+  );
 
   test('WebViewController wraps platform permission requests', () async {
     final _FakePlatformWebViewController platform =
@@ -283,8 +406,14 @@ void main() {
 }
 
 class _FakePlatformWebViewController extends PlatformWebViewController {
-  _FakePlatformWebViewController()
-    : super.implementation(const PlatformWebViewControllerCreationParams());
+  _FakePlatformWebViewController({
+    this.supportsOffscreen = true,
+    this.closeError,
+  }) : super.implementation(const PlatformWebViewControllerCreationParams());
+
+  final bool supportsOffscreen;
+  final Object? closeError;
+  int offscreenCloseCalls = 0;
 
   String? filePath;
   String? assetKey;
@@ -294,6 +423,10 @@ class _FakePlatformWebViewController extends PlatformWebViewController {
   PlatformNavigationDelegate? navigationDelegate;
   String? javaScript;
   String? javaScriptReturningResult;
+  JavaScriptInvocationParams? asyncJavaScriptParams;
+  WebViewUserScript? addedUserScript;
+  String? removedUserScriptIdentifier;
+  bool removedAllUserScripts = false;
   JavaScriptChannelParams? javaScriptChannelParams;
   String? receivedJavaScriptMessage;
   String? removedJavaScriptChannel;
@@ -383,6 +516,45 @@ class _FakePlatformWebViewController extends PlatformWebViewController {
   Future<Object> runJavaScriptReturningResult(String javaScript) async {
     javaScriptReturningResult = javaScript;
     return 42;
+  }
+
+  @override
+  Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
+    asyncJavaScriptParams = params;
+    return params.arguments['value'];
+  }
+
+  @override
+  Future<bool> isOffscreenWebViewSupported() async => supportsOffscreen;
+
+  @override
+  Future<void> closeOffscreenWebView() {
+    offscreenCloseCalls += 1;
+    if (closeError != null) {
+      throw closeError!;
+    }
+    return Future<void>.value();
+  }
+
+  @override
+  Future<bool> isUserScriptInjectionSupported(
+    WebViewUserScriptInjectionTime injectionTime,
+  ) async => true;
+
+  @override
+  Future<String> addUserScript(WebViewUserScript userScript) async {
+    addedUserScript = userScript;
+    return 'script-1';
+  }
+
+  @override
+  Future<void> removeUserScript(String identifier) async {
+    removedUserScriptIdentifier = identifier;
+  }
+
+  @override
+  Future<void> removeAllUserScripts() async {
+    removedAllUserScripts = true;
   }
 
   @override
@@ -498,6 +670,54 @@ class _FakePlatformWebViewController extends PlatformWebViewController {
   @override
   Future<void> setOverScrollMode(WebViewOverScrollMode mode) async {
     overScrollMode = mode;
+  }
+}
+
+class _FakePlatformWebViewDataManager extends PlatformWebViewDataManager {
+  _FakePlatformWebViewDataManager()
+    : super.implementation(const PlatformWebViewDataManagerCreationParams());
+
+  int clearCalls = 0;
+
+  @override
+  Future<WebViewDataClearingResult> clearAllWebsiteData() async {
+    clearCalls += 1;
+    return WebViewDataClearingResult(
+      clearedDataTypes: WebViewDataType.values
+          .where(
+            (WebViewDataType type) => type != WebViewDataType.serviceWorkers,
+          )
+          .toSet(),
+      unsupportedDataTypes: const <WebViewDataType>{
+        WebViewDataType.serviceWorkers,
+      },
+    );
+  }
+}
+
+class _FakeWebViewPlatform extends WebViewPlatform {
+  _FakeWebViewPlatform({
+    required this.supportsOffscreen,
+    bool? controllerSupportsOffscreen,
+  }) : controllerSupportsOffscreen =
+           controllerSupportsOffscreen ?? supportsOffscreen;
+
+  final bool supportsOffscreen;
+  final bool controllerSupportsOffscreen;
+  int controllerCreationCalls = 0;
+  _FakePlatformWebViewController? lastController;
+
+  @override
+  bool get supportsOffscreenWebViews => supportsOffscreen;
+
+  @override
+  PlatformWebViewController createPlatformWebViewController(
+    PlatformWebViewControllerCreationParams params,
+  ) {
+    controllerCreationCalls += 1;
+    return lastController = _FakePlatformWebViewController(
+      supportsOffscreen: controllerSupportsOffscreen,
+    );
   }
 }
 
