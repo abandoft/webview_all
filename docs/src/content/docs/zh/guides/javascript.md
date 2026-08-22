@@ -33,6 +33,58 @@ final value = await controller.runJavaScriptReturningResult('1 + 2');
 | OHOS | 使用 ArkWeb `evaluateJavascript`。 |
 | Web | 同源内容直接 `eval`，插件管理的隔离 HTML 走来源校验消息桥；结果需可 JSON 序列化。 |
 
+## 等待 Promise
+
+脚本会返回 Promise，或需要传递结构化命名参数时，使用 `callAsyncJavaScript`：
+
+```dart
+final result = await controller.callAsyncJavaScript(
+  '''
+  const response = await fetch(endpoint);
+  return {status: response.status, body: await response.text()};
+  ''',
+  arguments: <String, Object?>{
+    'endpoint': 'https://example.com/api',
+  },
+  timeout: const Duration(seconds: 15),
+);
+```
+
+参数名必须是合法且非保留的 JavaScript identifier；参数值会被复制，只接受有限数值、字符串、布尔值、null、list 和字符串 key 的 map。Promise 的成功结果必须能转换为 JSON；脚本抛错或 Promise reject 会产生 `JavaScriptExecutionException`，超时会产生 `TimeoutException`。
+
+Android、iOS、macOS、Windows、Linux 和 OHOS 支持该接口。Web 支持同源内容和插件管理的隔离 HTML，直接跨域 iframe 仍不可访问。
+
+## Document-start 用户脚本
+
+需要在页面脚本之前提供 provider 或兼容层时，应先注册脚本再加载页面：
+
+```dart
+if (await controller.isUserScriptInjectionSupported(
+  WebViewUserScriptInjectionTime.documentStart,
+)) {
+  final scriptId = await controller.addUserScript(
+    const WebViewUserScript(
+      source: 'globalThis.appProvider = Object.freeze({version: 1});',
+      forMainFrameOnly: true,
+    ),
+  );
+
+  await controller.loadRequest(Uri.parse('https://example.com'));
+  // 后续可调用：await controller.removeUserScript(scriptId);
+}
+```
+
+必须等待 `addUserScript` 完成后再开始导航。所有受支持平台都在一致的私有函数作用域内执行脚本；需要让页面或其他用户脚本访问的值，必须显式写入 `globalThis`。该词法作用域并不是浏览器单独的 content world。脚本会应用于后续文档和 reload，不会补注入当前文档。`removeAllUserScripts` 只移除通过该接口注册的脚本，不会破坏插件内部的 channel 和 hook。
+
+| 平台 | Document-start 支持情况 |
+| --- | --- |
+| Android | 取决于系统 Android WebView 是否提供 `DOCUMENT_START_SCRIPT`，必须在运行时检查。 |
+| iOS/macOS | 通过 `WKUserScript` 支持。 |
+| Windows | 通过 WebView2 支持。 |
+| Linux | 通过 WebKitGTK 支持。 |
+| OHOS | 当前 ArkWeb bridge 未提供，能力检查返回 false。 |
+| Web | iframe API 无法保证早于页面脚本执行，能力检查返回 false。 |
+
 ## JavaScript Channel
 
 ```dart

@@ -7,7 +7,7 @@ description: 添加 webview_all，并在需要时显式依赖平台包。
 
 ```yaml
 dependencies:
-  webview_all: ^1.3.7
+  webview_all: ^1.3.8
 ```
 
 执行：
@@ -24,13 +24,13 @@ flutter pub get
 
 ```yaml
 dependencies:
-  webview_all: ^1.3.7
-  webview_all_windows: ^1.3.7
-  webview_all_linux: ^1.3.7
-  webview_all_ohos: ^1.3.7
-  webview_all_web: ^1.3.7
-  webview_all_android: ^1.3.7
-  webview_all_wkwebview: ^1.3.7
+  webview_all: ^1.3.8
+  webview_all_windows: ^1.3.8
+  webview_all_linux: ^1.3.8
+  webview_all_ohos: ^1.3.8
+  webview_all_web: ^1.3.8
+  webview_all_android: ^1.3.8
+  webview_all_wkwebview: ^1.3.8
 ```
 
 然后按需导入：

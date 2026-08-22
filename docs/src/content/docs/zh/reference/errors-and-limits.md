@@ -11,6 +11,8 @@ description: 异常、不可用能力和平台边界。
 | `loadFlutterAsset` | key 为空或 asset 不存在时失败。 |
 | `loadFile` | 文件不存在时失败；Web 不支持。 |
 | `runJavaScriptReturningResult` | 返回 `null`、`undefined` 或不可序列化值时失败。 |
+| `callAsyncJavaScript` | function body 为空、参数名非法或为保留字、参数不能转换为 JSON、数值非有限值、timeout 非正数时抛 `ArgumentError`；Promise reject 和运行时错误产生 `JavaScriptExecutionException`，超时产生 `TimeoutException`。 |
+| `addUserScript` | source 为空时抛 `ArgumentError`；注入阶段不可用时抛 `UnsupportedError`，应先检查 `isUserScriptInjectionSupported`。 |
 | `addJavaScriptChannel` | 重名 channel 会失败；部分平台还要求合法 JS identifier。 |
 | `setCookie` | cookie name/domain/path 非法时失败。 |
 
@@ -25,6 +27,11 @@ description: 异常、不可用能力和平台边界。
 | Web | SSL auth 决策 | 浏览器不暴露。 |
 | Web | 跨域 JS/scroll | 浏览器同源策略阻止。 |
 | Web | 查询其他 origin 的 Cookie | 返回空列表并打印一次说明；浏览器 JavaScript 无法检查对应 cookie jar。 |
+| Web | document-start 用户脚本 | iframe 无法保证早于页面脚本执行，能力检查返回 false。 |
+| Web | `WebViewDataManager.clearAllWebsiteData` | 所有类型均返回不支持，宿主页无权清理任意 iframe storage 或 `HttpOnly` Cookie。 |
+| OHOS | document-start 用户脚本 | 当前 ArkWeb bridge 没有确定性的 document-start 接口，能力检查返回 false。 |
+| Android | 较旧系统 WebView 的 document-start 用户脚本 | 能力检查返回 false，应用可跳过注册并继续运行。 |
+| Windows | 网站数据清理 | WebView2 profile API 不支持 session storage 和 service worker 注册；旧 Runtime 没有该接口时，所有类型均返回不支持。 |
 | macOS | 滚动位置、滚动回调、滚动条和 overscroll | fork 会打印缺少公开 WKWebView API 的说明并安全忽略；位置读取返回 `Offset.zero`。 |
 | macOS | 受系统版本限制的 WebKit 属性 | 背景色需要 macOS 12，inspect 需要 macOS 13.3；更早系统打印说明并安全忽略。 |
 
@@ -58,6 +65,10 @@ Web 可直接控制同源内容，并通过来源校验消息桥控制插件管�
 Web 的 fetch-backed 导航最多保留 100 条类型化历史记录。前进、后退直接恢复
 已保存的响应快照，不会重放修改型请求；只有显式调用 `reload()` 才重新请求。
 导航代理拒绝跳转时不会改变当前历史位置。
+
+## 网站数据清理结果
+
+`clearAllWebsiteData` 使用结果对象区分完整清理、引擎不支持和原生执行失败。生产环境的注销流程应检查 `result.isComplete`，否则继续检查 `unsupportedDataTypes` 和 `failures`。该接口不会退而清理浏览记录、密码、自动填充或 profile 设置。
 
 ## 回调失败安全
 

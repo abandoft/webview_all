@@ -1,6 +1,6 @@
 ---
 title: Capability Matrix
-description: Cross-platform feature support for webview_all 1.3.7.
+description: Cross-platform feature support on the latest webview_all route.
 ---
 
 Legend:
@@ -16,6 +16,7 @@ Legend:
 | Feature | Android | iOS | macOS | Windows | Linux | OHOS | Web |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `WebViewWidget` | Full | Full | Full | Full | Full | Full | Full |
+| Controller use without `WebViewWidget` | Full | Full | Full | Full | Full | No, ArkWeb must attach to `Web` | No, iframe must be attached |
 | `loadRequest` GET | Full | Full | Full | Full | Full | Full | Full |
 | `loadRequest` GET headers | Full | Full | Full | Full | Full | Full | Limited, CORS/fetch |
 | `loadRequest` POST body | Full | Full | Full | Full | Full | Full | Limited, CORS/fetch |
@@ -28,6 +29,7 @@ Legend:
 | `reload` | Full | Full | Full | Full | Full | Full | Limited, reloads last controller load |
 | `clearCache` | Full | Full | Full | Full | Full | Full | Limited, host-origin cache storage |
 | `clearLocalStorage` | Full | Full | Full | Full | Full | Full | Limited, host-origin storage |
+| Controller-independent website-data clearing | Limited on older System WebView | Full | Full | Limited categories and older runtimes | Full | Limited categories | No, reports unsupported |
 
 ## Navigation and Errors
 
@@ -49,6 +51,8 @@ Legend:
 | JavaScript enable/disable | Full | Full | Full | Full | Full | Full | Limited, iframe sandbox |
 | `runJavaScript` | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
 | `runJavaScriptReturningResult` | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML; JSON-serializable |
+| `callAsyncJavaScript` with named arguments | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML; cross-origin iframe unavailable |
+| Document-start user scripts | Runtime capability | Full | Full | Full | Full | No, capability returns false | No, capability returns false |
 | JavaScript channels | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
 | Console message callback | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
 | `alert` callback | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |

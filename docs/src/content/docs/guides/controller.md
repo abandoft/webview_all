@@ -3,7 +3,7 @@ title: Controller
 description: Load content, navigate, run JavaScript, control scroll, and tune WebView state.
 ---
 
-`WebViewController` is the central object. A controller can be attached to one `WebViewWidget` at a time and delegates all work to the active platform implementation.
+`WebViewController` is the central object. A controller can be attached to one `WebViewWidget` at a time and delegates all work to the active platform implementation. On platforms with offscreen support, loading, navigation callbacks, JavaScript, and channels can also run before or without attaching a widget.
 
 ## Construction
 
@@ -40,6 +40,35 @@ final platformController = WindowsWebViewController(
 
 final controller = WebViewController.fromPlatform(platformController);
 ```
+
+## Offscreen Native Use
+
+Use an owning session when no visible WebView is needed:
+
+```dart
+import 'dart:async';
+
+final session = await OffscreenWebViewSession.create();
+final controller = session.controller;
+final loaded = Completer<void>();
+
+try {
+  await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+  await controller.setNavigationDelegate(
+    NavigationDelegate(onPageFinished: (_) => loaded.complete()),
+  );
+  await controller.loadHtmlString('<script>window.price = 42;</script>');
+  await loaded.future;
+
+  final price = await controller.callAsyncJavaScript('return window.price;');
+} finally {
+  await session.close();
+}
+```
+
+`OffscreenWebViewSession.create` throws `UnsupportedError` on OHOS and Web. Android, iOS, macOS, Windows, and Linux can operate without a widget; the owned controller may still be displayed before the session is closed. `close()` is idempotent and permanently releases the session resources without adding `dispose()` to the common controller API.
+
+Offscreen execution still belongs to the application's Flutter engine, platform thread, window, and process lifecycle. It is not a background service or a separate isolate, and operating-system background restrictions still apply. Do not retain or use the owned controller after `close()` starts.
 
 ## Loading Content
 

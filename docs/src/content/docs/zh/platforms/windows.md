@@ -3,7 +3,7 @@ title: Windows
 description: WebView2 实现、运行时设置、API 和限制。
 ---
 
-Windows 由 `webview_all_windows 1.3.7` 提供，底层使用 Microsoft Edge WebView2。
+Windows 由 `webview_all_windows 1.3.8` 提供，底层使用 Microsoft Edge WebView2。
 
 | 项 | 值 |
 | --- | --- |
@@ -17,7 +17,7 @@ Windows 由 `webview_all_windows 1.3.7` 提供，底层使用 Microsoft Edge Web
 ## 环境初始化
 
 ```dart
-await WindowsWebViewController.initializeEnvironment(
+await WindowsWebViewController.ensureEnvironment(
   userDataPath: 'C:\\AppData\\MyApp\\WebView2',
 );
 
@@ -25,6 +25,20 @@ final version = await WindowsWebViewController.getWebViewVersion();
 ```
 
 需要自定义用户数据目录、浏览器路径或启动参数时，应在创建 controller 前调用。
+参数相同的多次调用会复用共享环境；参数冲突时会返回
+`environment_configuration_conflict`，不会静默切换数据区。旧的
+`initializeEnvironment` 保留给明确要求只能初始化一次的调用方。
+
+网站数据清理也可以直接携带环境参数，不再依赖调用顺序：
+
+```dart
+final manager = WebViewDataManager.fromPlatformCreationParams(
+  const WindowsWebViewDataManagerCreationParams(
+    userDataPath: 'C:\\AppData\\MyApp\\WebView2',
+  ),
+);
+final result = await manager.clearAllWebsiteData();
+```
 
 controller 初始化失败时，组件中心会显示错误和两个操作：
 
@@ -50,6 +64,7 @@ final params = const WindowsWebViewControllerCreationParams(
 
 | API | 作用 |
 | --- | --- |
+| `ensureEnvironment` | 幂等创建或复用配置一致的共享 WebView2 环境。 |
 | `openDevTools` | 打开 WebView2 DevTools。 |
 | `suspend` / `resume` | 暂停/恢复 WebView。 |
 | `setPopupWindowPolicy` | 运行时修改 popup 策略。 |
@@ -128,7 +143,7 @@ await manager.setWindowsCookie(
   [WebView2 上游问题](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5663)
   记录了 Windows Server 和虚拟化环境中的失败反馈。
 - 滚动条和 overscroll 通过 CSS 注入实现。
-- 环境初始化应只做一次，并尽量早于 controller 创建。
+- 自定义环境参数应早于 controller 创建，或通过 `WindowsWebViewDataManagerCreationParams` 将相同参数传给数据清理操作。
 - WebView2 environment、composition texture 或帧捕获启动失败时会返回
   `PlatformException`，不再因原生断言终止进程。
 - 初始化支持幂等重试；显式释放或 finalizer 兜底时，native channel、event

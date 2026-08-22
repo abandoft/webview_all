@@ -3,7 +3,7 @@ title: Android
 description: Android WebView 实现、API 和限制。
 ---
 
-Android 由 `webview_all_android ^1.3.7` 提供，`webview_all` 将它注册为默认 Android 实现。
+Android 由 `webview_all_android ^1.3.8` 提供，`webview_all` 将它注册为默认 Android 实现。
 
 | 项 | 值 |
 | --- | --- |

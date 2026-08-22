@@ -3,7 +3,7 @@ title: Controller
 description: 加载内容、导航、执行 JavaScript、控制滚动和 WebView 状态。
 ---
 
-`WebViewController` 是核心控制对象。一个 controller 同一时间只能绑定到一个 `WebViewWidget`，具体操作会委托给当前平台实现。
+`WebViewController` 是核心控制对象。一个 controller 同一时间只能绑定到一个 `WebViewWidget`，具体操作会委托给当前平台实现。在支持离屏运行的平台上，不创建组件也可以加载内容、接收导航回调、执行 JavaScript 和使用 channel。
 
 ## 创建
 
@@ -40,6 +40,35 @@ final platformController = WindowsWebViewController(
 
 final controller = WebViewController.fromPlatform(platformController);
 ```
+
+## 原生离屏使用
+
+不需要显示页面时，使用独立的所有权会话：
+
+```dart
+import 'dart:async';
+
+final session = await OffscreenWebViewSession.create();
+final controller = session.controller;
+final loaded = Completer<void>();
+
+try {
+  await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+  await controller.setNavigationDelegate(
+    NavigationDelegate(onPageFinished: (_) => loaded.complete()),
+  );
+  await controller.loadHtmlString('<script>window.price = 42;</script>');
+  await loaded.future;
+
+  final price = await controller.callAsyncJavaScript('return window.price;');
+} finally {
+  await session.close();
+}
+```
+
+OHOS 和 Web 调用 `OffscreenWebViewSession.create` 会抛出 `UnsupportedError`。Android、iOS、macOS、Windows 和 Linux 可以不创建组件运行，会话关闭前仍可把其 controller 交给组件显示。`close()` 可重复调用，并会确定性释放会话资源，同时不向公共 controller 增加 `dispose()`。
+
+离屏运行仍依赖当前应用的 Flutter engine、平台线程、窗口和进程生命周期，并不是后台服务或独立 isolate，也不能绕过系统后台限制。`close()` 开始后不得继续持有或使用其 controller。
 
 ## 加载内容
 

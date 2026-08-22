@@ -55,13 +55,15 @@ if (version == null) {
 }
 ```
 
-需要自定义用户数据目录或浏览器路径时，在创建 controller 前初始化环境：
+需要自定义用户数据目录或浏览器路径时，在创建 controller 前确保共享环境使用所需配置：
 
 ```dart
-await WindowsWebViewController.initializeEnvironment(
+await WindowsWebViewController.ensureEnvironment(
   userDataPath: 'C:\\Users\\Public\\MyApp\\WebView2',
 );
 ```
+
+参数相同的多次调用会安全复用已有环境；后续参数冲突时会明确失败，不会静默使用或替换其他数据区。
 
 ## Linux
 

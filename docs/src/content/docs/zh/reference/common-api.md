@@ -27,6 +27,17 @@ import 'package:webview_all/webview_all.dart';
 | `loadFile` | `Future<void>` | 加载设备文件。 |
 | `loadFlutterAsset` | `Future<void>` | 加载 Flutter asset。 |
 | `loadHtmlString` | `Future<void>` | 加载内存 HTML。 |
+| `isOffscreenWebViewSupported` | `Future<bool>` | controller 是否可在没有 `WebViewWidget` 时运行。 |
+
+## `OffscreenWebViewSession`
+
+| API | 作用 |
+| --- | --- |
+| `create()` | 使用默认参数创建并持有离屏 controller。 |
+| `fromPlatformCreationParams(params)` | 使用平台参数创建并持有 controller。 |
+| `fromController(controller)` | 接管已有 controller 的所有权。 |
+| `controller` | 在关闭开始前返回会话持有的 controller。 |
+| `close()` | 可重复调用，并确定性永久释放会话资源。 |
 
 导航：
 
@@ -47,6 +58,10 @@ JavaScript：
 | `setJavaScriptMode` | `Future<void>` |
 | `runJavaScript` | `Future<void>` |
 | `runJavaScriptReturningResult` | `Future<Object>` |
+| `callAsyncJavaScript` | `Future<Object?>` |
+| `isUserScriptInjectionSupported` | `Future<bool>` |
+| `addUserScript` | `Future<String>`，返回不透明脚本标识 |
+| `removeUserScript` / `removeAllUserScripts` | `Future<void>` |
 | `addJavaScriptChannel(String name, {required void Function(JavaScriptMessage) onMessageReceived})` | `Future<void>` |
 | `removeJavaScriptChannel` | `Future<void>` |
 | `setOnConsoleMessage` | `Future<void>` |
@@ -95,6 +110,14 @@ JavaScript：
 | `setCookie(WebViewCookie cookie)` | `Future<void>` | 设置通用 cookie。 |
 | `getCookies({required Uri domain})` | `Future<List<WebViewCookie>>` | 获取指定域名可见 cookie。 |
 
-## 导出的接口类型
+## `WebViewDataManager`
 
-`webview_all.dart` 导出 `LoadRequestMethod`、`NavigationDecision`、`NavigationRequest`、`WebResourceError`、`HttpResponseError`、`HttpAuthRequest`、`WebViewCredential`、`JavaScriptMode`、`JavaScriptMessage`、`JavaScriptConsoleMessage`、JS dialog request、`ScrollPositionChange`、`WebViewCookie`、`WebViewOverScrollMode`、`WebViewPermissionResourceType` 和 `WebViewPlatform` 等类型。
+| 方法 | 返回 | 作用 |
+| --- | --- | --- |
+| `clearAllWebsiteData()` | `Future<WebViewDataClearingResult>` | 无需 controller 即可清理网站数据，并返回已清理、不支持和失败的数据类型。 |
+
+默认构造函数使用当前平台的默认持久化数据区；也可通过 `fromPlatformCreationParams` 或 `fromPlatform` 使用平台参数或已有平台实现。
+
+## 导出的类型
+
+`webview_all.dart` 导出 `OffscreenWebViewSession`、`LoadRequestMethod`、`NavigationDecision`、`NavigationRequest`、`WebResourceError`、`HttpResponseError`、`HttpAuthRequest`、`WebViewCredential`、`JavaScriptMode`、`JavaScriptMessage`、`JavaScriptConsoleMessage`、`JavaScriptExecutionException`、`JavaScriptInvocationParams`、JS dialog request、`ScrollPositionChange`、`WebViewCookie`、`WebViewDataClearingResult`、`WebViewDataType`、`WebViewUserScript`、`WebViewUserScriptInjectionTime`、`WebViewOverScrollMode`、`WebViewPermissionResourceType` 和 `WebViewPlatform` 等类型。

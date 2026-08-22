@@ -13,6 +13,8 @@ This page lists important failures and platform limits that production code shou
 | `loadFlutterAsset('')` | Throws or asserts because asset keys must not be empty. |
 | `loadFile` | Throws when the file does not exist on platforms that can validate it. |
 | `runJavaScriptReturningResult` | Throws when the result is `null`, `undefined`, or cannot be serialized. |
+| `callAsyncJavaScript` | Throws `ArgumentError` for an empty body, invalid/reserved argument names, non-JSON arguments, non-finite numbers, or a non-positive timeout; rejected Promises and runtime errors produce `JavaScriptExecutionException`, and expiration produces `TimeoutException`. |
+| `addUserScript` | Throws `ArgumentError` for empty source and `UnsupportedError` when the requested injection point is unavailable. Check `isUserScriptInjectionSupported` first. |
 | `addJavaScriptChannel` | Throws for duplicate names. Some platforms also require valid JavaScript identifiers. |
 | `setCookie` | Throws for invalid cookie names, domains, or paths. |
 
@@ -27,6 +29,11 @@ This page lists important failures and platform limits that production code shou
 | Web | recoverable SSL decisions | `WebPlatformSslAuthError.proceed()` and `cancel()` throw `UnsupportedError`. |
 | Web | cross-origin JavaScript and scroll APIs | Throws `UnsupportedError` or silently cannot install hooks when browser policy blocks access. |
 | Web | cookie request for another origin | Returns an empty list and logs once; browser JavaScript cannot inspect that cookie jar. |
+| Web | document-start user scripts | Capability returns false because iframe APIs cannot guarantee execution before page scripts. |
+| Web | `WebViewDataManager.clearAllWebsiteData` | Returns every category as unsupported; a page cannot clear arbitrary iframe storage or `HttpOnly` cookies. |
+| OHOS | document-start user scripts | Capability returns false because the current ArkWeb bridge has no deterministic document-start API. |
+| Android | document-start user scripts on an older System WebView | Capability returns false; the app can continue without registering the script. |
+| Windows | website-data clearing | Session storage and service worker registrations are unsupported by the WebView2 profile API. Older runtimes without that API report every category as unsupported. |
 | macOS | scroll position, scroll callbacks, scrollbar visibility, and overscroll | The fork logs the missing public WKWebView API and safely no-ops; position reads return `Offset.zero`. |
 | macOS | version-gated WebKit properties | Background color requires macOS 12 and inspection requires macOS 13.3. Earlier versions log and safely no-op. |
 
@@ -81,6 +88,10 @@ Use same-origin content, `loadHtmlString`, or fetch-backed requests when those
 features are required. Plugin-managed isolated HTML uses a controlled message
 bridge. Direct cross-origin iframe URLs remain inaccessible, and isolated HTML
 keeps browser-native `confirm` and `prompt` dialogs.
+
+## Website-Data Clearing Results
+
+`clearAllWebsiteData` is intentionally result-based so production logout code can distinguish a complete wipe from an engine limitation or native failure. Check `result.isComplete`; inspect `unsupportedDataTypes` and `failures` otherwise. The API does not fall back to clearing browsing history, passwords, autofill, or profile settings.
 
 Web fetch-backed navigation keeps at most 100 typed history entries. Back and
 forward restore the stored response snapshot and never replay a mutating

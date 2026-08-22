@@ -40,6 +40,12 @@ await controller.addJavaScriptChannel(
 
 不要直接向页面暴露 token、文件路径或高权限命令。
 
+## 用户脚本与异步调用
+
+Document-start 脚本会以页面 JavaScript 权限在后续匹配文档中执行。只注册应用自身可信的代码；除非子 frame 确实需要 provider，否则保持 `forMainFrameOnly`；暴露钱包、身份或支付 bridge 前，应先限制可导航的 origin。移除脚本只会阻止后续文档注入，无法撤销当前页面已经执行的代码。
+
+`callAsyncJavaScript` 会编码命名参数，避免手工拼接产生转义错误，但它不是安全隔离层：function 和参数仍在页面上下文执行。不要把可重复使用的 secret 传给不可信页面，远程页面应使用较短 timeout。
+
 ## TLS
 
 生产环境默认取消证书错误：
@@ -55,6 +61,8 @@ onSslAuthError: (SslAuthError error) async {
 ## Cookie
 
 认证 cookie 优先由服务端设置 `Secure`、`HttpOnly`、`SameSite`。客户端 `WebViewCookieManager` 并不能在所有平台设置所有属性。Windows 虽有 `WindowsWebViewCookie` 扩展元数据，但服务端 cookie 仍是更稳妥的来源。
+
+注销时应先让服务端会话失效，再调用 `WebViewDataManager.clearAllWebsiteData()` 并检查结果。未逐项处理不支持的类型时，不能把部分成功视为本地数据已全部清理。旧版 Android System WebView、Windows、OHOS 和 Web 可能返回部分结果。Windows 还应释放仍在使用的 controller，避免其浏览上下文内的 session storage 继续可访问。
 
 ## Mixed Content
 

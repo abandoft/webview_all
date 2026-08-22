@@ -31,6 +31,35 @@ final hadCookies = await cookies.clearCookies();
 
 Cookie validation rejects empty names, browser-rejected characters, and invalid paths. A non-empty path must start with `/`.
 
+## Clear All Website Data
+
+Use `WebViewDataManager` for logout cleanup when no controller is mounted:
+
+```dart
+final result = await WebViewDataManager().clearAllWebsiteData();
+
+if (!result.isComplete) {
+  debugPrint('Unsupported: ${result.unsupportedDataTypes}');
+  debugPrint('Failed: ${result.failures}');
+}
+```
+
+The manager targets the default persistent data store shared by normal WebViews. It clears the website-data categories exposed by the platform—cookies, cache, local/session storage, IndexedDB, WebSQL, Cache Storage, and service workers—and reports every category as cleared, unsupported, or failed. Always inspect `isComplete` before treating logout cleanup as successful. Passwords, autofill data, download history, browsing history, and engine settings are outside this API.
+
+On Windows, this operation creates a temporary controller and may initialize
+the shared WebView2 environment. When custom options are required, construct
+the manager with `WindowsWebViewDataManagerCreationParams`; equivalent options
+reuse an existing environment and conflicting options fail explicitly.
+
+| Platform | Behavior |
+| --- | --- |
+| Android | Uses AndroidX WebKit's complete browsing-data operation when supported; older System WebView versions clear cookies, cache, local storage, and WebSQL, and report the remaining categories as unsupported. |
+| iOS/macOS | Clears the corresponding types from `WKWebsiteDataStore.default()`. |
+| Windows | Clears the cookies, DOM storage types, and disk cache exposed by WebView2. Session storage and service worker registrations are reported as unsupported; runtimes without the profile clearing API report every category as unsupported. |
+| Linux | Clears all website data from the default WebKitGTK context. |
+| OHOS | Clears cookies and ArkWeb-exposed local/session storage and WebSQL; other categories are reported as unsupported. |
+| Web | Reports all categories as unsupported because a host page cannot clear arbitrary iframe origins or `HttpOnly` cookies. |
+
 ## Platform Behavior
 
 | Platform | Storage | Notes |

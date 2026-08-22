@@ -33,6 +33,35 @@ final hadCookies = await cookies.clearCookies();
 
 cookie 名称、domain 和 path 会做基本校验。非空 path 必须以 `/` 开头。
 
+## 清理全部网站数据
+
+注销时即使没有正在使用的 controller，也可直接清理共享数据：
+
+```dart
+final result = await WebViewDataManager().clearAllWebsiteData();
+
+if (!result.isComplete) {
+  debugPrint('不支持：${result.unsupportedDataTypes}');
+  debugPrint('失败：${result.failures}');
+}
+```
+
+该 manager 操作普通 WebView 共用的默认持久化数据区，按平台能力清理 Cookie、缓存、local/session storage、IndexedDB、WebSQL、Cache Storage 和 service worker，并明确返回每类数据是已清理、不支持还是失败。注销流程必须检查 `isComplete`，不能把部分成功当成完整清理。密码、自动填充、下载记录、浏览记录和引擎设置不在该接口范围内。
+
+Windows 会为该操作创建临时 controller，因此可能同时初始化共享 WebView2
+环境。需要自定义环境参数时，通过
+`WindowsWebViewDataManagerCreationParams` 构造 manager；相同配置会复用已有
+环境，配置冲突则明确失败。
+
+| 平台 | 行为 |
+| --- | --- |
+| Android | 系统 WebView 支持时使用 AndroidX WebKit 的完整清理接口；旧版本清理 Cookie、缓存、local storage 和 WebSQL，其余类型标记为不支持。 |
+| iOS/macOS | 清理 `WKWebsiteDataStore.default()` 中的对应数据类型。 |
+| Windows | 清理 WebView2 暴露的 Cookie、DOM storage 类型和磁盘缓存；session storage 与 service worker 注册标记为不支持，旧 Runtime 没有 profile 清理接口时全部标记为不支持。 |
+| Linux | 清理默认 WebKitGTK context 的全部网站数据。 |
+| OHOS | 清理 Cookie，以及 ArkWeb 暴露的 local/session storage 和 WebSQL；其余类型标记为不支持。 |
+| Web | 全部标记为不支持，因为宿主页无权清理任意 iframe origin 或 `HttpOnly` Cookie。 |
+
 ## 平台差异
 
 | 平台 | 存储 | 说明 |

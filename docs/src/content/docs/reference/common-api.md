@@ -33,6 +33,17 @@ Loading:
 | `loadFile(String absoluteFilePath)` | `Future<void>` | Loads a device file. |
 | `loadFlutterAsset(String key)` | `Future<void>` | Loads a Flutter asset. |
 | `loadHtmlString(String html, {String? baseUrl})` | `Future<void>` | Loads in-memory HTML. |
+| `isOffscreenWebViewSupported()` | `Future<bool>` | Whether controller operations can run without `WebViewWidget`. |
+
+## `OffscreenWebViewSession`
+
+| API | Use |
+| --- | --- |
+| `OffscreenWebViewSession.create()` | Creates and owns an offscreen controller with default params. |
+| `OffscreenWebViewSession.fromPlatformCreationParams(params)` | Creates and owns a controller with platform params. |
+| `OffscreenWebViewSession.fromController(controller)` | Transfers ownership of an existing controller. |
+| `controller` | Returns the owned controller until closing starts. |
+| `close()` | Idempotently and permanently releases the session resources. |
 
 Navigation:
 
@@ -60,6 +71,11 @@ JavaScript:
 | `setJavaScriptMode(JavaScriptMode javaScriptMode)` | `Future<void>` |
 | `runJavaScript(String javaScript)` | `Future<void>` |
 | `runJavaScriptReturningResult(String javaScript)` | `Future<Object>` |
+| `callAsyncJavaScript(String functionBody, {Map<String, Object?> arguments, Duration timeout})` | `Future<Object?>` |
+| `isUserScriptInjectionSupported(WebViewUserScriptInjectionTime injectionTime)` | `Future<bool>` |
+| `addUserScript(WebViewUserScript userScript)` | `Future<String>` opaque script identifier |
+| `removeUserScript(String identifier)` | `Future<void>` |
+| `removeAllUserScripts()` | `Future<void>` |
 | `addJavaScriptChannel(String name, {required void Function(JavaScriptMessage) onMessageReceived})` | `Future<void>` |
 | `removeJavaScriptChannel(String name)` | `Future<void>` |
 | `setOnConsoleMessage(callback)` | `Future<void>` |
@@ -148,9 +164,25 @@ Methods:
 | `setCookie(WebViewCookie cookie)` | `Future<void>` | Sets a common cookie. |
 | `getCookies({required Uri domain})` | `Future<List<WebViewCookie>>` | Gets cookies visible for a domain. |
 
-## Exported Platform Interface Types
+## `WebViewDataManager`
 
-`webview_all.dart` exports the platform interface types needed by app code, including:
+Constructors:
+
+| Constructor | Use |
+| --- | --- |
+| `WebViewDataManager()` | Uses the current platform's default persistent website-data store. |
+| `WebViewDataManager.fromPlatformCreationParams(params)` | Uses platform-specific data-manager params. |
+| `WebViewDataManager.fromPlatform(platform)` | Wraps an existing `PlatformWebViewDataManager`. |
+
+Methods:
+
+| Method | Return | Use |
+| --- | --- | --- |
+| `clearAllWebsiteData()` | `Future<WebViewDataClearingResult>` | Clears controller-independent website data and reports cleared, unsupported, and failed categories. |
+
+## Exported Types
+
+`webview_all.dart` exports the public types needed by app code, including:
 
 - `LoadRequestMethod`
 - `NavigationDecision`
@@ -162,12 +194,19 @@ Methods:
 - `JavaScriptMode`
 - `JavaScriptMessage`
 - `JavaScriptConsoleMessage`
+- `JavaScriptExecutionException`
+- `JavaScriptInvocationParams`
 - `JavaScriptAlertDialogRequest`
 - `JavaScriptConfirmDialogRequest`
 - `JavaScriptTextInputDialogRequest`
 - `ScrollPositionChange`
 - `WebViewCookie`
+- `WebViewDataClearingResult`
+- `WebViewDataType`
 - `WebViewOverScrollMode`
 - `WebViewPermissionResourceType`
 - `WebViewPlatform`
-- platform creation params for controller, delegate, widget, and cookie manager
+- `WebViewUserScript`
+- `WebViewUserScriptInjectionTime`
+- `OffscreenWebViewSession`
+- platform creation params for controller, delegate, widget, cookie manager, and data manager

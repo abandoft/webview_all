@@ -17,7 +17,7 @@ if (controller.platform is WindowsWebViewController) {
 
 Package: `webview_all_android`.
 
-Main types: `AndroidWebViewController`, `AndroidWebViewWidget`, `AndroidNavigationDelegate`, `AndroidWebViewCookieManager`, `AndroidLoadFileParams`, `AndroidJavaScriptChannelParams`, `AndroidWebViewPermissionRequest`, `AndroidWebViewPermissionResourceType`, `AndroidSslAuthError`, `AndroidWebResourceError`, `AndroidUrlChange`, `FileSelectorParams`.
+Main types: `AndroidWebViewController`, `AndroidWebViewWidget`, `AndroidNavigationDelegate`, `AndroidWebViewCookieManager`, `AndroidWebViewDataManager`, `AndroidLoadFileParams`, `AndroidJavaScriptChannelParams`, `AndroidWebViewPermissionRequest`, `AndroidWebViewPermissionResourceType`, `AndroidSslAuthError`, `AndroidWebResourceError`, `AndroidUrlChange`, `FileSelectorParams`.
 
 Important APIs: debugging, file/content access, media gesture, text zoom, wide viewport, geolocation, file selector, custom fullscreen widget, console, JS dialogs, scrollbars, overscroll, mixed content, WebAuthn/passkeys, Payment Request, window insets.
 
@@ -25,7 +25,7 @@ Important APIs: debugging, file/content access, media gesture, text zoom, wide v
 
 Package: `webview_all_wkwebview`.
 
-Main types: `WebKitWebViewController`, `WebKitWebViewWidget`, `WebKitNavigationDelegate`, `WebKitWebViewCookieManager`, `WebKitLoadFileParams`, `WebKitJavaScriptChannelParams`, `WebKitWebViewPermissionRequest`, `WebKitSslAuthError`, `WebKitWebResourceError`.
+Main types: `WebKitWebViewController`, `WebKitWebViewWidget`, `WebKitNavigationDelegate`, `WebKitWebViewCookieManager`, `WebKitWebViewDataManager`, `WebKitLoadFileParams`, `WebKitJavaScriptChannelParams`, `WebKitWebViewPermissionRequest`, `WebKitSslAuthError`, `WebKitWebResourceError`.
 
 Important APIs: inline media, media gesture, App-Bound Domains, JavaScript popup policy, back/forward gestures, link preview, inspectable, WebKit local file read access, permission prompt.
 
@@ -33,15 +33,15 @@ Important APIs: inline media, media gesture, App-Bound Domains, JavaScript popup
 
 Package: `webview_all_windows`.
 
-Main types: `WindowsWebViewController`, `WindowsWebViewWidget`, `WindowsNavigationDelegate`, `WindowsWebViewCookieManager`, `WindowsWebViewCookie`, `WindowsPlatformSslAuthError`, `WindowsWebResourceRequest`, `WindowsWebResourceResponse`, `WindowsWebResourceError`.
+Main types: `WindowsWebViewController`, `WindowsWebViewWidget`, `WindowsNavigationDelegate`, `WindowsWebViewCookieManager`, `WindowsWebViewDataManager`, `WindowsWebViewCookie`, `WindowsPlatformSslAuthError`, `WindowsWebResourceRequest`, `WindowsWebResourceResponse`, `WindowsWebResourceError`.
 
-Important APIs: `initializeEnvironment`, `getWebViewVersion`, `openDevTools`, `suspend`, `resume`, `setPopupWindowPolicy`, `setZoomFactor`, `setCacheDisabled`, Windows-specific deterministic `dispose`, full cookie set/query/delete. Removing the widget does not dispose a reusable controller; call `dispose` only when its owner will never use it again.
+Important APIs: idempotent `ensureEnvironment`, strict `initializeEnvironment`, `getWebViewVersion`, `openDevTools`, `suspend`, `resume`, `setPopupWindowPolicy`, `setZoomFactor`, `setCacheDisabled`, Windows-specific deterministic `dispose`, full cookie set/query/delete. `WindowsWebViewDataManagerCreationParams` carries the same environment options into controller-independent data cleanup. Removing the widget does not dispose a reusable controller; call `dispose` only when its owner will never use it again.
 
 ## Linux
 
 Package: `webview_all_linux`.
 
-Main types: `LinuxWebViewController`, `LinuxWebViewWidget`, `LinuxNavigationDelegate`, `LinuxWebViewCookieManager`, `LinuxWebResourceRequest`, `LinuxWebResourceResponse`, `LinuxWebResourceError`, `LinuxPlatformWebViewPermissionRequest`, `LinuxPlatformSslAuthError`.
+Main types: `LinuxWebViewController`, `LinuxWebViewWidget`, `LinuxNavigationDelegate`, `LinuxWebViewCookieManager`, `LinuxWebViewDataManager`, `LinuxWebResourceRequest`, `LinuxWebResourceResponse`, `LinuxWebResourceError`, `LinuxPlatformWebViewPermissionRequest`, `LinuxPlatformSslAuthError`.
 
 Important APIs: WebKitGTK developer extras, Inspector, JS popup, media settings, page cache, file URL access, font size, zoom factor, and the pre-existing Linux-specific `dispose()` for optional early release. Normal cleanup is automatic through its finalizer; no common controller lifecycle API is added.
 
@@ -49,7 +49,7 @@ Important APIs: WebKitGTK developer extras, Inspector, JS popup, media settings,
 
 Package: `webview_all_ohos`.
 
-Main types: `OhosWebViewController`, `OhosWebViewWidget`, `OhosNavigationDelegate`, `OhosWebViewCookieManager`, `OhosJavaScriptChannelParams`, `OhosWebViewPermissionRequest`, `OhosWebViewPermissionResourceType`, `OhosUrlChange`, `OhosWebResourceRequest`, `OhosWebResourceResponse`, `OhosWebResourceError`, `OhosPlatformSslAuthError`, `FileSelectorParams`.
+Main types: `OhosWebViewController`, `OhosWebViewWidget`, `OhosNavigationDelegate`, `OhosWebViewCookieManager`, `OhosWebViewDataManager`, `OhosJavaScriptChannelParams`, `OhosWebViewPermissionRequest`, `OhosWebViewPermissionResourceType`, `OhosUrlChange`, `OhosWebResourceRequest`, `OhosWebResourceResponse`, `OhosWebResourceError`, `OhosPlatformSslAuthError`, `FileSelectorParams`.
 
 Important APIs: ArkWeb debugging, native WebView ID, DOM storage, multiple windows, viewport, zoom, file access, media gesture, file selector, geolocation prompt, custom fullscreen widget, third-party cookies.
 
@@ -57,6 +57,6 @@ Important APIs: ArkWeb debugging, native WebView ID, DOM storage, multiple windo
 
 Package: `webview_all_web`.
 
-Main types: `WebWebViewController`, `WebWebViewWidget`, `WebNavigationDelegate`, `WebWebViewCookieManager`, `WebWebResourceRequest`, `WebWebResourceResponse`, `WebWebViewPermissionRequest`, `WebPlatformSslAuthError`, `HttpRequestFactory`, `ContentType`.
+Main types: `WebWebViewController`, `WebWebViewWidget`, `WebNavigationDelegate`, `WebWebViewCookieManager`, `WebWebViewDataManager`, `WebWebResourceRequest`, `WebWebResourceResponse`, `WebWebViewPermissionRequest`, `WebPlatformSslAuthError`, `HttpRequestFactory`, `ContentType`.
 
 Important APIs: `setIFrameAttribute`, `setIFrameAllow`, `setIFrameSandbox`, `setIFrameReferrerPolicy`, fetch-backed request.

@@ -58,14 +58,16 @@ if (version == null) {
 }
 ```
 
-Applications that need a custom user data directory or a fixed browser executable should initialize the shared environment before creating controllers:
+Applications that need a custom user data directory or a fixed browser executable should ensure that the shared environment is configured before creating controllers:
 
 ```dart
-await WindowsWebViewController.initializeEnvironment(
+await WindowsWebViewController.ensureEnvironment(
   userDataPath: 'C:\\Users\\Public\\MyApp\\WebView2',
   additionalArguments: '--disable-features=msSmartScreenProtection',
 );
 ```
+
+Equivalent calls safely reuse the same environment. A later call with different options fails instead of silently using or replacing a different profile.
 
 ## Linux
 

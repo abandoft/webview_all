@@ -1,6 +1,6 @@
 ---
 title: 能力矩阵
-description: webview_all 1.3.7 的跨平台能力覆盖。
+description: webview_all latest 路由的跨平台能力覆盖。
 ---
 
 标记说明：
@@ -16,6 +16,7 @@ description: webview_all 1.3.7 的跨平台能力覆盖。
 | 能力 | Android | iOS | macOS | Windows | Linux | OHOS | Web |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `WebViewWidget` | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 |
+| 不创建 `WebViewWidget` 使用 controller | 完整 | 完整 | 完整 | 完整 | 完整 | 不支持，ArkWeb 必须绑定 `Web` | 不支持，必须挂载 iframe |
 | `loadRequest` GET | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 |
 | GET headers | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 有限制，CORS/fetch |
 | POST body | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 有限制，CORS/fetch |
@@ -24,6 +25,7 @@ description: webview_all 1.3.7 的跨平台能力覆盖。
 | `loadFlutterAsset` | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 |
 | `loadHtmlString` | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 |
 | 历史前进/后退 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 有限制，controller 维护逻辑历史 |
+| 无 controller 清理网站数据 | 旧版 System WebView 有限制 | 完整 | 完整 | 部分类型及旧 Runtime 有限制 | 完整 | 支持部分类型 | 不支持，结果会明确标记 |
 
 ## 导航和错误
 
@@ -45,6 +47,8 @@ description: webview_all 1.3.7 的跨平台能力覆盖。
 | JS 开关 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | iframe sandbox |
 | 执行 JS | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 同源或插件管理的隔离 HTML |
 | JS 返回值 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 同源或隔离 bridge，且需可序列化 |
+| `callAsyncJavaScript` 与命名参数 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 同源或插件管理的隔离 HTML；直接跨域 iframe 不可用 |
+| Document-start 用户脚本 | 运行时检测 | 完整 | 完整 | 完整 | 完整 | 不支持，能力检查返回 false | 不支持，能力检查返回 false |
 | JS channel | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 同源或插件管理的隔离 HTML |
 | Console | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 同源或插件管理的隔离 HTML |
 | JS dialog | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | alert 可走 bridge；隔离 HTML 的 confirm/prompt 由浏览器处理 |

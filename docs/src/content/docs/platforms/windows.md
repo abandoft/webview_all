@@ -3,7 +3,7 @@ title: Windows
 description: WebView2 implementation, runtime setup, APIs, and limits.
 ---
 
-Windows is provided by `webview_all_windows 1.3.7` and uses Microsoft Edge WebView2.
+Windows is provided by `webview_all_windows 1.3.8` and uses Microsoft Edge WebView2.
 
 ## Engine
 
@@ -20,14 +20,28 @@ Windows is provided by `webview_all_windows 1.3.7` and uses Microsoft Edge WebVi
 
 ## Environment
 
-Initialize WebView2 before constructing controllers when you need custom paths or arguments:
+Ensure WebView2 is configured before constructing controllers when you need custom paths or arguments:
 
 ```dart
-await WindowsWebViewController.initializeEnvironment(
+await WindowsWebViewController.ensureEnvironment(
   userDataPath: 'C:\\AppData\\MyApp\\WebView2',
   browserExePath: null,
   additionalArguments: '--disable-features=msSmartScreenProtection',
 );
+```
+
+Equivalent calls reuse the active environment. A call with conflicting options fails with `environment_configuration_conflict`; it never silently switches profiles. The older `initializeEnvironment` remains available for callers that intentionally require a single strict initialization call.
+
+Website-data cleanup can carry its own environment configuration, avoiding an ordering dependency:
+
+```dart
+final manager = WebViewDataManager.fromPlatformCreationParams(
+  const WindowsWebViewDataManagerCreationParams(
+    userDataPath: 'C:\\AppData\\MyApp\\WebView2',
+    additionalArguments: '--disable-features=msSmartScreenProtection',
+  ),
+);
+final result = await manager.clearAllWebsiteData();
 ```
 
 Check runtime version:
@@ -80,6 +94,7 @@ final widget = WebViewWidget.fromPlatformCreationParams(
 
 | API | Purpose |
 | --- | --- |
+| `ensureEnvironment(...)` | Idempotently creates or reuses the matching shared WebView2 environment. |
 | `openDevTools()` | Opens WebView2 DevTools. |
 | `suspend()` / `resume()` | Suspends or resumes the WebView. |
 | `setPopupWindowPolicy(policy)` | Changes popup handling after creation. |
@@ -185,7 +200,7 @@ Windows-specific response classes add request and response detail:
 - WebAuthn availability is owned by the WebView2 Runtime, Windows, and the
   credential provider. An [upstream WebView2 report](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5663)
   tracks failures observed in Windows Server and virtualized environments.
-- Runtime initialization should happen once and before creating controllers.
+- Configure custom environment options before creating controllers or pass the same options to `WindowsWebViewDataManagerCreationParams`.
 - WebView2 environment, composition texture, and frame-capture startup failures
   are returned as `PlatformException`s instead of terminating the process
   through native assertions.

@@ -42,6 +42,58 @@ Return-value behavior:
 
 `null` and `undefined` are rejected by `runJavaScriptReturningResult`.
 
+## Await Promises
+
+Use `callAsyncJavaScript` when the function body returns a Promise or needs structured named arguments:
+
+```dart
+final result = await controller.callAsyncJavaScript(
+  '''
+  const response = await fetch(endpoint);
+  return {status: response.status, body: await response.text()};
+  ''',
+  arguments: <String, Object?>{
+    'endpoint': 'https://example.com/api',
+  },
+  timeout: const Duration(seconds: 15),
+);
+```
+
+Argument names must be valid non-reserved JavaScript identifiers. Values are defensively copied and must contain only finite numbers, strings, booleans, null, lists, and string-keyed maps. Fulfilled values must be JSON-serializable; a thrown error or rejected Promise produces `JavaScriptExecutionException`, while expiration produces `TimeoutException`.
+
+Android, iOS, macOS, Windows, Linux, and OHOS support this API. Web supports same-origin content and plugin-managed isolated HTML; direct cross-origin iframe pages remain inaccessible.
+
+## Document-Start User Scripts
+
+Register a provider or compatibility shim before loading the first page:
+
+```dart
+if (await controller.isUserScriptInjectionSupported(
+  WebViewUserScriptInjectionTime.documentStart,
+)) {
+  final scriptId = await controller.addUserScript(
+    const WebViewUserScript(
+      source: 'globalThis.appProvider = Object.freeze({version: 1});',
+      forMainFrameOnly: true,
+    ),
+  );
+
+  await controller.loadRequest(Uri.parse('https://example.com'));
+  // Later: await controller.removeUserScript(scriptId);
+}
+```
+
+`addUserScript` must finish before navigation begins. Scripts execute in the same private function scope on every supported platform, so values intended for page code or another user script must be assigned explicitly to `globalThis`. This lexical scope is not a separate browser content world. Scripts apply to future documents and reloads; they do not retroactively run in the current document. `removeAllUserScripts` removes only scripts registered through this API and preserves plugin-managed channels and hooks.
+
+| Platform | Document-start support |
+| --- | --- |
+| Android | Supported when the installed Android System WebView exposes `DOCUMENT_START_SCRIPT`; check the capability at runtime. |
+| iOS/macOS | Supported by `WKUserScript`. |
+| Windows | Supported by WebView2. |
+| Linux | Supported by WebKitGTK. |
+| OHOS | Not exposed by the current ArkWeb bridge; capability returns false. |
+| Web | Browser iframe APIs cannot guarantee execution before page scripts; capability returns false. |
+
 ## JavaScript Channels
 
 ```dart
@@ -119,6 +171,7 @@ Browser iframes block direct scripting of cross-origin pages. On web, these APIs
 
 - `runJavaScript`
 - `runJavaScriptReturningResult`
+- `callAsyncJavaScript`
 - `addJavaScriptChannel`
 - `setOnConsoleMessage`
 - JavaScript dialog hooks
