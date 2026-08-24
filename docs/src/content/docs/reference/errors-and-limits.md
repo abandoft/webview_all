@@ -107,8 +107,30 @@ seconds. The failure is logged on one line so an application bug remains
 diagnosable without blocking WebKitGTK.
 
 Windows initialization failures are shown in the widget and may be retried with
-**Refresh**. **Install Webview2** opens Microsoft's runtime download page.
-Partial initialization state is released before a retry.
+**Refresh**. **Install Webview2** is offered only for
+`webview2_runtime_unavailable` and opens the official WebView2 Runtime download
+page. Partial initialization state is released before a retry.
+
+### Windows initialization errors
+
+| Code | Stage | Meaning |
+| --- | --- | --- |
+| `webview2_runtime_unavailable` | `webview2_runtime` | No compatible Runtime was found for the requested browser path. |
+| `environment_creation_failed` | `webview2_environment` | WebView2 could not create the requested profile environment. |
+| `winrt_runtime_unavailable` / `winrt_initialization_failed` | `winrt_runtime` / `winrt_initialization` | The Windows Runtime needed by the renderer could not be loaded or initialized. |
+| `graphics_capture_unavailable` / `graphics_capture_initialization_failed` | `graphics_capture` | Graphics capture is unavailable in the current OS, device, policy, or session. |
+| `dispatcher_queue_initialization_failed` | `dispatcher_queue` | The UI thread's composition queue could not be reused or created. |
+| `d3d_device_creation_failed` | `d3d_device` | Neither a hardware Direct3D device nor the WARP fallback could be created. |
+| `dxgi_device_initialization_failed` | `dxgi_device` | The Direct3D device does not expose the required DXGI interface. |
+| `d3d_interop_initialization_failed` | `d3d_interop` | Windows Runtime Direct3D interop initialization failed. |
+| `composition_initialization_failed` | `composition` | The Windows Composition compositor could not be created. |
+| `webview_creation_failed` | `webview2_controller` / `graphics_capture_texture` | Controller or capture-texture creation failed after environment setup. |
+
+Initialization error details include `stage`, hexadecimal `hresult`, signed
+`hresultValue`, `remoteSession`, and `webView2RuntimeVersion` when detected.
+Equivalent concurrent `ensureEnvironment` calls share one native creation
+operation; conflicting configurations fail without replacing active or pending
+state.
 
 ## Native Runtime Limits
 

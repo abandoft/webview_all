@@ -3,7 +3,7 @@ title: Windows
 description: WebView2 实现、运行时设置、API 和限制。
 ---
 
-Windows 由 `webview_all_windows 1.3.8` 提供，底层使用 Microsoft Edge WebView2。
+Windows 由 `webview_all_windows 1.3.9` 提供，底层使用 Microsoft Edge WebView2。
 
 | 项 | 值 |
 | --- | --- |
@@ -25,9 +25,13 @@ final version = await WindowsWebViewController.getWebViewVersion();
 ```
 
 需要自定义用户数据目录、浏览器路径或启动参数时，应在创建 controller 前调用。
-参数相同的多次调用会复用共享环境；参数冲突时会返回
+参数相同的多次调用（包括环境仍在创建时发起的并发调用）会合并并复用共享环境；参数冲突时会返回
 `environment_configuration_conflict`，不会静默切换数据区。旧的
 `initializeEnvironment` 保留给明确要求只能初始化一次的调用方。
+
+环境初始化只检查 WebView2 Runtime 和 profile。图形捕获、Direct3D 与
+Windows Composition 会推迟到首个 controller 创建时初始化，
+`ensureEnvironment` 不会再被无关的渲染能力拦截。
 
 网站数据清理也可以直接携带环境参数，不再依赖调用顺序：
 
@@ -40,11 +44,16 @@ final manager = WebViewDataManager.fromPlatformCreationParams(
 final result = await manager.clearAllWebsiteData();
 ```
 
-controller 初始化失败时，组件中心会显示错误和两个操作：
+controller 初始化失败时，组件中心会显示错误和恢复操作：
 
-- **Install Webview2**：用默认浏览器打开 Microsoft 官方 WebView2 下载页。
+- **Install Webview2**：仅在缺少 WebView2 Runtime 时显示，并用默认浏览器打开
+  Microsoft 官方下载页。
 - **Refresh**：清理失败过程中创建的 native 状态和订阅后，使用同一个
   controller 重试初始化。
+
+渲染器会优先复用应用已有的 `DispatcherQueue`，仅在 UI 线程没有队列时创建；
+帧捕获使用 Windows 10 1809 的自由线程 API，Direct3D 硬件设备创建失败时会
+回退到 WARP 软件渲染器。
 
 ## Popup 策略
 
@@ -146,6 +155,8 @@ await manager.setWindowsCookie(
 - 自定义环境参数应早于 controller 创建，或通过 `WindowsWebViewDataManagerCreationParams` 将相同参数传给数据清理操作。
 - WebView2 environment、composition texture 或帧捕获启动失败时会返回
   `PlatformException`，不再因原生断言终止进程。
+- Windows 初始化异常包含稳定的失败阶段、HRESULT、远程会话标记，并在可用时
+  包含检测到的 WebView2 Runtime 版本，详见[错误与限制](/zh/reference/errors-and-limits/)。
 - 初始化支持幂等重试；显式释放或 finalizer 兜底时，native channel、event
   subscription、stream 和 delegate 都只清理一次。
 - surface resize 使用代际校验并跟随运行中的显示器和 DPI 变化，旧任务不会

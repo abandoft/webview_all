@@ -77,8 +77,28 @@ Linux 的导航、HTTP 认证、TLS、权限和 JavaScript 对话框回调抛错
 定位应用回调问题，又不会永久阻塞 WebKitGTK。
 
 Windows 初始化失败会显示在组件内，可用 **Refresh** 重试；**Install
-Webview2** 会打开 Microsoft runtime 下载页。重试前会释放未完成初始化留下的
-资源。
+Webview2** 仅在错误为 `webview2_runtime_unavailable` 时显示，用于打开
+WebView2 Runtime 官方下载页。重试前会释放未完成初始化留下的资源。
+
+### Windows 初始化错误
+
+| 错误码 | 阶段 | 含义 |
+| --- | --- | --- |
+| `webview2_runtime_unavailable` | `webview2_runtime` | 指定浏览器路径下没有兼容的 Runtime。 |
+| `environment_creation_failed` | `webview2_environment` | WebView2 无法创建指定 profile 环境。 |
+| `winrt_runtime_unavailable` / `winrt_initialization_failed` | `winrt_runtime` / `winrt_initialization` | 渲染器所需 Windows Runtime 无法加载或初始化。 |
+| `graphics_capture_unavailable` / `graphics_capture_initialization_failed` | `graphics_capture` | 当前系统、设备、策略或会话不支持图形捕获。 |
+| `dispatcher_queue_initialization_failed` | `dispatcher_queue` | 无法复用或创建 UI 线程的 Composition 队列。 |
+| `d3d_device_creation_failed` | `d3d_device` | Direct3D 硬件设备和 WARP 软件回退均创建失败。 |
+| `dxgi_device_initialization_failed` | `dxgi_device` | Direct3D 设备没有提供所需的 DXGI 接口。 |
+| `d3d_interop_initialization_failed` | `d3d_interop` | Windows Runtime Direct3D 互操作初始化失败。 |
+| `composition_initialization_failed` | `composition` | Windows Composition compositor 创建失败。 |
+| `webview_creation_failed` | `webview2_controller` / `graphics_capture_texture` | 环境创建后，controller 或捕获纹理创建失败。 |
+
+初始化异常详情包含 `stage`、十六进制 `hresult`、有符号
+`hresultValue`、`remoteSession`，并在检测成功时包含
+`webView2RuntimeVersion`。配置相同的并发 `ensureEnvironment` 调用只执行一次
+原生创建；配置冲突时不会替换正在创建或已生效的环境。
 
 ## 运行时限制
 

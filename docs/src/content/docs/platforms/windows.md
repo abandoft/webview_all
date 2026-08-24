@@ -3,7 +3,7 @@ title: Windows
 description: WebView2 implementation, runtime setup, APIs, and limits.
 ---
 
-Windows is provided by `webview_all_windows 1.3.8` and uses Microsoft Edge WebView2.
+Windows is provided by `webview_all_windows 1.3.9` and uses Microsoft Edge WebView2.
 
 ## Engine
 
@@ -30,7 +30,16 @@ await WindowsWebViewController.ensureEnvironment(
 );
 ```
 
-Equivalent calls reuse the active environment. A call with conflicting options fails with `environment_configuration_conflict`; it never silently switches profiles. The older `initializeEnvironment` remains available for callers that intentionally require a single strict initialization call.
+Equivalent calls reuse the active environment, including concurrent calls made
+while the environment is still being created. A call with conflicting options
+fails with `environment_configuration_conflict`; it never silently switches
+profiles. The older `initializeEnvironment` remains available for callers that
+intentionally require a single strict initialization call.
+
+Environment creation checks the WebView2 Runtime and profile only. Graphics
+capture, Direct3D, and Windows Composition are initialized later when the first
+controller is created, so `ensureEnvironment` is not rejected by an unrelated
+rendering capability.
 
 Website-data cleanup can carry its own environment configuration, avoiding an ordering dependency:
 
@@ -51,12 +60,17 @@ final version = await WindowsWebViewController.getWebViewVersion();
 ```
 
 If controller initialization fails, the widget displays the error in its
-center with two actions:
+center with recovery actions:
 
-- **Install Webview2** opens Microsoft's official WebView2 download page in the
-  default browser.
+- **Install Webview2** is shown only when the WebView2 Runtime is unavailable
+  and opens Microsoft's official download page in the default browser.
 - **Refresh** retries initialization on the same controller after partial
   native state and subscriptions have been cleaned up.
+
+The renderer reuses a `DispatcherQueue` already owned by the application and
+creates one only when the UI thread has none. Frame capture uses the
+free-threaded Windows 10 1809 API, and Direct3D falls back to the WARP software
+renderer if hardware device creation fails.
 
 ## Creation Params
 
@@ -204,6 +218,9 @@ Windows-specific response classes add request and response detail:
 - WebView2 environment, composition texture, and frame-capture startup failures
   are returned as `PlatformException`s instead of terminating the process
   through native assertions.
+- Windows initialization exceptions include a stable failure stage, HRESULT,
+  remote-session flag, and the detected WebView2 Runtime version when
+  available. See [Errors and Limits](/reference/errors-and-limits/).
 - Initialization is retryable and idempotent. Native channels, event
   subscriptions, streams, and delegates are released exactly once by explicit
   disposal or fallback finalization.
