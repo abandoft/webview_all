@@ -8,6 +8,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:path/path.dart' as path;
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
@@ -1893,12 +1894,20 @@ class _WindowsWebViewState extends State<_WindowsWebView> {
     }
   }
 
+  bool _shouldOfferWebView2Install(Object? error) {
+    return error is PlatformException &&
+        error.code == 'webview2_runtime_unavailable';
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<void>(
       future: _initializationFuture,
       builder: (BuildContext context, AsyncSnapshot<void> snapshot) {
         if (snapshot.hasError) {
+          final bool offerWebView2Install = _shouldOfferWebView2Install(
+            snapshot.error,
+          );
           return Material(
             type: MaterialType.transparency,
             child: Center(
@@ -1917,12 +1926,13 @@ class _WindowsWebViewState extends State<_WindowsWebView> {
                       spacing: 12,
                       runSpacing: 12,
                       children: <Widget>[
-                        FilledButton(
-                          onPressed: () {
-                            unawaited(_openWebView2DownloadPage());
-                          },
-                          child: const Text('Install Webview2'),
-                        ),
+                        if (offerWebView2Install)
+                          FilledButton(
+                            onPressed: () {
+                              unawaited(_openWebView2DownloadPage());
+                            },
+                            child: const Text('Install Webview2'),
+                          ),
                         OutlinedButton(
                           onPressed: _retry,
                           child: const Text('Refresh'),

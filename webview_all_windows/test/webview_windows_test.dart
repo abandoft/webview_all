@@ -555,6 +555,7 @@ void main() {
     var openDownloadPageCount = 0;
     _mockWindowsWebViewCreation(
       creationFailureCount: 1,
+      creationFailureCode: 'webview2_runtime_unavailable',
       onOpenWebView2DownloadPage: () {
         openDownloadPageCount += 1;
       },
@@ -592,6 +593,43 @@ void main() {
     expect(find.text('Refresh'), findsNothing);
     expect(find.byType(Texture), findsOneWidget);
   });
+
+  testWidgets(
+    'rendering error offers refresh without a runtime install action',
+    (WidgetTester tester) async {
+      _mockWindowsWebViewCreation(
+        creationFailureCount: 1,
+        creationFailureCode: 'graphics_capture_unavailable',
+        creationFailureDetails: const <Object?, Object?>{
+          'stage': 'graphics_capture',
+          'hresult': '0x00000001',
+          'remoteSession': true,
+          'webView2RuntimeVersion': '1.0.0.0',
+        },
+      );
+      final WindowsWebViewController controller = WindowsWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final WindowsWebViewWidget platformWidget = WindowsWebViewWidget(
+        PlatformWebViewWidgetCreationParams(controller: controller),
+      );
+
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Builder(builder: platformWidget.build),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Install Webview2'), findsNothing);
+      expect(find.text('Refresh'), findsOneWidget);
+      expect(
+        find.textContaining('graphics_capture_unavailable'),
+        findsOneWidget,
+      );
+    },
+  );
 
   test('rejects invalid generic cookies before native cookie calls', () async {
     final WindowsWebViewCookieManager cookieManager =
@@ -1800,6 +1838,8 @@ void main() {
 
 void _mockWindowsWebViewCreation({
   int creationFailureCount = 0,
+  String creationFailureCode = 'environment_creation_failed',
+  Object? creationFailureDetails,
   Future<void> Function()? beforeCreateWebView,
   void Function(WindowsEnvironmentOptions options)? onEnsureEnvironment,
   void Function()? onOpenWebView2DownloadPage,
@@ -1846,9 +1886,9 @@ void _mockWindowsWebViewCreation({
     if (remainingCreationFailures > 0) {
       remainingCreationFailures -= 1;
       return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
-        'environment_creation_failed',
+        creationFailureCode,
         'The WebView2 Runtime could not be initialized.',
-        null,
+        creationFailureDetails,
       ]);
     }
     return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
