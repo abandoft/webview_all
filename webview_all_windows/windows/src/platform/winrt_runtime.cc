@@ -4,12 +4,31 @@
 #include <strsafe.h>
 
 namespace webview_all_windows {
+namespace {
+
+HRESULT LastErrorAsHresult() {
+  const DWORD error = GetLastError();
+  return error == ERROR_SUCCESS ? E_FAIL : HRESULT_FROM_WIN32(error);
+}
+
+} // namespace
 
 WinrtRuntime::WinrtRuntime(RO_INIT_TYPE init_type) {
   combase_ = LoadLibraryW(L"combase.dll");
-  core_messaging_ = LoadLibraryW(L"coremessaging.dll");
-  if (combase_ == nullptr || core_messaging_ == nullptr) {
+  if (combase_ == nullptr) {
+    failure_ = WinrtRuntimeFailure::kCombaseUnavailable;
+    initialization_hresult_ = LastErrorAsHresult();
     return;
+  }
+
+  core_messaging_ = LoadLibraryW(L"coremessaging.dll");
+  if (core_messaging_ == nullptr) {
+    dispatcher_queue_hresult_ = LastErrorAsHresult();
+  } else if (!LoadFunction(core_messaging_, "CreateDispatcherQueueController",
+                           create_dispatcher_queue_controller_)) {
+    dispatcher_queue_hresult_ = HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);
+  } else {
+    dispatcher_queue_hresult_ = S_OK;
   }
 
   if (!LoadFunction(combase_, "WindowsCreateStringReference",
@@ -17,15 +36,19 @@ WinrtRuntime::WinrtRuntime(RO_INIT_TYPE init_type) {
       !LoadFunction(combase_, "RoGetActivationFactory",
                     get_activation_factory_) ||
       !LoadFunction(combase_, "RoInitialize", ro_initialize_) ||
-      !LoadFunction(combase_, "RoUninitialize", ro_uninitialize_) ||
-      !LoadFunction(core_messaging_, "CreateDispatcherQueueController",
-                    create_dispatcher_queue_controller_)) {
+      !LoadFunction(combase_, "RoUninitialize", ro_uninitialize_)) {
+    failure_ = WinrtRuntimeFailure::kRequiredFunctionUnavailable;
+    initialization_hresult_ = HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);
     return;
   }
 
   const HRESULT result = ro_initialize_(init_type);
   initialized_ = SUCCEEDED(result) || result == S_FALSE;
   available_ = initialized_ || result == RPC_E_CHANGED_MODE;
+  if (!available_) {
+    failure_ = WinrtRuntimeFailure::kRuntimeInitializationFailed;
+    initialization_hresult_ = result;
+  }
 }
 
 WinrtRuntime::~WinrtRuntime() {
@@ -69,8 +92,11 @@ HRESULT WinrtRuntime::GetActivationFactory(HSTRING runtime_class,
 HRESULT WinrtRuntime::CreateDispatcherQueueController(
     DispatcherQueueOptions options,
     ABI::Windows::System::IDispatcherQueueController **controller) const {
-  if (!available_ || create_dispatcher_queue_controller_ == nullptr) {
-    return E_FAIL;
+  if (!available_ || controller == nullptr) {
+    return E_INVALIDARG;
+  }
+  if (create_dispatcher_queue_controller_ == nullptr) {
+    return dispatcher_queue_hresult_;
   }
   return create_dispatcher_queue_controller_(options, controller);
 }

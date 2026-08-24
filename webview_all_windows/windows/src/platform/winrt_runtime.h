@@ -8,6 +8,13 @@
 
 namespace webview_all_windows {
 
+enum class WinrtRuntimeFailure {
+  kNone,
+  kCombaseUnavailable,
+  kRequiredFunctionUnavailable,
+  kRuntimeInitializationFailed,
+};
+
 class WinrtRuntime {
 public:
   explicit WinrtRuntime(RO_INIT_TYPE init_type);
@@ -17,6 +24,8 @@ public:
   WinrtRuntime &operator=(const WinrtRuntime &) = delete;
 
   bool available() const { return available_; }
+  WinrtRuntimeFailure failure() const { return failure_; }
+  HRESULT initialization_hresult() const { return initialization_hresult_; }
 
   HRESULT CreateStringReference(PCWSTR value, HSTRING *string,
                                 HSTRING_HEADER *header) const;
@@ -50,8 +59,11 @@ private:
   RoUninitializeFn *ro_uninitialize_ = nullptr;
   CreateDispatcherQueueControllerFn *create_dispatcher_queue_controller_ =
       nullptr;
+  HRESULT dispatcher_queue_hresult_ = E_FAIL;
   bool initialized_ = false;
   bool available_ = false;
+  WinrtRuntimeFailure failure_ = WinrtRuntimeFailure::kNone;
+  HRESULT initialization_hresult_ = S_OK;
 };
 
 } // namespace webview_all_windows
