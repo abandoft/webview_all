@@ -42,7 +42,10 @@ auto TryGetDXGIInterfaceFromObject(const winrt::com_ptr<IInspectable> &object) {
   auto access = object.try_as<
       Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
   winrt::com_ptr<T> result;
-  access->GetInterface(winrt::guid_of<T>(), result.put_void());
+  if (!access ||
+      FAILED(access->GetInterface(winrt::guid_of<T>(), result.put_void()))) {
+    return winrt::com_ptr<T>{};
+  }
   return result;
 }
 
