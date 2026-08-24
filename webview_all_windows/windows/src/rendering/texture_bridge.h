@@ -4,8 +4,11 @@
 #include <wrl.h>
 
 #include <chrono>
+#include <condition_variable>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 
@@ -44,6 +47,16 @@ public:
   void SetFpsLimit(std::optional<int> max_fps);
 
 protected:
+  struct FrameCallbackState {
+    explicit FrameCallbackState(TextureBridge *owner) : owner(owner) {}
+
+    std::mutex mutex;
+    std::condition_variable idle;
+    TextureBridge *owner;
+    std::size_t active_callbacks = 0;
+    bool accepting_callbacks = false;
+  };
+
   bool is_running_ = false;
 
   const GraphicsContext *graphics_context_;
@@ -68,6 +81,7 @@ protected:
   EventRegistrationToken on_frame_arrived_token_ = {};
   bool closed_handler_registered_ = false;
   bool frame_arrived_handler_registered_ = false;
+  std::shared_ptr<FrameCallbackState> frame_callback_state_;
 
   virtual void StopInternal();
   void OnFrameArrived();

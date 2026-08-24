@@ -16,7 +16,8 @@ const int kNumBuffers = 1;
 
 TextureBridge::TextureBridge(GraphicsContext *graphics_context,
                              ABI::Windows::UI::Composition::IVisual *visual)
-    : graphics_context_(graphics_context) {
+    : graphics_context_(graphics_context),
+      frame_callback_state_(std::make_shared<FrameCallbackState>(this)) {
   capture_item_ =
       graphics_context_->CreateGraphicsCaptureItemFromVisual(visual);
   if (!capture_item_) {
@@ -43,8 +44,13 @@ TextureBridge::TextureBridge(GraphicsContext *graphics_context,
 }
 
 TextureBridge::~TextureBridge() {
+  Stop();
+  {
+    const std::lock_guard<std::mutex> callback_lock(
+        frame_callback_state_->mutex);
+    frame_callback_state_->owner = nullptr;
+  }
   const std::lock_guard<std::mutex> lock(mutex_);
-  StopInternal();
   if (capture_item_ && closed_handler_registered_) {
     capture_item_->remove_Closed(on_closed_token_);
   }
@@ -66,7 +72,7 @@ bool TextureBridge::Start() {
     return false;
   }
 
-  frame_pool_ = graphics_context_->CreateCaptureFramePool(
+  frame_pool_ = graphics_context_->CreateFreeThreadedCaptureFramePool(
       graphics_context_->device(),
       static_cast<ABI::Windows::Graphics::DirectX::DirectXPixelFormat>(
           kPixelFormat),
@@ -80,11 +86,38 @@ bool TextureBridge::Start() {
       Microsoft::WRL::Callback<ABI::Windows::Foundation::ITypedEventHandler<
           ABI::Windows::Graphics::Capture::Direct3D11CaptureFramePool *,
           IInspectable *>>(
-          [this](ABI::Windows::Graphics::Capture::IDirect3D11CaptureFramePool
-                     *pool,
-                 IInspectable *args) -> HRESULT {
-            OnFrameArrived();
-            return S_OK;
+          [callback_state = frame_callback_state_](
+              ABI::Windows::Graphics::Capture::IDirect3D11CaptureFramePool
+                  *pool,
+              IInspectable *args) -> HRESULT {
+            TextureBridge *owner = nullptr;
+            {
+              const std::lock_guard<std::mutex> callback_lock(
+                  callback_state->mutex);
+              if (callback_state->owner == nullptr ||
+                  !callback_state->accepting_callbacks) {
+                return S_OK;
+              }
+              owner = callback_state->owner;
+              ++callback_state->active_callbacks;
+            }
+
+            HRESULT result = S_OK;
+            try {
+              owner->OnFrameArrived();
+            } catch (...) {
+              result = E_FAIL;
+            }
+
+            {
+              const std::lock_guard<std::mutex> callback_lock(
+                  callback_state->mutex);
+              --callback_state->active_callbacks;
+              if (callback_state->active_callbacks == 0) {
+                callback_state->idle.notify_all();
+              }
+            }
+            return result;
           })
           .Get(),
       &on_frame_arrived_token_);
@@ -106,6 +139,9 @@ bool TextureBridge::Start() {
 
   if (SUCCEEDED(capture_session_->StartCapture())) {
     is_running_ = true;
+    const std::lock_guard<std::mutex> callback_lock(
+        frame_callback_state_->mutex);
+    frame_callback_state_->accepting_callbacks = true;
     return true;
   }
 
@@ -117,6 +153,13 @@ bool TextureBridge::Start() {
 }
 
 void TextureBridge::Stop() {
+  {
+    std::unique_lock<std::mutex> callback_lock(frame_callback_state_->mutex);
+    frame_callback_state_->accepting_callbacks = false;
+    frame_callback_state_->idle.wait(callback_lock, [this] {
+      return frame_callback_state_->active_callbacks == 0;
+    });
+  }
   const std::lock_guard<std::mutex> lock(mutex_);
   StopInternal();
 }
