@@ -74,6 +74,33 @@ Future<void> main() async {
   final headersUrl = '$prefixUrl/headers';
   final basicAuthUrl = '$prefixUrl/http-basic-authentication';
 
+  testWidgets('Windows environment configuration is concurrency-safe', (
+    WidgetTester tester,
+  ) async {
+    if (!Platform.isWindows) {
+      return;
+    }
+
+    await Future.wait(<Future<void>>[
+      WindowsWebViewController.ensureEnvironment(),
+      WindowsWebViewController.ensureEnvironment(),
+    ]);
+    await WindowsWebViewController.ensureEnvironment();
+    await expectLater(
+      WindowsWebViewController.ensureEnvironment(
+        userDataPath:
+            '${Directory.systemTemp.path}\\webview-all-conflict-probe',
+      ),
+      throwsA(
+        isA<PlatformException>().having(
+          (PlatformException error) => error.code,
+          'code',
+          'environment_configuration_conflict',
+        ),
+      ),
+    );
+  });
+
   testWidgets('website data can be cleared without a controller', (
     WidgetTester tester,
   ) async {
@@ -102,30 +129,6 @@ Future<void> main() async {
     if (Platform.isIOS || Platform.isMacOS || Platform.isLinux) {
       expect(result.isComplete, isTrue);
     }
-  });
-
-  testWidgets('Windows environment configuration is idempotent', (
-    WidgetTester tester,
-  ) async {
-    if (!Platform.isWindows) {
-      return;
-    }
-
-    await WindowsWebViewController.ensureEnvironment();
-    await WindowsWebViewController.ensureEnvironment();
-    await expectLater(
-      WindowsWebViewController.ensureEnvironment(
-        userDataPath:
-            '${Directory.systemTemp.path}\\webview-all-conflict-probe',
-      ),
-      throwsA(
-        isA<PlatformException>().having(
-          (PlatformException error) => error.code,
-          'code',
-          'environment_configuration_conflict',
-        ),
-      ),
-    );
   });
 
   testWidgets('controller supports native offscreen workflows', (
