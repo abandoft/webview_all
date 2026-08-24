@@ -3,10 +3,12 @@
 #include <flutter/plugin_registrar_windows.h>
 #include <windows.h>
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "platform/webview_platform.h"
 #include "webview/webview_bridge.h"
@@ -51,9 +53,16 @@ private:
     WindowsHostApi *owner = nullptr;
   };
 
+  using EnvironmentInitializationCallback =
+      std::function<void(std::optional<FlutterError>)>;
+
+  std::unique_ptr<WinrtRuntime> runtime_;
   std::unique_ptr<WebviewPlatform> platform_;
   std::shared_ptr<WebviewHost> webview_host_;
+  std::optional<std::string> webview_runtime_version_;
   std::optional<EnvironmentConfiguration> environment_configuration_;
+  std::optional<EnvironmentConfiguration> pending_environment_configuration_;
+  std::vector<EnvironmentInitializationCallback> pending_environment_callbacks_;
   std::unordered_map<int64_t, std::unique_ptr<WebviewBridge>> instances_;
 
   flutter::TextureRegistrar *textures_;
@@ -64,19 +73,27 @@ private:
   std::shared_ptr<LifetimeState> lifetime_state_ =
       std::make_shared<LifetimeState>();
 
-  bool InitPlatform();
+  std::optional<FlutterError> EnsureWinrtRuntime();
+  std::optional<FlutterError> EnsureRenderingPlatform();
   EnvironmentConfiguration
   ResolveEnvironmentConfiguration(const WindowsEnvironmentOptions &options);
-  std::optional<FlutterError>
-  CreateEnvironment(const EnvironmentConfiguration &configuration);
+  void CreateEnvironment(const EnvironmentConfiguration &configuration,
+                         EnvironmentInitializationCallback callback);
+  void
+  CompleteEnvironmentCreation(const EnvironmentConfiguration &configuration,
+                              WebviewHostCreationResult creation_result);
+  void CreateWebViewWithEnvironment(
+      std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result);
   void NotifyParentWindowPositionChanged();
   std::optional<LRESULT> HandleWindowMessage(HWND hwnd, UINT message,
                                              WPARAM wparam, LPARAM lparam);
 
-  std::optional<FlutterError>
-  InitializeEnvironment(const WindowsEnvironmentOptions &options) override;
-  std::optional<FlutterError>
-  EnsureEnvironment(const WindowsEnvironmentOptions &options) override;
+  void InitializeEnvironment(
+      const WindowsEnvironmentOptions &options,
+      std::function<void(std::optional<FlutterError> reply)> result) override;
+  void EnsureEnvironment(
+      const WindowsEnvironmentOptions &options,
+      std::function<void(std::optional<FlutterError> reply)> result) override;
   ErrorOr<std::optional<std::string>> GetWebViewVersion() override;
   std::optional<FlutterError> OpenWebView2DownloadPage() override;
   void CreateWebView(

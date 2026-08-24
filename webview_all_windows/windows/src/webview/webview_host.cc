@@ -3,7 +3,8 @@
 #include <wrl.h>
 
 #include <cstring>
-#include <future>
+#include <mutex>
+#include <utility>
 
 #include "util/string_converter.h"
 
@@ -12,64 +13,111 @@ using namespace Microsoft::WRL;
 namespace webview_all_windows {
 
 // static
-std::shared_ptr<WebviewHost>
-WebviewHost::Create(WebviewPlatform *platform,
-                    std::optional<std::wstring> user_data_directory,
-                    std::optional<std::wstring> browser_exe_path,
-                    std::optional<std::string> arguments) {
+void WebviewHost::Create(std::optional<std::wstring> user_data_directory,
+                         std::optional<std::wstring> browser_exe_path,
+                         std::optional<std::string> arguments,
+                         WebviewHostCreationCallback callback) {
   wil::com_ptr<CoreWebView2EnvironmentOptions> opts;
   if (arguments.has_value()) {
     opts = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
-    std::wstring warguments(arguments.value().begin(), arguments.value().end());
-    opts->put_AdditionalBrowserArguments(warguments.c_str());
+    if (!opts) {
+      callback(WebviewHostCreationResult{
+          nullptr, E_OUTOFMEMORY,
+          "Allocating WebView2 environment options failed."});
+      return;
+    }
+    const std::wstring warguments = util::Utf16FromUtf8(arguments.value());
+    const HRESULT options_result =
+        opts->put_AdditionalBrowserArguments(warguments.c_str());
+    if (FAILED(options_result)) {
+      callback(WebviewHostCreationResult{
+          nullptr, options_result,
+          "Applying WebView2 environment arguments failed."});
+      return;
+    }
   }
 
-  std::promise<HRESULT> result_promise;
-  wil::com_ptr<ICoreWebView2Environment> env;
-  auto result = CreateCoreWebView2EnvironmentWithOptions(
+  auto callback_holder =
+      std::make_shared<WebviewHostCreationCallback>(std::move(callback));
+  auto callback_mutex = std::make_shared<std::mutex>();
+  const auto complete = [callback_holder, callback_mutex](
+                            WebviewHostCreationResult creation_result) {
+    WebviewHostCreationCallback callback;
+    {
+      const std::lock_guard<std::mutex> lock(*callback_mutex);
+      if (!*callback_holder) {
+        return;
+      }
+      callback = std::move(*callback_holder);
+      *callback_holder = nullptr;
+    }
+    callback(std::move(creation_result));
+  };
+
+  HRESULT result = CreateCoreWebView2EnvironmentWithOptions(
       browser_exe_path.has_value() ? browser_exe_path->c_str() : nullptr,
       user_data_directory.has_value() ? user_data_directory->c_str() : nullptr,
       opts.get(),
       Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-          [&promise = result_promise,
-           &ptr = env](HRESULT r, ICoreWebView2Environment *env) -> HRESULT {
-            promise.set_value(r);
-            ptr.swap(env);
+          [complete](HRESULT result,
+                     ICoreWebView2Environment *environment) -> HRESULT {
+            if (FAILED(result)) {
+              complete(WebviewHostCreationResult{
+                  nullptr, result,
+                  "Creating the WebView2 environment failed."});
+              return S_OK;
+            }
+            if (environment == nullptr) {
+              complete(WebviewHostCreationResult{
+                  nullptr, E_POINTER,
+                  "WebView2 environment creation completed without an "
+                  "environment."});
+              return S_OK;
+            }
+
+            wil::com_ptr<ICoreWebView2Environment> environment_pointer(
+                environment);
+            auto webview_environment =
+                environment_pointer.try_query<ICoreWebView2Environment3>();
+            if (!webview_environment) {
+              complete(WebviewHostCreationResult{
+                  nullptr, E_NOINTERFACE,
+                  "The installed WebView2 Runtime does not provide the "
+                  "required environment interface."});
+              return S_OK;
+            }
+
+            complete(WebviewHostCreationResult{
+                std::shared_ptr<WebviewHost>(
+                    new WebviewHost(std::move(webview_environment))),
+                S_OK,
+                {}});
             return S_OK;
           })
           .Get());
 
-  if (SUCCEEDED(result)) {
-    result = result_promise.get_future().get();
-    if ((SUCCEEDED(result) || result == RPC_E_CHANGED_MODE) && env) {
-      auto webview_env3 = env.try_query<ICoreWebView2Environment3>();
-      if (webview_env3) {
-        return std::shared_ptr<WebviewHost>(
-            new WebviewHost(platform, std::move(webview_env3)));
-      }
-    }
+  if (FAILED(result)) {
+    complete(WebviewHostCreationResult{
+        nullptr, result, "Starting WebView2 environment creation failed."});
   }
-
-  return {};
 }
 
-WebviewHost::WebviewHost(WebviewPlatform *platform,
-                         wil::com_ptr<ICoreWebView2Environment3> webview_env)
-    : webview_env_(webview_env) {
-  compositor_ = platform->graphics_context()->CreateCompositor();
-}
+WebviewHost::WebviewHost(wil::com_ptr<ICoreWebView2Environment3> webview_env)
+    : webview_env_(std::move(webview_env)) {}
 
-void WebviewHost::CreateWebview(HWND parent_window,
-                                WebviewCreationCallback callback) {
+void WebviewHost::CreateWebview(
+    HWND parent_window,
+    winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor,
+    WebviewCreationCallback callback) {
   CreateWebViewCompositionController(
       parent_window,
       [callback = std::move(callback), parent_window,
-       self = shared_from_this()](
+       compositor = std::move(compositor), self = shared_from_this()](
           wil::com_ptr<ICoreWebView2CompositionController> controller,
           std::unique_ptr<WebviewCreationError> error) mutable {
         if (controller) {
-          std::unique_ptr<Webview> webview(
-              new Webview(std::move(controller), self, parent_window));
+          std::unique_ptr<Webview> webview(new Webview(
+              std::move(controller), self, parent_window, compositor));
           if (!webview->IsValid()) {
             callback(
                 nullptr,

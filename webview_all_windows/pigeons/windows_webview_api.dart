@@ -122,8 +122,10 @@ class WindowsLoadRequestData {
 
 @HostApi()
 abstract class WindowsWebViewHostApi {
+  @async
   void initializeEnvironment(WindowsEnvironmentOptions options);
 
+  @async
   void ensureEnvironment(WindowsEnvironmentOptions options);
 
   String? getWebViewVersion();

@@ -452,10 +452,12 @@ public:
   WindowsWebViewHostApi(const WindowsWebViewHostApi &) = delete;
   WindowsWebViewHostApi &operator=(const WindowsWebViewHostApi &) = delete;
   virtual ~WindowsWebViewHostApi() {}
-  virtual std::optional<FlutterError>
-  InitializeEnvironment(const WindowsEnvironmentOptions &options) = 0;
-  virtual std::optional<FlutterError>
-  EnsureEnvironment(const WindowsEnvironmentOptions &options) = 0;
+  virtual void InitializeEnvironment(
+      const WindowsEnvironmentOptions &options,
+      std::function<void(std::optional<FlutterError> reply)> result) = 0;
+  virtual void EnsureEnvironment(
+      const WindowsEnvironmentOptions &options,
+      std::function<void(std::optional<FlutterError> reply)> result) = 0;
   virtual ErrorOr<std::optional<std::string>> GetWebViewVersion() = 0;
   virtual std::optional<FlutterError> OpenWebView2DownloadPage() = 0;
   virtual void

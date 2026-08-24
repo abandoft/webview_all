@@ -1,6 +1,7 @@
 #include "plugin/windows_host_api.h"
 
 #include <shellapi.h>
+#include <shlobj.h>
 #include <windows.h>
 
 #include <cstdint>
@@ -11,6 +12,7 @@
 #include <sstream>
 #include <string>
 
+#include "util/logging.h"
 #include "util/string_converter.h"
 
 #pragma comment(lib, "dxgi.lib")
@@ -30,17 +32,61 @@ constexpr auto kErrorCodeEnvironmentConfigurationConflict =
 constexpr auto kErrorCodeWebviewCreationFailed = "webview_creation_failed";
 constexpr auto kErrorCodeInvalidParentWindow = "invalid_parent_window";
 constexpr auto kErrorCodeOpenUrlFailed = "open_url_failed";
-constexpr auto kErrorUnsupportedPlatform = "unsupported_platform";
 constexpr auto kErrorMethodFailed = "method_failed";
 constexpr auto kErrorNotSupported = "not_supported";
 constexpr auto kErrorScriptFailed = "script_failed";
 
-std::string FormatWebviewCreationError(const WebviewCreationError &error) {
-  std::ostringstream message;
-  message << "Creating the webview failed: " << error.message << " (HRESULT: 0x"
-          << std::hex << std::setw(8) << std::setfill('0')
-          << static_cast<uint32_t>(error.hr) << ')';
-  return message.str();
+std::string FormatHresult(HRESULT result) {
+  std::ostringstream value;
+  value << "0x" << std::hex << std::setw(8) << std::setfill('0')
+        << static_cast<uint32_t>(result);
+  return value.str();
+}
+
+FlutterError CreateInitializationError(
+    const std::string &code, const std::string &stage,
+    const std::string &message, HRESULT result,
+    const std::optional<std::string> &webview_runtime_version = std::nullopt) {
+  flutter::EncodableMap details{
+      {flutter::EncodableValue("stage"), flutter::EncodableValue(stage)},
+      {flutter::EncodableValue("hresult"),
+       flutter::EncodableValue(FormatHresult(result))},
+      {flutter::EncodableValue("hresultValue"),
+       flutter::EncodableValue(
+           static_cast<int64_t>(static_cast<int32_t>(result)))},
+      {flutter::EncodableValue("remoteSession"),
+       flutter::EncodableValue(GetSystemMetrics(SM_REMOTESESSION) != 0)},
+  };
+  if (webview_runtime_version.has_value()) {
+    details[flutter::EncodableValue("webView2RuntimeVersion")] =
+        flutter::EncodableValue(webview_runtime_version.value());
+  }
+
+  const std::string diagnostic = message + " (stage: " + stage +
+                                 ", HRESULT: " + FormatHresult(result) + ")";
+  util::LogWarning(code + ": " + diagnostic);
+  return FlutterError(code, diagnostic, flutter::EncodableValue(details));
+}
+
+std::optional<std::wstring> GetDefaultDataDirectory() {
+  PWSTR local_app_data = nullptr;
+  if (FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr,
+                                  &local_app_data)) ||
+      local_app_data == nullptr) {
+    return std::nullopt;
+  }
+
+  std::filesystem::path path(local_app_data);
+  CoTaskMemFree(local_app_data);
+
+  wchar_t executable_path[MAX_PATH] = {};
+  const DWORD length = GetModuleFileNameW(nullptr, executable_path, MAX_PATH);
+  if (length == 0 || length >= MAX_PATH) {
+    return std::nullopt;
+  }
+  path /= L"webview_all_windows";
+  path /= std::filesystem::path(executable_path).stem();
+  return path.wstring();
 }
 
 std::optional<std::wstring>
@@ -135,42 +181,51 @@ void WindowsHostApi::NotifyParentWindowPositionChanged() {
   }
 }
 
-std::optional<webview_all_windows::FlutterError>
-WindowsHostApi::InitializeEnvironment(
-    const webview_all_windows::WindowsEnvironmentOptions &options) {
-  if (webview_host_) {
-    return webview_all_windows::FlutterError(
+void WindowsHostApi::InitializeEnvironment(
+    const webview_all_windows::WindowsEnvironmentOptions &options,
+    std::function<void(std::optional<FlutterError> reply)> result) {
+  if (webview_host_ || pending_environment_configuration_.has_value()) {
+    result(webview_all_windows::FlutterError(
         kErrorCodeEnvironmentAlreadyInitialized,
-        "The webview environment is already initialized");
+        "The WebView2 environment is already initialized or initializing."));
+    return;
   }
 
-  if (!InitPlatform()) {
-    return webview_all_windows::FlutterError(kErrorUnsupportedPlatform,
-                                             "The platform is not supported");
-  }
-
-  return CreateEnvironment(ResolveEnvironmentConfiguration(options));
+  CreateEnvironment(ResolveEnvironmentConfiguration(options),
+                    std::move(result));
 }
 
-std::optional<webview_all_windows::FlutterError>
-WindowsHostApi::EnsureEnvironment(
-    const webview_all_windows::WindowsEnvironmentOptions &options) {
-  if (!InitPlatform()) {
-    return webview_all_windows::FlutterError(kErrorUnsupportedPlatform,
-                                             "The platform is not supported");
-  }
-
+void WindowsHostApi::EnsureEnvironment(
+    const webview_all_windows::WindowsEnvironmentOptions &options,
+    std::function<void(std::optional<FlutterError> reply)> result) {
   const EnvironmentConfiguration requested =
       ResolveEnvironmentConfiguration(options);
-  if (!webview_host_) {
-    return CreateEnvironment(requested);
+  if (webview_host_) {
+    if (environment_configuration_ &&
+        *environment_configuration_ == requested) {
+      result(std::nullopt);
+    } else {
+      result(webview_all_windows::FlutterError(
+          kErrorCodeEnvironmentConfigurationConflict,
+          "The active WebView2 environment uses different configuration "
+          "options."));
+    }
+    return;
   }
-  if (environment_configuration_ && *environment_configuration_ == requested) {
-    return std::nullopt;
+
+  if (pending_environment_configuration_.has_value()) {
+    if (*pending_environment_configuration_ == requested) {
+      pending_environment_callbacks_.push_back(std::move(result));
+    } else {
+      result(webview_all_windows::FlutterError(
+          kErrorCodeEnvironmentConfigurationConflict,
+          "The WebView2 environment being initialized uses different "
+          "configuration options."));
+    }
+    return;
   }
-  return webview_all_windows::FlutterError(
-      kErrorCodeEnvironmentConfigurationConflict,
-      "The active WebView2 environment uses different configuration options.");
+
+  CreateEnvironment(requested, std::move(result));
 }
 
 WindowsHostApi::EnvironmentConfiguration
@@ -181,7 +236,7 @@ WindowsHostApi::ResolveEnvironmentConfiguration(
       !options.user_data_path()->empty()) {
     user_data_path = util::Utf16FromUtf8(*options.user_data_path());
   } else {
-    user_data_path = platform_->GetDefaultDataDirectory();
+    user_data_path = GetDefaultDataDirectory();
   }
   std::optional<std::wstring> browser_exe_path;
   if (options.browser_exe_path() != nullptr &&
@@ -194,19 +249,73 @@ WindowsHostApi::ResolveEnvironmentConfiguration(
       NormalizeEnvironmentArguments(options.additional_arguments())};
 }
 
-std::optional<webview_all_windows::FlutterError>
-WindowsHostApi::CreateEnvironment(
-    const EnvironmentConfiguration &configuration) {
-  webview_host_ = std::move(WebviewHost::Create(
-      platform_.get(), configuration.user_data_path,
-      configuration.browser_exe_path, configuration.additional_arguments));
-  if (!webview_host_) {
-    return webview_all_windows::FlutterError(
-        kErrorCodeEnvironmentCreationFailed);
+void WindowsHostApi::CreateEnvironment(
+    const EnvironmentConfiguration &configuration,
+    EnvironmentInitializationCallback callback) {
+  wil::unique_cotaskmem_string version_info;
+  HRESULT version_result = GetAvailableCoreWebView2BrowserVersionString(
+      configuration.browser_exe_path.has_value()
+          ? configuration.browser_exe_path->c_str()
+          : nullptr,
+      &version_info);
+  if (FAILED(version_result) || version_info == nullptr) {
+    if (SUCCEEDED(version_result)) {
+      version_result = HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+    }
+    callback(CreateInitializationError(
+        "webview2_runtime_unavailable", "webview2_runtime",
+        "Microsoft Edge WebView2 Runtime is not available for the requested "
+        "configuration.",
+        version_result));
+    return;
+  }
+  webview_runtime_version_ = util::Utf8FromUtf16(version_info.get());
+
+  pending_environment_configuration_ = configuration;
+  pending_environment_callbacks_.push_back(std::move(callback));
+  WebviewHost::Create(
+      configuration.user_data_path, configuration.browser_exe_path,
+      configuration.additional_arguments,
+      [lifetime_state = lifetime_state_,
+       configuration](WebviewHostCreationResult creation_result) mutable {
+        WindowsHostApi *const owner = lifetime_state->owner;
+        if (owner != nullptr) {
+          owner->CompleteEnvironmentCreation(configuration,
+                                             std::move(creation_result));
+        }
+      });
+}
+
+void WindowsHostApi::CompleteEnvironmentCreation(
+    const EnvironmentConfiguration &configuration,
+    WebviewHostCreationResult creation_result) {
+  if (!pending_environment_configuration_.has_value() ||
+      !(*pending_environment_configuration_ == configuration)) {
+    util::LogWarning(
+        "Ignoring a stale WebView2 environment creation completion.");
+    return;
   }
 
-  environment_configuration_ = configuration;
-  return std::nullopt;
+  std::optional<FlutterError> error;
+  if (!creation_result.succeeded()) {
+    error = CreateInitializationError(
+        kErrorCodeEnvironmentCreationFailed, "webview2_environment",
+        creation_result.message.empty()
+            ? "Creating the WebView2 environment failed."
+            : creation_result.message,
+        creation_result.hresult, webview_runtime_version_);
+  } else {
+    webview_host_ = std::move(creation_result.host);
+    environment_configuration_ = configuration;
+  }
+
+  pending_environment_configuration_.reset();
+  std::vector<EnvironmentInitializationCallback> callbacks =
+      std::move(pending_environment_callbacks_);
+  pending_environment_callbacks_.clear();
+  for (EnvironmentInitializationCallback &callback : callbacks) {
+    callback(error);
+  }
 }
 
 webview_all_windows::ErrorOr<std::optional<std::string>>
@@ -246,22 +355,46 @@ void WindowsHostApi::CreateWebView(
         "The Flutter view window is unavailable."));
   }
 
-  if (!InitPlatform()) {
-    return result(webview_all_windows::FlutterError(
-        kErrorUnsupportedPlatform, "The platform is not supported"));
+  if (webview_host_) {
+    CreateWebViewWithEnvironment(std::move(result));
+    return;
   }
 
-  if (!webview_host_) {
-    const WindowsEnvironmentOptions default_options;
-    const std::optional<FlutterError> environment_error =
-        CreateEnvironment(ResolveEnvironmentConfiguration(default_options));
-    if (environment_error) {
-      return result(*environment_error);
-    }
+  EnvironmentInitializationCallback continue_creation =
+      [lifetime_state = lifetime_state_,
+       result = std::move(result)](std::optional<FlutterError> error) mutable {
+        WindowsHostApi *const owner = lifetime_state->owner;
+        if (owner == nullptr) {
+          return;
+        }
+        if (error.has_value()) {
+          result(*error);
+          return;
+        }
+        owner->CreateWebViewWithEnvironment(std::move(result));
+      };
+  if (pending_environment_configuration_.has_value()) {
+    pending_environment_callbacks_.push_back(std::move(continue_creation));
+    return;
+  }
+
+  const WindowsEnvironmentOptions default_options;
+  CreateEnvironment(ResolveEnvironmentConfiguration(default_options),
+                    std::move(continue_creation));
+}
+
+void WindowsHostApi::CreateWebViewWithEnvironment(
+    std::function<void(webview_all_windows::ErrorOr<
+                       webview_all_windows::WindowsCreateWebViewResult>
+                           reply)>
+        result) {
+  if (const std::optional<FlutterError> platform_error =
+          EnsureRenderingPlatform()) {
+    return result(*platform_error);
   }
 
   webview_host_->CreateWebview(
-      parent_window_,
+      parent_window_, platform_->compositor(),
       [lifetime_state = lifetime_state_, result = std::move(result)](
           std::unique_ptr<Webview> webview,
           std::unique_ptr<WebviewCreationError> error) mutable {
@@ -271,21 +404,24 @@ void WindowsHostApi::CreateWebView(
         }
         if (!webview) {
           if (error) {
-            return result(webview_all_windows::FlutterError(
-                kErrorCodeWebviewCreationFailed,
-                FormatWebviewCreationError(*error)));
+            return result(CreateInitializationError(
+                kErrorCodeWebviewCreationFailed, "webview2_controller",
+                error->message, error->hr, owner->webview_runtime_version_));
           }
-          return result(webview_all_windows::FlutterError(
-              kErrorCodeWebviewCreationFailed, "Creating the webview failed."));
+          return result(CreateInitializationError(
+              kErrorCodeWebviewCreationFailed, "webview2_controller",
+              "Creating the WebView2 controller failed.", E_FAIL,
+              owner->webview_runtime_version_));
         }
 
         auto bridge = std::make_unique<WebviewBridge>(
             owner->messenger_, owner->textures_,
             owner->platform_->graphics_context(), std::move(webview));
         if (!bridge->IsValid()) {
-          return result(webview_all_windows::FlutterError(
-              kErrorCodeWebviewCreationFailed,
-              "Creating the WebView graphics capture texture failed."));
+          return result(CreateInitializationError(
+              kErrorCodeWebviewCreationFailed, "graphics_capture_texture",
+              "Creating the WebView graphics capture texture failed.", E_FAIL,
+              owner->webview_runtime_version_));
         }
         auto texture_id = bridge->texture_id();
         owner->instances_[texture_id] = std::move(bridge);
@@ -921,11 +1057,62 @@ WindowsHostApi::SetSurfaceAttached(int64_t texture_id, bool attached) {
   return std::nullopt;
 }
 
-bool WindowsHostApi::InitPlatform() {
-  if (!platform_) {
-    platform_ = std::make_unique<WebviewPlatform>();
+std::optional<FlutterError> WindowsHostApi::EnsureWinrtRuntime() {
+  if (runtime_ && runtime_->available()) {
+    return std::nullopt;
   }
-  return platform_->IsSupported();
+
+  runtime_ = std::make_unique<WinrtRuntime>(RO_INIT_SINGLETHREADED);
+  if (runtime_->available()) {
+    return std::nullopt;
+  }
+
+  std::string code = "winrt_runtime_unavailable";
+  std::string stage = "winrt_runtime";
+  std::string message =
+      "The Windows Runtime libraries required by the WebView renderer are "
+      "unavailable.";
+  if (runtime_->failure() ==
+      WinrtRuntimeFailure::kRuntimeInitializationFailed) {
+    code = "winrt_initialization_failed";
+    stage = "winrt_initialization";
+    message = "Initializing the Windows Runtime apartment failed.";
+  } else if (runtime_->failure() ==
+             WinrtRuntimeFailure::kRequiredFunctionUnavailable) {
+    stage = "winrt_functions";
+    message = "Required Windows Runtime functions are unavailable.";
+  }
+
+  const HRESULT result = runtime_->initialization_hresult();
+  runtime_.reset();
+  return CreateInitializationError(code, stage, message, result);
+}
+
+std::optional<FlutterError> WindowsHostApi::EnsureRenderingPlatform() {
+  if (const std::optional<FlutterError> runtime_error = EnsureWinrtRuntime()) {
+    return runtime_error;
+  }
+  if (platform_ && platform_->IsSupported()) {
+    return std::nullopt;
+  }
+
+  platform_ = std::make_unique<WebviewPlatform>(runtime_.get());
+  if (platform_->IsSupported()) {
+    return std::nullopt;
+  }
+
+  const std::optional<WebviewPlatformInitializationError> platform_error =
+      platform_->error();
+  platform_.reset();
+  if (!platform_error.has_value()) {
+    return CreateInitializationError(
+        "windows_rendering_initialization_failed", "windows_rendering",
+        "Initializing the Windows WebView rendering platform failed.", E_FAIL,
+        webview_runtime_version_);
+  }
+  return CreateInitializationError(
+      platform_error->code, platform_error->stage, platform_error->message,
+      platform_error->hresult, webview_runtime_version_);
 }
 
 } // namespace webview_all_windows

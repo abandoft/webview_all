@@ -206,7 +206,8 @@ std::string CanonicalizeNavigationUrl(const std::string &url) {
 
 Webview::Webview(
     wil::com_ptr<ICoreWebView2CompositionController> composition_controller,
-    std::shared_ptr<WebviewHost> host, HWND parent_window)
+    std::shared_ptr<WebviewHost> host, HWND parent_window,
+    winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor)
     : parent_window_(parent_window),
       composition_controller_(std::move(composition_controller)),
       host_(std::move(host)) {
@@ -245,7 +246,7 @@ Webview::Webview(
   EnableSecurityUpdates();
   RegisterEventHandlers();
 
-  is_valid_ = CreateSurface(host_->compositor());
+  is_valid_ = CreateSurface(std::move(compositor));
 }
 
 Webview::~Webview() {

@@ -5,11 +5,11 @@
 #include <wil/com.h>
 
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "platform/webview_platform.h"
-#include "rendering/graphics_context.h"
 #include "webview/webview.h"
 #include <windows.ui.composition.h>
 
@@ -28,8 +28,20 @@ struct WebviewCreationError {
   }
 };
 
+class WebviewHost;
+
+struct WebviewHostCreationResult {
+  std::shared_ptr<WebviewHost> host;
+  HRESULT hresult = E_FAIL;
+  std::string message;
+
+  bool succeeded() const { return host != nullptr; }
+};
+
 class WebviewHost : public std::enable_shared_from_this<WebviewHost> {
 public:
+  typedef std::function<void(WebviewHostCreationResult)>
+      WebviewHostCreationCallback;
   typedef std::function<void(std::unique_ptr<Webview>,
                              std::unique_ptr<WebviewCreationError>)>
       WebviewCreationCallback;
@@ -40,13 +52,15 @@ public:
                              std::unique_ptr<WebviewCreationError>)>
       PointerInfoCreationCallback;
 
-  static std::shared_ptr<WebviewHost>
-  Create(WebviewPlatform *platform,
-         std::optional<std::wstring> user_data_directory = std::nullopt,
-         std::optional<std::wstring> browser_exe_path = std::nullopt,
-         std::optional<std::string> arguments = std::nullopt);
+  static void Create(std::optional<std::wstring> user_data_directory,
+                     std::optional<std::wstring> browser_exe_path,
+                     std::optional<std::string> arguments,
+                     WebviewHostCreationCallback callback);
 
-  void CreateWebview(HWND parent_window, WebviewCreationCallback callback);
+  void CreateWebview(
+      HWND parent_window,
+      winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor,
+      WebviewCreationCallback callback);
 
   void CreateWebViewPointerInfo(PointerInfoCreationCallback cb);
 
@@ -55,17 +69,10 @@ public:
                            const std::string &headers,
                            const std::vector<uint8_t> *body);
 
-  winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor>
-  compositor() const {
-    return compositor_;
-  }
-
 private:
-  winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor_;
   wil::com_ptr<ICoreWebView2Environment3> webview_env_;
 
-  WebviewHost(WebviewPlatform *platform,
-              wil::com_ptr<ICoreWebView2Environment3> webview_env);
+  explicit WebviewHost(wil::com_ptr<ICoreWebView2Environment3> webview_env);
   void
   CreateWebViewCompositionController(HWND hwnd,
                                      CompositionControllerCreationCallback cb);

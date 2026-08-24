@@ -1398,15 +1398,16 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
               const auto &options_arg =
                   std::any_cast<const WindowsEnvironmentOptions &>(
                       std::get<CustomEncodableValue>(encodable_options_arg));
-              std::optional<FlutterError> output =
-                  api->InitializeEnvironment(options_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
+              api->InitializeEnvironment(
+                  options_arg, [reply](std::optional<FlutterError> &&output) {
+                    if (output.has_value()) {
+                      reply(WrapError(output.value()));
+                      return;
+                    }
+                    EncodableList wrapped;
+                    wrapped.push_back(EncodableValue());
+                    reply(EncodableValue(std::move(wrapped)));
+                  });
             } catch (const std::exception &exception) {
               reply(WrapError(exception.what()));
             }
@@ -1435,15 +1436,16 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
               const auto &options_arg =
                   std::any_cast<const WindowsEnvironmentOptions &>(
                       std::get<CustomEncodableValue>(encodable_options_arg));
-              std::optional<FlutterError> output =
-                  api->EnsureEnvironment(options_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
+              api->EnsureEnvironment(
+                  options_arg, [reply](std::optional<FlutterError> &&output) {
+                    if (output.has_value()) {
+                      reply(WrapError(output.value()));
+                      return;
+                    }
+                    EncodableList wrapped;
+                    wrapped.push_back(EncodableValue());
+                    reply(EncodableValue(std::move(wrapped)));
+                  });
             } catch (const std::exception &exception) {
               reply(WrapError(exception.what()));
             }

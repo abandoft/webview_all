@@ -1,5 +1,6 @@
 #pragma once
 
+#include <winrt/Windows.System.h>
 #include <winrt/base.h>
 
 #include <memory>
@@ -11,21 +12,37 @@
 
 namespace webview_all_windows {
 
+struct WebviewPlatformInitializationError {
+  std::string code;
+  std::string stage;
+  std::string message;
+  HRESULT hresult;
+};
+
 class WebviewPlatform {
 public:
-  WebviewPlatform();
+  explicit WebviewPlatform(WinrtRuntime *runtime);
   bool IsSupported() { return valid_; }
-  std::optional<std::wstring> GetDefaultDataDirectory();
-  bool IsGraphicsCaptureSessionSupported();
+  const std::optional<WebviewPlatformInitializationError> &error() const {
+    return error_;
+  }
   GraphicsContext *graphics_context() const { return graphics_context_.get(); };
-
-  WinrtRuntime *runtime() const { return runtime_.get(); }
+  winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor>
+  compositor() const {
+    return compositor_;
+  }
 
 private:
-  std::unique_ptr<WinrtRuntime> runtime_;
+  HRESULT EnsureDispatcherQueue();
+  HRESULT GetGraphicsCaptureSupport(bool &supported);
+
+  WinrtRuntime *runtime_;
   winrt::com_ptr<ABI::Windows::System::IDispatcherQueueController>
       dispatcher_queue_controller_;
+  winrt::Windows::System::DispatcherQueue dispatcher_queue_{nullptr};
   std::unique_ptr<GraphicsContext> graphics_context_;
+  winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor_;
+  std::optional<WebviewPlatformInitializationError> error_;
   bool valid_ = false;
 };
 

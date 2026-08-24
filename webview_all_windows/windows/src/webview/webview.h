@@ -417,7 +417,8 @@ private:
 
   Webview(
       wil::com_ptr<ICoreWebView2CompositionController> composition_controller,
-      std::shared_ptr<WebviewHost> host, HWND parent_window);
+      std::shared_ptr<WebviewHost> host, HWND parent_window,
+      winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor);
 
   bool CreateSurface(
       winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor);
