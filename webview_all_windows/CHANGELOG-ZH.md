@@ -1,3 +1,9 @@
+## 1.3.9
+
+* 修复部分 Windows 桌面应用中 WebView2 无法启动的问题。
+* 提升 Windows 初始化、重试和多 WebView 使用时的稳定性。
+* 优化启动错误提示，缺少 WebView2 Runtime 时可直接前往安装。
+
 ## 1.3.8
 
 * 新增可等待 Promise 的 `callAsyncJavaScript`，支持结构化参数、超时、一致的 JSON 结果和类型明确的 JavaScript 错误。

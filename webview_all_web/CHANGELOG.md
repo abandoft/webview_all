@@ -1,3 +1,9 @@
+## 1.3.9
+
+* Fix WebView2 startup failures in some Windows desktop applications.
+* Improve Windows initialization, retry, and multiple-WebView stability.
+* Provide clearer startup errors and a WebView2 Runtime installation option when required.
+
 ## 1.3.8
 
 * Add Promise-aware `callAsyncJavaScript` with structured arguments, timeouts, consistent JSON results, and typed JavaScript errors.
