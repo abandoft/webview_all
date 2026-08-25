@@ -344,6 +344,33 @@ WindowsHostApi::OpenWebView2DownloadPage() {
   return std::nullopt;
 }
 
+void WindowsHostApi::ClearAllWebsiteDataForEnvironment(
+    std::function<void(ErrorOr<bool> reply)> result) {
+  if (!webview_host_) {
+    return result(
+        FlutterError(kErrorCodeEnvironmentCreationFailed,
+                     "The WebView2 environment has not been initialized."));
+  }
+  webview_host_->ClearAllWebsiteData(
+      [lifetime_state = lifetime_state_, result = std::move(result)](
+          WebviewHostWebsiteDataClearingResult clear_result) mutable {
+        WindowsHostApi *const owner = lifetime_state->owner;
+        if (owner == nullptr) {
+          return;
+        }
+        if (!clear_result.supported) {
+          return result(false);
+        }
+        if (clear_result.succeeded) {
+          return result(true);
+        }
+        result(CreateInitializationError(
+            "website_data_clearing_failed", clear_result.stage,
+            clear_result.message, clear_result.hresult,
+            owner->webview_runtime_version_));
+      });
+}
+
 void WindowsHostApi::CreateWebView(
     std::function<void(webview_all_windows::ErrorOr<
                        webview_all_windows::WindowsCreateWebViewResult>

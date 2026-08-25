@@ -133,6 +133,9 @@ abstract class WindowsWebViewHostApi {
   void openWebView2DownloadPage();
 
   @async
+  bool clearAllWebsiteDataForEnvironment();
+
+  @async
   WindowsCreateWebViewResult createWebView();
 
   void disposeWebView(int textureId);

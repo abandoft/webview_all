@@ -29,7 +29,7 @@ class WindowsWebViewDataManagerCreationParams
 
 /// Clears website data in the shared WebView2 profile.
 ///
-/// This operation creates a temporary WebView2 controller. Supply
+/// This operation does not initialize the Flutter texture renderer. Supply
 /// [WindowsWebViewDataManagerCreationParams] when the application requires
 /// custom environment options. Equivalent options reuse an existing shared
 /// environment; conflicting options fail without replacing it.
@@ -47,7 +47,6 @@ class WindowsWebViewDataManager extends PlatformWebViewDataManager {
   Future<WebViewDataClearingResult> clearAllWebsiteData() async {
     final WindowsWebViewDataManagerCreationParams windowsParams =
         params as WindowsWebViewDataManagerCreationParams;
-    final controller = native_webview.WebviewController();
     Object? failure;
     var supported = false;
     try {
@@ -56,16 +55,10 @@ class WindowsWebViewDataManager extends PlatformWebViewDataManager {
         browserExePath: windowsParams.browserExePath,
         additionalArguments: windowsParams.additionalArguments,
       );
-      await controller.initialize();
-      supported = await controller.clearAllWebsiteData();
+      supported = await native_webview
+          .WebviewController.clearAllWebsiteDataForEnvironment();
     } catch (error) {
       failure = error;
-    } finally {
-      try {
-        await controller.dispose();
-      } catch (error) {
-        failure ??= error;
-      }
     }
     if (failure != null) {
       final String diagnostic = failure.toString().replaceAll(

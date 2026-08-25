@@ -96,6 +96,8 @@ private:
       std::function<void(std::optional<FlutterError> reply)> result) override;
   ErrorOr<std::optional<std::string>> GetWebViewVersion() override;
   std::optional<FlutterError> OpenWebView2DownloadPage() override;
+  void ClearAllWebsiteDataForEnvironment(
+      std::function<void(ErrorOr<bool> reply)> result) override;
   void CreateWebView(
       std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result)
       override;

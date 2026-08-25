@@ -38,6 +38,14 @@ struct WebviewHostCreationResult {
   bool succeeded() const { return host != nullptr; }
 };
 
+struct WebviewHostWebsiteDataClearingResult {
+  bool supported = true;
+  bool succeeded = false;
+  HRESULT hresult = E_FAIL;
+  std::string stage;
+  std::string message;
+};
+
 class WebviewHost : public std::enable_shared_from_this<WebviewHost> {
 public:
   typedef std::function<void(WebviewHostCreationResult)>
@@ -51,6 +59,8 @@ public:
   typedef std::function<void(wil::com_ptr<ICoreWebView2PointerInfo>,
                              std::unique_ptr<WebviewCreationError>)>
       PointerInfoCreationCallback;
+  typedef std::function<void(WebviewHostWebsiteDataClearingResult)>
+      WebsiteDataClearingCallback;
 
   static void Create(std::optional<std::wstring> user_data_directory,
                      std::optional<std::wstring> browser_exe_path,
@@ -63,6 +73,10 @@ public:
       WebviewCreationCallback callback);
 
   void CreateWebViewPointerInfo(PointerInfoCreationCallback cb);
+
+  static void ClearAllWebsiteData(ICoreWebView2 *webview,
+                                  WebsiteDataClearingCallback callback);
+  void ClearAllWebsiteData(WebsiteDataClearingCallback callback);
 
   wil::com_ptr<ICoreWebView2WebResourceRequest>
   CreateWebResourceRequest(const std::string &url, const std::string &method,

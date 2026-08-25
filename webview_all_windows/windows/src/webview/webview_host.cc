@@ -2,6 +2,7 @@
 
 #include <wrl.h>
 
+#include <atomic>
 #include <cstring>
 #include <mutex>
 #include <utility>
@@ -11,6 +12,71 @@
 using namespace Microsoft::WRL;
 
 namespace webview_all_windows {
+namespace {
+
+WebviewHostWebsiteDataClearingResult
+WebsiteDataFailure(const std::string &stage, const std::string &message,
+                   HRESULT hresult);
+
+class WebsiteDataClearingOperation
+    : public std::enable_shared_from_this<WebsiteDataClearingOperation> {
+public:
+  explicit WebsiteDataClearingOperation(
+      WebviewHost::WebsiteDataClearingCallback callback)
+      : callback_(std::move(callback)) {}
+
+  void SetHostWindow(HWND host_window) { host_window_ = host_window; }
+
+  void ClearWithController(wil::com_ptr<ICoreWebView2Controller> controller) {
+    controller_ = std::move(controller);
+
+    wil::com_ptr<ICoreWebView2> webview;
+    const HRESULT webview_result = controller_->get_CoreWebView2(webview.put());
+    if (FAILED(webview_result) || !webview) {
+      Complete(WebsiteDataFailure(
+          "webview2_data_webview",
+          "Accessing the WebView2 data controller failed.",
+          FAILED(webview_result) ? webview_result : E_POINTER));
+      return;
+    }
+    const auto self = shared_from_this();
+    WebviewHost::ClearAllWebsiteData(
+        webview.get(), [self](WebviewHostWebsiteDataClearingResult result) {
+          self->Complete(std::move(result));
+        });
+  }
+
+  void Complete(WebviewHostWebsiteDataClearingResult result) {
+    if (completed_.exchange(true)) {
+      return;
+    }
+    if (controller_) {
+      controller_->Close();
+      controller_.reset();
+    }
+    if (host_window_ != nullptr) {
+      DestroyWindow(host_window_);
+      host_window_ = nullptr;
+    }
+    auto callback = std::move(callback_);
+    callback(std::move(result));
+  }
+
+private:
+  std::atomic_bool completed_ = false;
+  WebviewHost::WebsiteDataClearingCallback callback_;
+  wil::com_ptr<ICoreWebView2Controller> controller_;
+  HWND host_window_ = nullptr;
+};
+
+WebviewHostWebsiteDataClearingResult
+WebsiteDataFailure(const std::string &stage, const std::string &message,
+                   HRESULT hresult) {
+  return WebviewHostWebsiteDataClearingResult{true, false, hresult, stage,
+                                              message};
+}
+
+} // namespace
 
 // static
 void WebviewHost::Create(std::optional<std::wstring> user_data_directory,
@@ -146,6 +212,111 @@ void WebviewHost::CreateWebViewPointerInfo(
     callback(std::move(wil::com_ptr<ICoreWebView2PointerInfo>(pointer)),
              nullptr);
   }
+}
+
+// static
+void WebviewHost::ClearAllWebsiteData(ICoreWebView2 *webview,
+                                      WebsiteDataClearingCallback callback) {
+  if (webview == nullptr) {
+    callback(WebsiteDataFailure("webview2_data_webview",
+                                "The WebView2 instance is unavailable.",
+                                E_POINTER));
+    return;
+  }
+
+  wil::com_ptr<ICoreWebView2> webview_pointer(webview);
+  auto webview13 = webview_pointer.try_query<ICoreWebView2_13>();
+  if (!webview13) {
+    callback(WebviewHostWebsiteDataClearingResult{false, false, S_OK, {}, {}});
+    return;
+  }
+
+  wil::com_ptr<ICoreWebView2Profile> profile;
+  const HRESULT profile_result = webview13->get_Profile(profile.put());
+  if (FAILED(profile_result) || !profile) {
+    callback(WebsiteDataFailure(
+        "webview2_profile", "Accessing the WebView2 profile failed.",
+        FAILED(profile_result) ? profile_result : E_POINTER));
+    return;
+  }
+
+  auto profile2 = profile.try_query<ICoreWebView2Profile2>();
+  if (!profile2) {
+    callback(WebviewHostWebsiteDataClearingResult{false, false, S_OK, {}, {}});
+    return;
+  }
+
+  const auto website_data = static_cast<COREWEBVIEW2_BROWSING_DATA_KINDS>(
+      COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_SITE |
+      COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE);
+  auto completion =
+      std::make_shared<WebsiteDataClearingCallback>(std::move(callback));
+  auto completed = std::make_shared<std::atomic_bool>(false);
+  const auto complete =
+      [completion, completed](WebviewHostWebsiteDataClearingResult result) {
+        if (!completed->exchange(true)) {
+          auto callback = std::move(*completion);
+          callback(std::move(result));
+        }
+      };
+  const HRESULT clear_result = profile2->ClearBrowsingData(
+      website_data,
+      Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
+          [complete](HRESULT result) -> HRESULT {
+            complete(FAILED(result)
+                         ? WebsiteDataFailure(
+                               "webview2_website_data",
+                               "Clearing WebView2 website data failed.", result)
+                         : WebviewHostWebsiteDataClearingResult{
+                               true, true, S_OK, {}, {}});
+            return S_OK;
+          })
+          .Get());
+  if (FAILED(clear_result)) {
+    complete(WebsiteDataFailure(
+        "webview2_website_data",
+        "Starting WebView2 website-data clearing failed.", clear_result));
+  }
+}
+
+void WebviewHost::ClearAllWebsiteData(WebsiteDataClearingCallback callback) {
+  auto operation =
+      std::make_shared<WebsiteDataClearingOperation>(std::move(callback));
+  const HWND host_window = CreateWindowExW(
+      0, L"STATIC", L"webview_all_windows_data", WS_OVERLAPPED, 0, 0, 1, 1,
+      nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+  if (host_window == nullptr) {
+    const DWORD error = GetLastError();
+    operation->Complete(WebsiteDataFailure(
+        "webview2_data_window",
+        "Creating the WebView2 data-controller window failed.",
+        HRESULT_FROM_WIN32(error == ERROR_SUCCESS ? ERROR_INVALID_WINDOW_HANDLE
+                                                  : error)));
+    return;
+  }
+  operation->SetHostWindow(host_window);
+  CreateWebViewCompositionController(
+      host_window,
+      [operation](wil::com_ptr<ICoreWebView2CompositionController> composition,
+                  std::unique_ptr<WebviewCreationError> error) {
+        if (!composition) {
+          operation->Complete(WebsiteDataFailure(
+              "webview2_data_controller",
+              error ? error->message
+                    : "Creating the WebView2 data controller failed.",
+              error ? error->hr : E_POINTER));
+          return;
+        }
+        auto controller = composition.try_query<ICoreWebView2Controller>();
+        if (!controller) {
+          operation->Complete(WebsiteDataFailure(
+              "webview2_data_controller",
+              "The WebView2 data controller interface is unavailable.",
+              E_NOINTERFACE));
+          return;
+        }
+        operation->ClearWithController(std::move(controller));
+      });
 }
 
 wil::com_ptr<ICoreWebView2WebResourceRequest>
