@@ -1,3 +1,9 @@
+## 1.3.10
+
+* Fix Windows rendering failures on affected devices and improve frame capture and resize stability.
+* Stop repeated Windows surface errors and provide a **Refresh** action when rendering needs recovery.
+* Clear Windows website data without starting graphics capture or creating a Flutter texture.
+
 ## 1.3.9
 
 * Fix WebView2 startup failures in some Windows desktop applications.
