@@ -3,7 +3,7 @@ title: Linux
 description: WebKitGTK 实现、自动 GtkOverlay 集成、API 和限制。
 ---
 
-Linux 由 `webview_all_linux 1.3.9` 提供，底层使用 WebKitGTK。
+Linux 由 `webview_all_linux 1.3.10` 提供，底层使用 WebKitGTK。
 
 | 项 | 值 |
 | --- | --- |

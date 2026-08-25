@@ -7,14 +7,14 @@ description: 版本基线、依赖基线和维护规则。
 
 | 包 | 版本 |
 | --- | --- |
-| `webview_all` | `1.3.9` |
-| `webview_all_windows` | `1.3.9` |
-| `webview_all_linux` | `1.3.9` |
-| `webview_all_ohos` | `1.3.9` |
-| `webview_all_web` | `1.3.9` |
-| `webview_platform_interface` | `1.3.9` |
-| `webview_all_android` | `1.3.9` |
-| `webview_all_wkwebview` | `1.3.9` |
+| `webview_all` | `1.3.10` |
+| `webview_all_windows` | `1.3.10` |
+| `webview_all_linux` | `1.3.10` |
+| `webview_all_ohos` | `1.3.10` |
+| `webview_all_web` | `1.3.10` |
+| `webview_platform_interface` | `1.3.10` |
+| `webview_all_android` | `1.3.10` |
+| `webview_all_wkwebview` | `1.3.10` |
 | Flutter SDK | `>=3.35.0` |
 | Dart SDK | `^3.9.0` |
 
