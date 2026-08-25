@@ -80,12 +80,13 @@ void main() {
   });
 
   test(
-    'reports WebView2 website-data coverage and releases its controller',
+    'reports WebView2 website-data coverage without creating a renderer',
     () async {
       var clearCalls = 0;
-      var disposeCalls = 0;
+      var createCalls = 0;
       WindowsEnvironmentOptions? environmentOptions;
       _mockWindowsWebViewCreation(
+        beforeCreateWebView: () async => createCalls += 1,
         onEnsureEnvironment: (WindowsEnvironmentOptions options) {
           environmentOptions = options;
         },
@@ -93,7 +94,6 @@ void main() {
           clearCalls += 1;
           return true;
         },
-        onDisposeWebView: () => disposeCalls += 1,
       );
       final WindowsWebViewDataManager manager = WindowsWebViewDataManager(
         const PlatformWebViewDataManagerCreationParams(),
@@ -117,7 +117,7 @@ void main() {
       });
       expect(result.failures, isEmpty);
       expect(clearCalls, 1);
-      expect(disposeCalls, 1);
+      expect(createCalls, 0);
       expect(environmentOptions, isNotNull);
     },
   );
@@ -165,7 +165,9 @@ void main() {
   );
 
   test('keeps unsupported types distinct from clearing failures', () async {
-    _mockWindowsWebViewCreation(creationFailureCount: 1);
+    _mockWindowsWebViewCreation(
+      clearAllWebsiteDataFailureCode: 'website_data_clearing_failed',
+    );
     final WindowsWebViewDataManager manager = WindowsWebViewDataManager(
       const PlatformWebViewDataManagerCreationParams(),
     );
@@ -543,6 +545,53 @@ void main() {
     await tester.pump();
     expect(sizes, isNotEmpty);
     expect(sizes.last.scaleFactor, 2);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await tester.runAsync(controller.dispose);
+  });
+
+  testWidgets('native rendering errors are latched and can be retried', (
+    WidgetTester tester,
+  ) async {
+    var sizeCalls = 0;
+    _mockWindowsWebViewCreation(
+      setSizeFailureCount: 1,
+      onSetSize: (WindowsSizeData size) => sizeCalls += 1,
+    );
+    final native_webview.WebviewController controller =
+        native_webview.WebviewController();
+    await controller.initialize();
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 320,
+          height: 240,
+          child: native_webview.Webview(controller),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('WebView rendering failed.'), findsOneWidget);
+    expect(find.text('Refresh'), findsOneWidget);
+    expect(find.byType(Texture), findsNothing);
+    expect(sizeCalls, 1);
+
+    await tester.pump();
+    await tester.pump();
+    expect(sizeCalls, 1);
+
+    await tester.tap(find.text('Refresh'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('WebView rendering failed.'), findsNothing);
+    expect(find.byType(Texture), findsOneWidget);
+    expect(sizeCalls, 2);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -1856,10 +1905,12 @@ void _mockWindowsWebViewCreation({
   String? Function()? onGetUserAgent,
   void Function()? onClearLocalStorage,
   bool Function()? onClearAllWebsiteData,
+  String? clearAllWebsiteDataFailureCode,
   void Function(bool enabled)? onSetJavaScriptEnabled,
   void Function(bool enabled)? onSetZoomControlEnabled,
   void Function(bool enabled)? onSetNavigationRequestCallbacksEnabled,
   void Function(WindowsSizeData size)? onSetSize,
+  int setSizeFailureCount = 0,
   void Function(bool attached)? onSetSurfaceAttached,
   void Function()? onDisposeWebView,
   void Function({
@@ -1872,6 +1923,7 @@ void _mockWindowsWebViewCreation({
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   var remainingCreationFailures = creationFailureCount;
+  var remainingSetSizeFailures = setSizeFailureCount;
   messenger.setMockMessageHandler(_hostApiChannel('ensureEnvironment'), (
     ByteData? message,
   ) async {
@@ -2007,6 +2059,21 @@ void _mockWindowsWebViewCreation({
       onClearAllWebsiteData?.call() ?? true,
     ]);
   });
+  messenger.setMockMessageHandler(
+    _hostApiChannel('clearAllWebsiteDataForEnvironment'),
+    (ByteData? message) async {
+      if (clearAllWebsiteDataFailureCode != null) {
+        return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
+          clearAllWebsiteDataFailureCode,
+          'Clearing WebView2 website data failed.',
+          <String, Object?>{'stage': 'webview2_website_data'},
+        ]);
+      }
+      return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
+        onClearAllWebsiteData?.call() ?? true,
+      ]);
+    },
+  );
   messenger.setMockMessageHandler(_hostApiChannel('setJavaScriptEnabled'), (
     ByteData? message,
   ) async {
@@ -2038,6 +2105,17 @@ void _mockWindowsWebViewCreation({
   ) async {
     final args = _decodePigeonArgs(message);
     onSetSize?.call(args[1]! as WindowsSizeData);
+    if (remainingSetSizeFailures > 0) {
+      remainingSetSizeFailures -= 1;
+      return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
+        'graphics_capture_frame_handler_registration_failed',
+        'Registering the graphics capture frame handler failed.',
+        <String, Object?>{
+          'stage': 'graphics_capture_frame_handler',
+          'hresult': '0x80004005',
+        },
+      ]);
+    }
     return _encodePigeonSuccess();
   });
   messenger.setMockMessageHandler(_hostApiChannel('setSurfaceAttached'), (
@@ -2104,6 +2182,10 @@ void _clearWindowsWebViewCreationMock() {
   messenger.setMockMessageHandler(_hostApiChannel('getUserAgent'), null);
   messenger.setMockMessageHandler(_hostApiChannel('clearLocalStorage'), null);
   messenger.setMockMessageHandler(_hostApiChannel('clearAllWebsiteData'), null);
+  messenger.setMockMessageHandler(
+    _hostApiChannel('clearAllWebsiteDataForEnvironment'),
+    null,
+  );
   messenger.setMockMessageHandler(
     _hostApiChannel('setJavaScriptEnabled'),
     null,
