@@ -6,7 +6,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 
 import 'windows_cursor.dart';
 import 'windows_webview_cookie.dart';
@@ -181,6 +180,10 @@ class WebviewController extends ValueNotifier<WebviewValue> {
     return _hostApi.openWebView2DownloadPage();
   }
 
+  static Future<bool> clearAllWebsiteDataForEnvironment() {
+    return _hostApi.clearAllWebsiteDataForEnvironment();
+  }
+
   Future<void>? _initializationFuture;
   Future<void>? _disposeFuture;
   int _textureId = 0;
@@ -190,6 +193,7 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   bool _streamsClosed = false;
   int _surfaceAttachmentCount = 0;
   int _surfaceAttachmentGeneration = 0;
+  final ValueNotifier<Object?> _renderingError = ValueNotifier<Object?>(null);
 
   Future<void> get ready =>
       _initializationFuture ??
@@ -566,6 +570,7 @@ class WebviewController extends ValueNotifier<WebviewValue> {
       return existingFuture;
     }
     _isDisposed = true;
+    _renderingError.dispose();
     super.dispose();
     return _disposeFuture = _dispose();
   }
@@ -1186,18 +1191,22 @@ class WebviewController extends ValueNotifier<WebviewValue> {
 
   /// Sets the surface size to the provided [size].
   Future<void> _setSize(Size size, double scaleFactor) async {
-    if (_isDisposed) {
+    if (_isDisposed || _renderingError.value != null) {
       return;
     }
     assert(value.isInitialized);
-    return _hostApi.setSize(
-      _textureId,
-      WindowsSizeData(
-        width: size.width,
-        height: size.height,
-        scaleFactor: scaleFactor,
-      ),
-    );
+    try {
+      await _hostApi.setSize(
+        _textureId,
+        WindowsSizeData(
+          width: size.width,
+          height: size.height,
+          scaleFactor: scaleFactor,
+        ),
+      );
+    } catch (error) {
+      _recordRenderingError(error);
+    }
   }
 
   void _attachSurface() {
@@ -1227,17 +1236,31 @@ class WebviewController extends ValueNotifier<WebviewValue> {
       await ready;
       if (_isDisposed ||
           !_nativeWebViewCreated ||
-          generation != _surfaceAttachmentGeneration) {
+          generation != _surfaceAttachmentGeneration ||
+          (attached && _renderingError.value != null)) {
         return;
       }
       await _hostApi.setSurfaceAttached(_textureId, attached);
     } catch (error) {
       if (!_isDisposed && generation == _surfaceAttachmentGeneration) {
-        debugPrint(
-          'webview_all_windows: failed to update the WebView2 surface attachment: ${_singleLineNativeLogValue(error)}',
-        );
+        _recordRenderingError(error);
       }
     }
+  }
+
+  void _recordRenderingError(Object error) {
+    if (!_isDisposed && _renderingError.value == null) {
+      _renderingError.value = error;
+    }
+  }
+
+  Future<void> _retryRendering() async {
+    if (_isDisposed) {
+      return;
+    }
+    _renderingError.value = null;
+    final int generation = ++_surfaceAttachmentGeneration;
+    await _updateSurfaceAttachment(generation, _surfaceAttachmentCount > 0);
   }
 }
 
@@ -1287,6 +1310,7 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
   bool _surfaceAttached = false;
   bool _visibilityCheckScheduled = false;
   bool _surfaceSizeReportScheduled = false;
+  bool _renderingRetryInProgress = false;
 
   @override
   void initState() {
@@ -1296,7 +1320,14 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
       WidgetsBinding.instance.lifecycleState,
     );
     _subscribeToCursor();
+    _controller._renderingError.addListener(_handleRenderingErrorChanged);
     _scheduleSurfaceSizeReport();
+  }
+
+  void _handleRenderingErrorChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _subscribeToCursor() {
@@ -1317,6 +1348,9 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
     final bool controllerChanged = oldWidget.controller != widget.controller;
 
     if (controllerChanged) {
+      oldWidget.controller._renderingError.removeListener(
+        _handleRenderingErrorChanged,
+      );
       if (_surfaceAttached) {
         oldWidget.controller._detachSurface();
         _controller._attachSurface();
@@ -1325,6 +1359,7 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
       _cursorSubscription = null;
       _surfaceSizeGeneration += 1;
       _subscribeToCursor();
+      _controller._renderingError.addListener(_handleRenderingErrorChanged);
     }
 
     if (controllerChanged ||
@@ -1423,6 +1458,25 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
   }
 
   Widget _buildInner() {
+    if (_controller.value.isInitialized &&
+        _controller._renderingError.value != null) {
+      return Material(
+        type: MaterialType.transparency,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Text('WebView rendering failed.'),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: _renderingRetryInProgress ? null : _retryRendering,
+                child: const Text('Refresh'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return NotificationListener<SizeChangedLayoutNotification>(
       onNotification: (notification) {
         _scheduleSurfaceSizeReport();
@@ -1522,6 +1576,21 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _retryRendering() async {
+    setState(() {
+      _renderingRetryInProgress = true;
+    });
+    await _controller._retryRendering();
+    if (mounted && _controller._renderingError.value == null) {
+      await _reportSurfaceSize();
+    }
+    if (mounted) {
+      setState(() {
+        _renderingRetryInProgress = false;
+      });
+    }
+  }
+
   void _scheduleSurfaceSizeReport() {
     if (_surfaceSizeReportScheduled) {
       return;
@@ -1556,13 +1625,7 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
       final double scaleFactor =
           widget.scaleFactor ?? View.of(currentContext).devicePixelRatio;
       await _controller._setSize(size, scaleFactor);
-    } catch (error) {
-      if (mounted) {
-        debugPrint(
-          'webview_all_windows: failed to update the WebView2 surface size: ${_singleLineNativeLogValue(error)}',
-        );
-      }
-    }
+    } catch (_) {}
   }
 
   @override
@@ -1574,6 +1637,7 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
       _surfaceAttached = false;
       _controller._detachSurface();
     }
+    _controller._renderingError.removeListener(_handleRenderingErrorChanged);
     unawaited(_cursorSubscription?.cancel());
     _cursorSubscription = null;
     super.dispose();
