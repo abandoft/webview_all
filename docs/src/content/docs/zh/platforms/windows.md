@@ -3,7 +3,7 @@ title: Windows
 description: WebView2 实现、运行时设置、API 和限制。
 ---
 
-Windows 由 `webview_all_windows 1.3.9` 提供，底层使用 Microsoft Edge WebView2。
+Windows 由 `webview_all_windows 1.3.10` 提供，底层使用 Microsoft Edge WebView2。
 
 | 项 | 值 |
 | --- | --- |
@@ -33,7 +33,7 @@ final version = await WindowsWebViewController.getWebViewVersion();
 Windows Composition 会推迟到首个 controller 创建时初始化，
 `ensureEnvironment` 不会再被无关的渲染能力拦截。
 
-网站数据清理也可以直接携带环境参数，不再依赖调用顺序：
+网站数据清理也可以直接携带环境参数，不会启动图形捕获或创建 Flutter 纹理：
 
 ```dart
 final manager = WebViewDataManager.fromPlatformCreationParams(
@@ -51,9 +51,12 @@ controller 初始化失败时，组件中心会显示错误和恢复操作：
 - **Refresh**：清理失败过程中创建的 native 状态和订阅后，使用同一个
   controller 重试初始化。
 
+如果初始化完成后发生渲染失败，组件会暂停自动画面更新并显示 **Refresh**，
+点击后会在现有 controller 上重新挂载画面并同步尺寸。
+
 渲染器会优先复用应用已有的 `DispatcherQueue`，仅在 UI 线程没有队列时创建；
-帧捕获使用 Windows 10 1809 的自由线程 API，Direct3D 硬件设备创建失败时会
-回退到 WARP 软件渲染器。
+帧捕获及其回调统一使用该 UI 线程队列，Direct3D 硬件设备创建失败时会回退到
+WARP 软件渲染器。
 
 ## Popup 策略
 

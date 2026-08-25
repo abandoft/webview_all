@@ -3,7 +3,7 @@ title: Windows
 description: WebView2 implementation, runtime setup, APIs, and limits.
 ---
 
-Windows is provided by `webview_all_windows 1.3.9` and uses Microsoft Edge WebView2.
+Windows is provided by `webview_all_windows 1.3.10` and uses Microsoft Edge WebView2.
 
 ## Engine
 
@@ -41,7 +41,8 @@ capture, Direct3D, and Windows Composition are initialized later when the first
 controller is created, so `ensureEnvironment` is not rejected by an unrelated
 rendering capability.
 
-Website-data cleanup can carry its own environment configuration, avoiding an ordering dependency:
+Website-data cleanup can carry its own environment configuration and does not
+start graphics capture or allocate a Flutter texture:
 
 ```dart
 final manager = WebViewDataManager.fromPlatformCreationParams(
@@ -67,9 +68,13 @@ center with recovery actions:
 - **Refresh** retries initialization on the same controller after partial
   native state and subscriptions have been cleaned up.
 
+If rendering fails after initialization, the widget pauses automatic surface
+updates and displays **Refresh**. The action retries surface attachment and
+size synchronization on the existing controller.
+
 The renderer reuses a `DispatcherQueue` already owned by the application and
-creates one only when the UI thread has none. Frame capture uses the
-free-threaded Windows 10 1809 API, and Direct3D falls back to the WARP software
+creates one only when the UI thread has none. Frame capture and its callbacks
+stay on that UI-thread queue, and Direct3D falls back to the WARP software
 renderer if hardware device creation fails.
 
 ## Creation Params

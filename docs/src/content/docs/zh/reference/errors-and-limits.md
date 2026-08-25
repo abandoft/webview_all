@@ -76,11 +76,12 @@ Linux 的导航、HTTP 认证、TLS、权限和 JavaScript 对话框回调抛错
 拒绝或取消结果；native 待决请求也会在 30 秒后超时。错误以单行日志记录，既能
 定位应用回调问题，又不会永久阻塞 WebKitGTK。
 
-Windows 初始化失败会显示在组件内，可用 **Refresh** 重试；**Install
-Webview2** 仅在错误为 `webview2_runtime_unavailable` 时显示，用于打开
-WebView2 Runtime 官方下载页。重试前会释放未完成初始化留下的资源。
+Windows 初始化或渲染失败会显示在组件内，可用 **Refresh** 重试。渲染失败后
+会暂停自动重试，避免布局变化反复启动失败的捕获会话。**Install Webview2**
+仅在错误为 `webview2_runtime_unavailable` 时显示，用于打开 WebView2 Runtime
+官方下载页。重试前会释放未完成初始化留下的资源。
 
-### Windows 初始化错误
+### Windows 初始化与渲染错误
 
 | 错误码 | 阶段 | 含义 |
 | --- | --- | --- |
@@ -93,9 +94,19 @@ WebView2 Runtime 官方下载页。重试前会释放未完成初始化留下的
 | `dxgi_device_initialization_failed` | `dxgi_device` | Direct3D 设备没有提供所需的 DXGI 接口。 |
 | `d3d_interop_initialization_failed` | `d3d_interop` | Windows Runtime Direct3D 互操作初始化失败。 |
 | `composition_initialization_failed` | `composition` | Windows Composition compositor 创建失败。 |
-| `webview_creation_failed` | `webview2_controller` / `graphics_capture_texture` | 环境创建后，controller 或捕获纹理创建失败。 |
+| `webview_creation_failed` | `webview2_controller` | 环境创建后 controller 创建失败。 |
+| `graphics_capture_item_creation_failed` | `graphics_capture_item` | 无法将 Composition 画面连接到 Windows 图形捕获。 |
+| `graphics_capture_size_unavailable` | `graphics_capture_size` | 捕获对象未能提供有效的画面尺寸。 |
+| `graphics_capture_frame_pool_creation_failed` | `graphics_capture_frame_pool` | 无法创建 UI 线程帧池。 |
+| `graphics_capture_frame_handler_registration_failed` | `graphics_capture_frame_handler` | 无法注册帧回调。 |
+| `graphics_capture_session_creation_failed` / `graphics_capture_start_failed` | `graphics_capture_session` / `graphics_capture_start` | 无法创建或启动捕获会话。 |
+| `graphics_capture_resize_failed` | `graphics_capture_resize` | 无法调整捕获帧池尺寸。 |
+| `flutter_texture_registration_failed` | `flutter_texture_registration` | Flutter 未能注册原生纹理。 |
+| `invalid_surface_size` / `webview_surface_update_failed` | `webview_surface_size` / `webview_surface` | 画面尺寸无效，或 WebView2 未能应用该尺寸。 |
+| `webview_visibility_update_failed` | `webview_visibility` | WebView2 未能应用显示状态。 |
+| `website_data_clearing_failed` | `webview2_data_window` / `webview2_data_controller` / `webview2_data_webview` / `webview2_profile` / `webview2_website_data` | 隔离窗口、临时 controller、WebView 访问、profile 查询或清理操作失败。 |
 
-初始化异常详情包含 `stage`、十六进制 `hresult`、有符号
+Windows 原生异常详情包含 `stage`、十六进制 `hresult`、有符号
 `hresultValue`、`remoteSession`，并在检测成功时包含
 `webView2RuntimeVersion`。配置相同的并发 `ensureEnvironment` 调用只执行一次
 原生创建；配置冲突时不会替换正在创建或已生效的环境。

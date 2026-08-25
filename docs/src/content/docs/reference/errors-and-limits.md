@@ -106,12 +106,13 @@ throws or returns an error. Native pending decisions also expire after 30
 seconds. The failure is logged on one line so an application bug remains
 diagnosable without blocking WebKitGTK.
 
-Windows initialization failures are shown in the widget and may be retried with
-**Refresh**. **Install Webview2** is offered only for
+Windows initialization and rendering failures are shown in the widget and may
+be retried with **Refresh**. Rendering errors are latched so layout updates do
+not repeatedly restart a failed capture session. **Install Webview2** is offered only for
 `webview2_runtime_unavailable` and opens the official WebView2 Runtime download
 page. Partial initialization state is released before a retry.
 
-### Windows initialization errors
+### Windows initialization and rendering errors
 
 | Code | Stage | Meaning |
 | --- | --- | --- |
@@ -124,9 +125,19 @@ page. Partial initialization state is released before a retry.
 | `dxgi_device_initialization_failed` | `dxgi_device` | The Direct3D device does not expose the required DXGI interface. |
 | `d3d_interop_initialization_failed` | `d3d_interop` | Windows Runtime Direct3D interop initialization failed. |
 | `composition_initialization_failed` | `composition` | The Windows Composition compositor could not be created. |
-| `webview_creation_failed` | `webview2_controller` / `graphics_capture_texture` | Controller or capture-texture creation failed after environment setup. |
+| `webview_creation_failed` | `webview2_controller` | Controller creation failed after environment setup. |
+| `graphics_capture_item_creation_failed` | `graphics_capture_item` | The composition visual could not be connected to Windows Graphics Capture. |
+| `graphics_capture_size_unavailable` | `graphics_capture_size` | The capture item did not provide a valid surface size. |
+| `graphics_capture_frame_pool_creation_failed` | `graphics_capture_frame_pool` | The UI-thread capture frame pool could not be created. |
+| `graphics_capture_frame_handler_registration_failed` | `graphics_capture_frame_handler` | The frame callback could not be registered. |
+| `graphics_capture_session_creation_failed` / `graphics_capture_start_failed` | `graphics_capture_session` / `graphics_capture_start` | The capture session could not be created or started. |
+| `graphics_capture_resize_failed` | `graphics_capture_resize` | The capture frame pool could not be resized. |
+| `flutter_texture_registration_failed` | `flutter_texture_registration` | Flutter rejected the native texture registration. |
+| `invalid_surface_size` / `webview_surface_update_failed` | `webview_surface_size` / `webview_surface` | The requested surface geometry was invalid or WebView2 rejected it. |
+| `webview_visibility_update_failed` | `webview_visibility` | WebView2 could not apply the requested visible state. |
+| `website_data_clearing_failed` | `webview2_data_window` / `webview2_data_controller` / `webview2_data_webview` / `webview2_profile` / `webview2_website_data` | The isolated data window, temporary controller, WebView access, profile lookup, or clearing operation failed. |
 
-Initialization error details include `stage`, hexadecimal `hresult`, signed
+Windows native error details include `stage`, hexadecimal `hresult`, signed
 `hresultValue`, `remoteSession`, and `webView2RuntimeVersion` when detected.
 Equivalent concurrent `ensureEnvironment` calls share one native creation
 operation; conflicting configurations fail without replacing active or pending
