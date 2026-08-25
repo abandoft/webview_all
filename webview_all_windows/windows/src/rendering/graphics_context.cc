@@ -75,73 +75,78 @@ HRESULT GraphicsContext::CreateCompositor(
   return S_OK;
 }
 
-winrt::com_ptr<ABI::Windows::Graphics::Capture::IGraphicsCaptureItem>
+HRESULT
 GraphicsContext::CreateGraphicsCaptureItemFromVisual(
-    ABI::Windows::UI::Composition::IVisual *visual) const {
+    ABI::Windows::UI::Composition::IVisual *visual,
+    winrt::com_ptr<ABI::Windows::Graphics::Capture::IGraphicsCaptureItem>
+        &capture_item) const {
+  capture_item = nullptr;
   HSTRING className;
   HSTRING_HEADER classNameHeader;
 
-  if (FAILED(runtime_->CreateStringReference(
-          RuntimeClass_Windows_Graphics_Capture_GraphicsCaptureItem, &className,
-          &classNameHeader))) {
-    return nullptr;
+  HRESULT result = runtime_->CreateStringReference(
+      RuntimeClass_Windows_Graphics_Capture_GraphicsCaptureItem, &className,
+      &classNameHeader);
+  if (FAILED(result)) {
+    return result;
   }
 
   winrt::com_ptr<ABI::Windows::Graphics::Capture::IGraphicsCaptureItemStatics>
       capture_item_statics;
-  if (FAILED(runtime_->GetActivationFactory(
-          className,
-          __uuidof(
-              ABI::Windows::Graphics::Capture::IGraphicsCaptureItemStatics),
-          capture_item_statics.put_void()))) {
-    return nullptr;
+  result = runtime_->GetActivationFactory(
+      className,
+      __uuidof(ABI::Windows::Graphics::Capture::IGraphicsCaptureItemStatics),
+      capture_item_statics.put_void());
+  if (FAILED(result) || !capture_item_statics) {
+    return FAILED(result) ? result : E_POINTER;
   }
 
-  winrt::com_ptr<ABI::Windows::Graphics::Capture::IGraphicsCaptureItem>
-      capture_item;
-  if (FAILED(
-          capture_item_statics->CreateFromVisual(visual, capture_item.put()))) {
-    return nullptr;
+  result = capture_item_statics->CreateFromVisual(visual, capture_item.put());
+  if (FAILED(result) || !capture_item) {
+    capture_item = nullptr;
+    return FAILED(result) ? result : E_POINTER;
   }
 
-  return capture_item;
+  return S_OK;
 }
 
-winrt::com_ptr<ABI::Windows::Graphics::Capture::IDirect3D11CaptureFramePool>
-GraphicsContext::CreateFreeThreadedCaptureFramePool(
+HRESULT GraphicsContext::CreateCaptureFramePool(
     ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice *device,
     ABI::Windows::Graphics::DirectX::DirectXPixelFormat pixelFormat,
-    INT32 numberOfBuffers, ABI::Windows::Graphics::SizeInt32 size) const {
+    INT32 numberOfBuffers, ABI::Windows::Graphics::SizeInt32 size,
+    winrt::com_ptr<ABI::Windows::Graphics::Capture::IDirect3D11CaptureFramePool>
+        &capture_frame_pool) const {
+  capture_frame_pool = nullptr;
   HSTRING className;
   HSTRING_HEADER classNameHeader;
 
-  if (FAILED(runtime_->CreateStringReference(
-          RuntimeClass_Windows_Graphics_Capture_Direct3D11CaptureFramePool,
-          &className, &classNameHeader))) {
-    return nullptr;
+  HRESULT result = runtime_->CreateStringReference(
+      RuntimeClass_Windows_Graphics_Capture_Direct3D11CaptureFramePool,
+      &className, &classNameHeader);
+  if (FAILED(result)) {
+    return result;
   }
 
   winrt::com_ptr<
-      ABI::Windows::Graphics::Capture::IDirect3D11CaptureFramePoolStatics2>
+      ABI::Windows::Graphics::Capture::IDirect3D11CaptureFramePoolStatics>
       capture_frame_pool_statics;
-  if (FAILED(runtime_->GetActivationFactory(
-          className,
-          __uuidof(ABI::Windows::Graphics::Capture::
-                       IDirect3D11CaptureFramePoolStatics2),
-          capture_frame_pool_statics.put_void()))) {
-    return nullptr;
+  result = runtime_->GetActivationFactory(
+      className,
+      __uuidof(
+          ABI::Windows::Graphics::Capture::IDirect3D11CaptureFramePoolStatics),
+      capture_frame_pool_statics.put_void());
+  if (FAILED(result) || !capture_frame_pool_statics) {
+    return FAILED(result) ? result : E_POINTER;
   }
 
-  winrt::com_ptr<ABI::Windows::Graphics::Capture::IDirect3D11CaptureFramePool>
-      capture_frame_pool;
-
-  if (FAILED(capture_frame_pool_statics->CreateFreeThreaded(
-          device, pixelFormat, numberOfBuffers, size,
-          capture_frame_pool.put()))) {
-    return nullptr;
+  result = capture_frame_pool_statics->Create(
+      device, pixelFormat, numberOfBuffers, size, capture_frame_pool.put());
+  if (FAILED(result) || !capture_frame_pool) {
+    capture_frame_pool = nullptr;
+    return FAILED(result) ? result : E_POINTER;
   }
 
-  return capture_frame_pool;
+  return S_OK;
 }
 
 } // namespace webview_all_windows

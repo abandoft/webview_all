@@ -95,6 +95,13 @@ HeadersToEncodableMap(const std::map<std::string, std::string> &headers) {
   return result;
 }
 
+WindowsRenderingError RenderingError(const std::string &code,
+                                     const std::string &stage,
+                                     const std::string &message,
+                                     HRESULT hresult) {
+  return WindowsRenderingError{code, stage, message, hresult};
+}
+
 } // namespace
 
 WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
@@ -105,6 +112,7 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
   texture_bridge_ =
       std::make_unique<TextureBridgeGpu>(graphics_context, webview_->surface());
   if (!texture_bridge_->IsValid()) {
+    initialization_error_ = texture_bridge_->initialization_error();
     return;
   }
 
@@ -119,15 +127,15 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
 
   texture_id_ = texture_registrar->RegisterTexture(flutter_texture_.get());
   if (texture_id_ < 0) {
+    initialization_error_ = RenderingError(
+        "flutter_texture_registration_failed", "flutter_texture_registration",
+        "Registering the Flutter texture failed.", E_FAIL);
     flutter_texture_.reset();
     texture_bridge_.reset();
     return;
   }
   texture_bridge_->SetOnFrameAvailable(
       [this]() { texture_registrar_->MarkTextureFrameAvailable(texture_id_); });
-  // texture_bridge_->SetOnSurfaceSizeChanged([this](Size size) {
-  //  webview_->SetSurfaceSize(size.width, size.height);
-  //});
 
   const std::string channel_name =
       std::string(kChannelPrefix) + "/" + std::to_string(texture_id_);
@@ -289,10 +297,6 @@ void WebviewBridge::RegisterEventHandlers() {
         {flutter::EncodableValue(kEventValue), flutter::EncodableValue(title)},
     });
     EmitEvent(event);
-  });
-
-  webview_->OnSurfaceSizeChanged([this](size_t width, size_t height) {
-    texture_bridge_->NotifySurfaceSizeChanged();
   });
 
   webview_->OnCursorChanged([this](const HCURSOR cursor) {
@@ -575,24 +579,38 @@ void WebviewBridge::SetPointerButtonState(int64_t button, bool is_down) {
                                   is_down);
 }
 
-bool WebviewBridge::SetSize(double width, double height, double scale_factor) {
+std::optional<WindowsRenderingError>
+WebviewBridge::SetSize(double width, double height, double scale_factor) {
   if (!std::isfinite(width) || !std::isfinite(height) ||
       !std::isfinite(scale_factor) || width <= 0 || height <= 0 ||
       scale_factor <= 0 ||
       width >= static_cast<double>((std::numeric_limits<size_t>::max)()) ||
       height >= static_cast<double>((std::numeric_limits<size_t>::max)()) ||
       scale_factor >=
-          static_cast<double>((std::numeric_limits<float>::max)()) ||
-      !webview_->SetSurfaceSize(static_cast<size_t>(width),
-                                static_cast<size_t>(height),
-                                static_cast<float>(scale_factor))) {
-    return false;
+          static_cast<double>((std::numeric_limits<float>::max)())) {
+    return RenderingError("invalid_surface_size", "webview_surface_size",
+                          "The WebView surface size is invalid.", E_INVALIDARG);
+  }
+
+  const HRESULT surface_result = webview_->SetSurfaceSize(
+      static_cast<size_t>(width), static_cast<size_t>(height),
+      static_cast<float>(scale_factor));
+  if (FAILED(surface_result)) {
+    return RenderingError("webview_surface_update_failed", "webview_surface",
+                          "Updating the WebView surface failed.",
+                          surface_result);
   }
   surface_size_set_ = true;
+
+  if (auto error = texture_bridge_->Resize()) {
+    webview_->SetVisible(false);
+    return error;
+  }
   return UpdateRenderingState();
 }
 
-bool WebviewBridge::SetSurfaceAttached(bool attached) {
+std::optional<WindowsRenderingError>
+WebviewBridge::SetSurfaceAttached(bool attached) {
   surface_attached_ = attached;
   return UpdateRenderingState();
 }
@@ -601,14 +619,32 @@ void WebviewBridge::NotifyParentWindowPositionChanged() {
   webview_->NotifyParentWindowPositionChanged();
 }
 
-bool WebviewBridge::UpdateRenderingState() {
+std::optional<WindowsRenderingError> WebviewBridge::UpdateRenderingState() {
   const bool should_render =
       surface_attached_ && surface_size_set_ && !suspended_;
   if (!should_render) {
     texture_bridge_->Stop();
-    return webview_->SetVisible(false);
+    const HRESULT result = webview_->SetVisible(false);
+    if (FAILED(result)) {
+      return RenderingError("webview_visibility_update_failed",
+                            "webview_visibility",
+                            "Hiding the WebView surface failed.", result);
+    }
+    return std::nullopt;
   }
-  return webview_->SetVisible(true) && texture_bridge_->Start();
+
+  const HRESULT visibility_result = webview_->SetVisible(true);
+  if (FAILED(visibility_result)) {
+    return RenderingError(
+        "webview_visibility_update_failed", "webview_visibility",
+        "Showing the WebView surface failed.", visibility_result);
+  }
+  if (auto error = texture_bridge_->Start()) {
+    texture_bridge_->Stop();
+    webview_->SetVisible(false);
+    return error;
+  }
+  return std::nullopt;
 }
 
 void WebviewBridge::LoadUrl(const std::string &url) { webview_->LoadUrl(url); }
@@ -648,7 +684,7 @@ bool WebviewBridge::Resume() {
     return false;
   }
   suspended_ = false;
-  return UpdateRenderingState();
+  return !UpdateRenderingState().has_value();
 }
 
 void WebviewBridge::SetVirtualHostNameMapping(const std::string &host_name,

@@ -3,182 +3,180 @@
 #include <windows.foundation.h>
 
 #include <algorithm>
-#include <atomic>
-#include <cassert>
+#include <string>
 
 #include "util/direct3d11.interop.h"
-#include "util/logging.h"
 
 namespace webview_all_windows {
 namespace {
 const int kNumBuffers = 1;
+
+WindowsRenderingError RenderingError(const std::string &code,
+                                     const std::string &stage,
+                                     const std::string &message,
+                                     HRESULT hresult) {
+  return WindowsRenderingError{code, stage, message, hresult};
+}
 } // namespace
 
 TextureBridge::TextureBridge(GraphicsContext *graphics_context,
                              ABI::Windows::UI::Composition::IVisual *visual)
-    : graphics_context_(graphics_context),
-      frame_callback_state_(std::make_shared<FrameCallbackState>(this)) {
-  capture_item_ =
-      graphics_context_->CreateGraphicsCaptureItemFromVisual(visual);
-  if (!capture_item_) {
-    util::LogWarning("Creating graphics capture item failed.");
+    : graphics_context_(graphics_context) {
+  const HRESULT capture_item_result =
+      graphics_context_->CreateGraphicsCaptureItemFromVisual(visual,
+                                                             capture_item_);
+  if (FAILED(capture_item_result) || !capture_item_) {
+    initialization_error_ = RenderingError(
+        "graphics_capture_item_creation_failed", "graphics_capture_item",
+        "Creating the graphics capture item failed.",
+        FAILED(capture_item_result) ? capture_item_result : E_POINTER);
     return;
   }
-
-  const HRESULT hr = capture_item_->add_Closed(
-      Microsoft::WRL::Callback<ABI::Windows::Foundation::ITypedEventHandler<
-          ABI::Windows::Graphics::Capture::GraphicsCaptureItem *,
-          IInspectable *>>(
-          [](ABI::Windows::Graphics::Capture::IGraphicsCaptureItem *item,
-             IInspectable *args) -> HRESULT {
-            util::LogWarning("Capture item was closed.");
-            return S_OK;
-          })
-          .Get(),
-      &on_closed_token_);
-  if (SUCCEEDED(hr)) {
-    closed_handler_registered_ = true;
-  } else {
-    util::LogWarning("Registering graphics capture close handler failed.");
-  }
 }
 
-TextureBridge::~TextureBridge() {
-  Stop();
-  {
-    const std::lock_guard<std::mutex> callback_lock(
-        frame_callback_state_->mutex);
-    frame_callback_state_->owner = nullptr;
-  }
-  const std::lock_guard<std::mutex> lock(mutex_);
-  if (capture_item_ && closed_handler_registered_) {
-    capture_item_->remove_Closed(on_closed_token_);
-  }
-}
+TextureBridge::~TextureBridge() { Stop(); }
 
-bool TextureBridge::Start() {
+std::optional<WindowsRenderingError> TextureBridge::Start() {
   const std::lock_guard<std::mutex> lock(mutex_);
   if (is_running_) {
-    return true;
+    return std::nullopt;
   }
-  if (!capture_item_) {
-    return false;
+  if (initialization_error_) {
+    return initialization_error_;
   }
-
-  ABI::Windows::Graphics::SizeInt32 size;
-  if (FAILED(capture_item_->get_Size(&size)) || size.Width <= 0 ||
-      size.Height <= 0) {
-    util::LogWarning("Reading graphics capture size failed.");
-    return false;
+  if (!capture_item_ || !graphics_context_) {
+    return RenderingError(
+        "graphics_capture_item_unavailable", "graphics_capture_item",
+        "The graphics capture item is unavailable.", E_POINTER);
   }
 
-  frame_pool_ = graphics_context_->CreateFreeThreadedCaptureFramePool(
+  ABI::Windows::Graphics::SizeInt32 size = {};
+  const HRESULT size_result = capture_item_->get_Size(&size);
+  if (FAILED(size_result) || size.Width <= 0 || size.Height <= 0) {
+    return RenderingError("graphics_capture_size_unavailable",
+                          "graphics_capture_size",
+                          "Reading the graphics capture size failed.",
+                          FAILED(size_result) ? size_result : E_INVALIDARG);
+  }
+
+  const HRESULT frame_pool_result = graphics_context_->CreateCaptureFramePool(
       graphics_context_->device(),
       static_cast<ABI::Windows::Graphics::DirectX::DirectXPixelFormat>(
           kPixelFormat),
-      kNumBuffers, size);
-  if (!frame_pool_) {
-    util::LogWarning("Creating graphics capture frame pool failed.");
-    return false;
+      kNumBuffers, size, frame_pool_);
+  if (FAILED(frame_pool_result) || !frame_pool_) {
+    return RenderingError("graphics_capture_frame_pool_creation_failed",
+                          "graphics_capture_frame_pool",
+                          "Creating the graphics capture frame pool failed.",
+                          FAILED(frame_pool_result) ? frame_pool_result
+                                                    : E_POINTER);
   }
 
   const HRESULT frame_handler_hr = frame_pool_->add_FrameArrived(
       Microsoft::WRL::Callback<ABI::Windows::Foundation::ITypedEventHandler<
           ABI::Windows::Graphics::Capture::Direct3D11CaptureFramePool *,
           IInspectable *>>(
-          [callback_state = frame_callback_state_](
-              ABI::Windows::Graphics::Capture::IDirect3D11CaptureFramePool
-                  *pool,
-              IInspectable *args) -> HRESULT {
-            TextureBridge *owner = nullptr;
-            {
-              const std::lock_guard<std::mutex> callback_lock(
-                  callback_state->mutex);
-              if (callback_state->owner == nullptr ||
-                  !callback_state->accepting_callbacks) {
-                return S_OK;
-              }
-              owner = callback_state->owner;
-              ++callback_state->active_callbacks;
-            }
-
-            HRESULT result = S_OK;
+          [this](ABI::Windows::Graphics::Capture::IDirect3D11CaptureFramePool
+                     *pool,
+                 IInspectable *args) -> HRESULT {
             try {
-              owner->OnFrameArrived();
+              OnFrameArrived();
             } catch (...) {
-              result = E_FAIL;
+              return E_FAIL;
             }
-
-            {
-              const std::lock_guard<std::mutex> callback_lock(
-                  callback_state->mutex);
-              --callback_state->active_callbacks;
-              if (callback_state->active_callbacks == 0) {
-                callback_state->idle.notify_all();
-              }
-            }
-            return result;
+            return S_OK;
           })
           .Get(),
       &on_frame_arrived_token_);
   if (FAILED(frame_handler_hr)) {
-    util::LogWarning("Registering graphics frame handler failed.");
-    frame_pool_ = nullptr;
-    return false;
+    StopInternal();
+    return RenderingError(
+        "graphics_capture_frame_handler_registration_failed",
+        "graphics_capture_frame_handler",
+        "Registering the graphics capture frame handler failed.",
+        frame_handler_hr);
   }
   frame_arrived_handler_registered_ = true;
 
-  if (FAILED(frame_pool_->CreateCaptureSession(capture_item_.get(),
-                                               capture_session_.put()))) {
-    util::LogWarning("Creating capture session failed.");
-    frame_pool_->remove_FrameArrived(on_frame_arrived_token_);
-    frame_arrived_handler_registered_ = false;
-    frame_pool_ = nullptr;
-    return false;
+  const HRESULT session_result = frame_pool_->CreateCaptureSession(
+      capture_item_.get(), capture_session_.put());
+  if (FAILED(session_result) || !capture_session_) {
+    StopInternal();
+    return RenderingError("graphics_capture_session_creation_failed",
+                          "graphics_capture_session",
+                          "Creating the graphics capture session failed.",
+                          FAILED(session_result) ? session_result : E_POINTER);
   }
 
-  if (SUCCEEDED(capture_session_->StartCapture())) {
-    is_running_ = true;
-    const std::lock_guard<std::mutex> callback_lock(
-        frame_callback_state_->mutex);
-    frame_callback_state_->accepting_callbacks = true;
-    return true;
+  const HRESULT start_result = capture_session_->StartCapture();
+  if (FAILED(start_result)) {
+    StopInternal();
+    return RenderingError("graphics_capture_start_failed",
+                          "graphics_capture_start",
+                          "Starting graphics capture failed.", start_result);
   }
 
-  capture_session_ = nullptr;
-  frame_pool_->remove_FrameArrived(on_frame_arrived_token_);
-  frame_arrived_handler_registered_ = false;
-  frame_pool_ = nullptr;
-  return false;
+  is_running_ = true;
+  return std::nullopt;
+}
+
+std::optional<WindowsRenderingError> TextureBridge::Resize() {
+  const std::lock_guard<std::mutex> lock(mutex_);
+  if (!is_running_ || !frame_pool_) {
+    return std::nullopt;
+  }
+
+  ABI::Windows::Graphics::SizeInt32 size = {};
+  const HRESULT size_result = capture_item_->get_Size(&size);
+  if (FAILED(size_result) || size.Width <= 0 || size.Height <= 0) {
+    StopInternal();
+    return RenderingError(
+        "graphics_capture_size_unavailable", "graphics_capture_size",
+        "Reading the resized graphics capture surface failed.",
+        FAILED(size_result) ? size_result : E_INVALIDARG);
+  }
+
+  const HRESULT resize_result = frame_pool_->Recreate(
+      graphics_context_->device(),
+      static_cast<ABI::Windows::Graphics::DirectX::DirectXPixelFormat>(
+          kPixelFormat),
+      kNumBuffers, size);
+  if (FAILED(resize_result)) {
+    StopInternal();
+    return RenderingError(
+        "graphics_capture_resize_failed", "graphics_capture_resize",
+        "Resizing the graphics capture frame pool failed.", resize_result);
+  }
+  return std::nullopt;
 }
 
 void TextureBridge::Stop() {
-  {
-    std::unique_lock<std::mutex> callback_lock(frame_callback_state_->mutex);
-    frame_callback_state_->accepting_callbacks = false;
-    frame_callback_state_->idle.wait(callback_lock, [this] {
-      return frame_callback_state_->active_callbacks == 0;
-    });
-  }
   const std::lock_guard<std::mutex> lock(mutex_);
   StopInternal();
 }
 
 void TextureBridge::StopInternal() {
-  if (is_running_) {
-    is_running_ = false;
-    if (frame_pool_ && frame_arrived_handler_registered_) {
-      frame_pool_->remove_FrameArrived(on_frame_arrived_token_);
-      frame_arrived_handler_registered_ = false;
-    }
+  is_running_ = false;
+  if (frame_pool_ && frame_arrived_handler_registered_) {
+    frame_pool_->remove_FrameArrived(on_frame_arrived_token_);
+    frame_arrived_handler_registered_ = false;
+  }
+  if (capture_session_) {
     auto closable =
         capture_session_.try_as<ABI::Windows::Foundation::IClosable>();
     if (closable) {
       closable->Close();
     }
     capture_session_ = nullptr;
+  }
+  if (frame_pool_) {
+    auto closable = frame_pool_.try_as<ABI::Windows::Foundation::IClosable>();
+    if (closable) {
+      closable->Close();
+    }
     frame_pool_ = nullptr;
   }
+  last_frame_ = nullptr;
 }
 
 void TextureBridge::OnFrameArrived() {
@@ -204,17 +202,6 @@ void TextureBridge::OnFrameArrived() {
     }
   }
 
-  if (needs_update_) {
-    ABI::Windows::Graphics::SizeInt32 size;
-    capture_item_->get_Size(&size);
-    frame_pool_->Recreate(
-        graphics_context_->device(),
-        static_cast<ABI::Windows::Graphics::DirectX::DirectXPixelFormat>(
-            kPixelFormat),
-        kNumBuffers, size);
-    needs_update_ = false;
-  }
-
   if (has_frame && frame_available_) {
     frame_available_();
   }
@@ -237,11 +224,6 @@ bool TextureBridge::ShouldDropFrame() {
     last_frame_timestamp_ = now;
   }
   return should_drop_frame;
-}
-
-void TextureBridge::NotifySurfaceSizeChanged() {
-  const std::lock_guard<std::mutex> lock(mutex_);
-  needs_update_ = true;
 }
 
 void TextureBridge::SetFpsLimit(std::optional<int> max_fps) {

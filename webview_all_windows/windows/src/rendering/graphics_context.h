@@ -42,15 +42,18 @@ public:
   HRESULT CreateCompositor(
       winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> &compositor);
 
-  winrt::com_ptr<ABI::Windows::Graphics::Capture::IGraphicsCaptureItem>
-  CreateGraphicsCaptureItemFromVisual(
-      ABI::Windows::UI::Composition::IVisual *visual) const;
+  HRESULT CreateGraphicsCaptureItemFromVisual(
+      ABI::Windows::UI::Composition::IVisual *visual,
+      winrt::com_ptr<ABI::Windows::Graphics::Capture::IGraphicsCaptureItem>
+          &capture_item) const;
 
-  winrt::com_ptr<ABI::Windows::Graphics::Capture::IDirect3D11CaptureFramePool>
-  CreateFreeThreadedCaptureFramePool(
+  HRESULT CreateCaptureFramePool(
       ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice *device,
       ABI::Windows::Graphics::DirectX::DirectXPixelFormat pixelFormat,
-      INT32 numberOfBuffers, ABI::Windows::Graphics::SizeInt32 size) const;
+      INT32 numberOfBuffers, ABI::Windows::Graphics::SizeInt32 size,
+      winrt::com_ptr<
+          ABI::Windows::Graphics::Capture::IDirect3D11CaptureFramePool>
+          &capture_frame_pool) const;
 
 private:
   bool valid_ = false;

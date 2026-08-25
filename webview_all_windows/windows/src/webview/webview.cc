@@ -1001,39 +1001,43 @@ bool Webview::UpdateControllerBounds(size_t width, size_t height,
   return true;
 }
 
-bool Webview::SetSurfaceSize(size_t width, size_t height, float scale_factor) {
+HRESULT Webview::SetSurfaceSize(size_t width, size_t height,
+                                float scale_factor) {
   if (!IsValid() || !surface_) {
-    return false;
+    return E_UNEXPECTED;
   }
 
   const auto bounds = CalculateOffscreenBounds(width, height, scale_factor);
   if (!bounds) {
-    util::LogWarning(
-        "The WebView surface size or off-screen bounds are invalid.");
-    return false;
+    return E_INVALIDARG;
   }
 
   const float scaled_width = static_cast<float>(bounds->right - bounds->left);
   const float scaled_height = static_cast<float>(bounds->bottom - bounds->top);
-  if (FAILED(webview_controller_->put_RasterizationScale(scale_factor)) ||
-      FAILED(webview_controller_->put_Bounds(*bounds)) ||
-      FAILED(surface_->put_Size({scaled_width, scaled_height}))) {
-    util::LogWarning("Updating the WebView surface failed.");
-    return false;
+  HRESULT result = webview_controller_->put_RasterizationScale(scale_factor);
+  if (FAILED(result)) {
+    return result;
+  }
+  result = webview_controller_->put_Bounds(*bounds);
+  if (FAILED(result)) {
+    return result;
+  }
+  result = surface_->put_Size({scaled_width, scaled_height});
+  if (FAILED(result)) {
+    return result;
   }
 
   surface_width_ = width;
   surface_height_ = height;
   scale_factor_ = scale_factor;
-  if (surface_size_changed_callback_) {
-    surface_size_changed_callback_(width, height);
-  }
-  return true;
+  return S_OK;
 }
 
-bool Webview::SetVisible(bool visible) {
-  return IsValid() && webview_controller_ &&
-         SUCCEEDED(webview_controller_->put_IsVisible(visible ? TRUE : FALSE));
+HRESULT Webview::SetVisible(bool visible) {
+  if (!IsValid() || !webview_controller_) {
+    return E_UNEXPECTED;
+  }
+  return webview_controller_->put_IsVisible(visible ? TRUE : FALSE);
 }
 
 void Webview::NotifyParentWindowPositionChanged() {
@@ -1805,7 +1809,7 @@ bool Webview::Suspend() {
     return false;
   }
 
-  return SetVisible(false) &&
+  return SUCCEEDED(SetVisible(false)) &&
          webview->TrySuspend(
              Callback<ICoreWebView2TrySuspendCompletedHandler>(
                  [](HRESULT error_code, BOOL is_successful) -> HRESULT {

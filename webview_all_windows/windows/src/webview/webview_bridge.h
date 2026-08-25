@@ -29,14 +29,18 @@ public:
 
   int64_t texture_id() const { return texture_id_; }
   bool IsValid() const { return texture_id_ >= 0; }
+  const std::optional<WindowsRenderingError> &initialization_error() const {
+    return initialization_error_;
+  }
 
   void SetCursorPos(double x, double y);
   void SetPointerUpdate(int64_t pointer, int64_t event, double x, double y,
                         double size, double pressure);
   void SetScrollDelta(double dx, double dy);
   void SetPointerButtonState(int64_t button, bool is_down);
-  bool SetSize(double width, double height, double scale_factor);
-  bool SetSurfaceAttached(bool attached);
+  std::optional<WindowsRenderingError> SetSize(double width, double height,
+                                               double scale_factor);
+  std::optional<WindowsRenderingError> SetSurfaceAttached(bool attached);
   void NotifyParentWindowPositionChanged();
 
   void LoadUrl(const std::string &url);
@@ -108,9 +112,10 @@ private:
   bool surface_attached_ = false;
   bool surface_size_set_ = false;
   bool suspended_ = false;
+  std::optional<WindowsRenderingError> initialization_error_;
 
   void RegisterEventHandlers();
-  bool UpdateRenderingState();
+  std::optional<WindowsRenderingError> UpdateRenderingState();
 
   template <typename T> void EmitEvent(const T &value) {
     if (event_sink_) {

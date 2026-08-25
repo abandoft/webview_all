@@ -418,6 +418,12 @@ void WindowsHostApi::CreateWebViewWithEnvironment(
             owner->messenger_, owner->textures_,
             owner->platform_->graphics_context(), std::move(webview));
         if (!bridge->IsValid()) {
+          if (const auto &rendering_error = bridge->initialization_error()) {
+            return result(CreateInitializationError(
+                rendering_error->code, rendering_error->stage,
+                rendering_error->message, rendering_error->hresult,
+                owner->webview_runtime_version_));
+          }
           return result(CreateInitializationError(
               kErrorCodeWebviewCreationFailed, "graphics_capture_texture",
               "Creating the WebView graphics capture texture failed.", E_FAIL,
@@ -1036,9 +1042,10 @@ WindowsHostApi::SetSize(int64_t texture_id,
   if (!bridge) {
     return InvalidIdError();
   }
-  if (!bridge->SetSize(size.width(), size.height(), size.scale_factor())) {
-    return webview_all_windows::FlutterError(
-        kErrorMethodFailed, "Updating the WebView surface size failed.");
+  if (const auto error =
+          bridge->SetSize(size.width(), size.height(), size.scale_factor())) {
+    return CreateInitializationError(error->code, error->stage, error->message,
+                                     error->hresult, webview_runtime_version_);
   }
   return std::nullopt;
 }
@@ -1049,10 +1056,9 @@ WindowsHostApi::SetSurfaceAttached(int64_t texture_id, bool attached) {
   if (!bridge) {
     return InvalidIdError();
   }
-  if (!bridge->SetSurfaceAttached(attached)) {
-    return MethodFailedError(attached
-                                 ? "Attaching the WebView surface failed."
-                                 : "Detaching the WebView surface failed.");
+  if (const auto error = bridge->SetSurfaceAttached(attached)) {
+    return CreateInitializationError(error->code, error->stage, error->message,
+                                     error->hresult, webview_runtime_version_);
   }
   return std::nullopt;
 }

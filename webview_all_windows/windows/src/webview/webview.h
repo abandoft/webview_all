@@ -170,8 +170,6 @@ public:
   typedef std::function<void(const std::string &)>
       DevtoolsProtocolEventCallback;
   typedef std::function<void(const std::string &)> DocumentTitleChangedCallback;
-  typedef std::function<void(size_t width, size_t height)>
-      SurfaceSizeChangedCallback;
   typedef std::function<void(const HCURSOR)> CursorChangedCallback;
   typedef std::function<void(bool)> FocusChangedCallback;
   typedef std::function<void(bool, const std::string &)>
@@ -224,8 +222,8 @@ public:
 
   bool IsValid() { return is_valid_; }
 
-  bool SetSurfaceSize(size_t width, size_t height, float scale_factor);
-  bool SetVisible(bool visible);
+  HRESULT SetSurfaceSize(size_t width, size_t height, float scale_factor);
+  HRESULT SetVisible(bool visible);
   void NotifyParentWindowPositionChanged();
   void SetCursorPos(double x, double y);
   void SetPointerUpdate(int32_t pointer, WebviewPointerEventKind eventKind,
@@ -304,10 +302,6 @@ public:
 
   void OnHistoryChanged(HistoryChangedCallback callback) {
     history_changed_callback_ = std::move(callback);
-  }
-
-  void OnSurfaceSizeChanged(SurfaceSizeChangedCallback callback) {
-    surface_size_changed_callback_ = std::move(callback);
   }
 
   void OnDocumentTitleChanged(DocumentTitleChangedCallback callback) {
@@ -402,7 +396,6 @@ private:
   HttpResponseErrorCallback http_response_error_callback_;
   HistoryChangedCallback history_changed_callback_;
   DocumentTitleChangedCallback document_title_changed_callback_;
-  SurfaceSizeChangedCallback surface_size_changed_callback_;
   CursorChangedCallback cursor_changed_callback_;
   FocusChangedCallback focus_changed_callback_;
   WebMessageReceivedCallback web_message_received_callback_;
