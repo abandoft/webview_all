@@ -136,10 +136,8 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
         return;
       }
       final RenderObject? renderObject = context.findRenderObject();
-      if (renderObject is _LinuxGeometryRenderBox &&
-          !renderObject.isEffectivelyPainted) {
-        _pushRect(Rect.zero, visible: false);
-        return;
+      if (renderObject is _LinuxGeometryRenderBox) {
+        renderObject.syncGeometry();
       }
       _scheduleVisibilityCheck();
     });
@@ -273,10 +271,14 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
     super.detach();
   }
 
-  @override
-  void paint(PaintingContext context, Offset offset) {
-    super.paint(context, offset);
+  /// Recomputes the on-screen rect of this box and reports it.
+  ///
+  /// Called from [paint] and, while visible, from a per-frame post-frame
+  /// callback so the native overlay keeps tracking the Flutter layout during
+  /// sliver scrolling.
+  void syncGeometry() {
     if (!attached) {
+      _onGeometryChanged(Rect.zero);
       return;
     }
     if (!isEffectivelyPainted) {
@@ -329,5 +331,11 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
     final Rect rect = Rect.fromPoints(topLeft, bottomRight);
     final Rect viewport = Offset.zero & renderView.size;
     _onGeometryChanged(rect.overlaps(viewport) ? rect : Rect.zero);
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    super.paint(context, offset);
+    syncGeometry();
   }
 }
