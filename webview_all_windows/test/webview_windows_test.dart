@@ -2208,7 +2208,7 @@ void _clearWindowsWebViewCreationMock() {
 }
 
 String _hostApiChannel(String method) =>
-    'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.$method';
+    'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.$method';
 
 ByteData? _encodePigeonSuccess() {
   return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[

@@ -1,10 +1,10 @@
-#include "webview_all_windows/webview_windows_plugin.h"
+#include "webview_all_windows/webview_all_windows_plugin.h"
 
 #include <flutter/plugin_registrar_windows.h>
 
 #include "plugin/windows_host_api.h"
 
-void WebviewWindowsPluginRegisterWithRegistrar(
+void WebviewAllWindowsPluginRegisterWithRegistrar(
     FlutterDesktopPluginRegistrarRef registrar) {
   const FlutterDesktopViewRef view =
       FlutterDesktopPluginRegistrarGetView(registrar);

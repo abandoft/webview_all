@@ -48,7 +48,7 @@ add_custom_command(
 
 set(PLUGIN_SOURCES
   "generated/windows_webview_api.g.cpp"
-  "src/plugin/webview_windows_plugin.cc"
+  "src/plugin/webview_all_windows_plugin.cc"
   "src/plugin/windows_host_api.cc"
   "src/webview/webview.cc"
   "src/webview/webview_bridge.cc"

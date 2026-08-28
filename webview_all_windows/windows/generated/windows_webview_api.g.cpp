@@ -1380,7 +1380,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi."
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
         "initializeEnvironment" +
             prepended_suffix,
         &GetCodec());
@@ -1418,7 +1418,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.ensureEnvironment" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -1456,7 +1456,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.getWebViewVersion" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -1491,7 +1491,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi."
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
         "openWebView2DownloadPage" +
             prepended_suffix,
         &GetCodec());
@@ -1520,7 +1520,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi."
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
         "clearAllWebsiteDataForEnvironment" +
             prepended_suffix,
         &GetCodec());
@@ -1550,7 +1550,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.createWebView" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -1580,7 +1580,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.disposeWebView" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -1617,7 +1617,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.loadUrl" +
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.loadUrl" +
             prepended_suffix,
         &GetCodec());
     if (api != nullptr) {
@@ -1658,7 +1658,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.loadRequest" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -1702,7 +1702,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.loadStringContent" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -1746,7 +1746,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.reload" +
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.reload" +
             prepended_suffix,
         &GetCodec());
     if (api != nullptr) {
@@ -1781,7 +1781,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.stop" +
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.stop" +
             prepended_suffix,
         &GetCodec());
     if (api != nullptr) {
@@ -1816,7 +1816,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.goBack" +
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.goBack" +
             prepended_suffix,
         &GetCodec());
     if (api != nullptr) {
@@ -1850,7 +1850,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.goForward" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -1887,7 +1887,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi."
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
         "addScriptToExecuteOnDocumentCreated" +
             prepended_suffix,
         &GetCodec());
@@ -1939,7 +1939,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi."
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
         "removeScriptToExecuteOnDocumentCreated" +
             prepended_suffix,
         &GetCodec());
@@ -1983,7 +1983,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.executeScript" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2028,7 +2028,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.postWebMessage" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2071,7 +2071,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.setUserAgent" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2110,7 +2110,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.getUserAgent" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2152,7 +2152,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.setJavaScriptEnabled" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2194,7 +2194,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.clearCookies" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2232,7 +2232,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.setCookie" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2275,7 +2275,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.getCookies" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2319,7 +2319,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.deleteCookie" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2363,7 +2363,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi."
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
         "deleteCookiesWithNameAndUrl" +
             prepended_suffix,
         &GetCodec());
@@ -2413,7 +2413,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi."
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
         "deleteCookiesWithNameDomainAndPath" +
             prepended_suffix,
         &GetCodec());
@@ -2469,7 +2469,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.clearCache" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2505,7 +2505,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.clearLocalStorage" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2543,7 +2543,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.clearAllWebsiteData" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2581,7 +2581,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.setCacheDisabled" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2623,7 +2623,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.openDevTools" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2659,7 +2659,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.setBackgroundColor" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2702,7 +2702,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi."
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
         "setZoomControlEnabled" +
             prepended_suffix,
         &GetCodec());
@@ -2744,7 +2744,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.setZoomFactor" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2787,7 +2787,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.setPopupWindowPolicy" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -2830,7 +2830,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi."
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
         "setNavigationRequestCallbacksEnabled" +
             prepended_suffix,
         &GetCodec());
@@ -2874,7 +2874,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi."
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
         "setJavaScriptDialogCallbacksEnabled" +
             prepended_suffix,
         &GetCodec());
@@ -2930,7 +2930,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.suspend" +
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.suspend" +
             prepended_suffix,
         &GetCodec());
     if (api != nullptr) {
@@ -2965,7 +2965,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.resume" +
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.resume" +
             prepended_suffix,
         &GetCodec());
     if (api != nullptr) {
@@ -3000,7 +3000,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi."
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
         "setVirtualHostNameMapping" +
             prepended_suffix,
         &GetCodec());
@@ -3045,7 +3045,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi."
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
         "clearVirtualHostNameMapping" +
             prepended_suffix,
         &GetCodec());
@@ -3089,7 +3089,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.setFpsLimit" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -3131,7 +3131,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.setPointerUpdate" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -3175,7 +3175,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.setCursorPos" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -3219,7 +3219,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.setPointerButton" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -3263,7 +3263,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.setScrollDelta" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -3307,7 +3307,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(
         binary_messenger,
-        "dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setSize" +
+        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setSize" +
             prepended_suffix,
         &GetCodec());
     if (api != nullptr) {
@@ -3349,7 +3349,7 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   }
   {
     BasicMessageChannel<> channel(binary_messenger,
-                                  "dev.flutter.pigeon.webview_all_windows."
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.setSurfaceAttached" +
                                       prepended_suffix,
                                   &GetCodec());

@@ -699,7 +699,7 @@ class WindowsWebViewHostApi {
 
   Future<void> initializeEnvironment(WindowsEnvironmentOptions options) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.initializeEnvironment$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.initializeEnvironment$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -719,7 +719,7 @@ class WindowsWebViewHostApi {
 
   Future<void> ensureEnvironment(WindowsEnvironmentOptions options) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.ensureEnvironment$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.ensureEnvironment$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -739,7 +739,7 @@ class WindowsWebViewHostApi {
 
   Future<String?> getWebViewVersion() async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.getWebViewVersion$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.getWebViewVersion$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -758,7 +758,7 @@ class WindowsWebViewHostApi {
 
   Future<void> openWebView2DownloadPage() async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.openWebView2DownloadPage$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.openWebView2DownloadPage$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -776,7 +776,7 @@ class WindowsWebViewHostApi {
 
   Future<bool> clearAllWebsiteDataForEnvironment() async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.clearAllWebsiteDataForEnvironment$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.clearAllWebsiteDataForEnvironment$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -795,7 +795,7 @@ class WindowsWebViewHostApi {
 
   Future<WindowsCreateWebViewResult> createWebView() async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.createWebView$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.createWebView$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -814,7 +814,7 @@ class WindowsWebViewHostApi {
 
   Future<void> disposeWebView(int textureId) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.disposeWebView$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.disposeWebView$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -834,7 +834,7 @@ class WindowsWebViewHostApi {
 
   Future<void> loadUrl(int textureId, String url) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.loadUrl$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.loadUrl$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -857,7 +857,7 @@ class WindowsWebViewHostApi {
     WindowsLoadRequestData request,
   ) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.loadRequest$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.loadRequest$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -877,7 +877,7 @@ class WindowsWebViewHostApi {
 
   Future<void> loadStringContent(int textureId, String content) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.loadStringContent$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.loadStringContent$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -897,7 +897,7 @@ class WindowsWebViewHostApi {
 
   Future<void> reload(int textureId) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.reload$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.reload$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -917,7 +917,7 @@ class WindowsWebViewHostApi {
 
   Future<void> stop(int textureId) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.stop$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.stop$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -937,7 +937,7 @@ class WindowsWebViewHostApi {
 
   Future<void> goBack(int textureId) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.goBack$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.goBack$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -957,7 +957,7 @@ class WindowsWebViewHostApi {
 
   Future<void> goForward(int textureId) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.goForward$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.goForward$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -980,7 +980,7 @@ class WindowsWebViewHostApi {
     String script,
   ) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.addScriptToExecuteOnDocumentCreated$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.addScriptToExecuteOnDocumentCreated$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1004,7 +1004,7 @@ class WindowsWebViewHostApi {
     String scriptId,
   ) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.removeScriptToExecuteOnDocumentCreated$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.removeScriptToExecuteOnDocumentCreated$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1024,7 +1024,7 @@ class WindowsWebViewHostApi {
 
   Future<String> executeScript(int textureId, String script) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.executeScript$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.executeScript$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1045,7 +1045,7 @@ class WindowsWebViewHostApi {
 
   Future<void> postWebMessage(int textureId, String message) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.postWebMessage$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.postWebMessage$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1065,7 +1065,7 @@ class WindowsWebViewHostApi {
 
   Future<void> setUserAgent(int textureId, String? userAgent) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setUserAgent$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setUserAgent$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1085,7 +1085,7 @@ class WindowsWebViewHostApi {
 
   Future<String?> getUserAgent(int textureId) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.getUserAgent$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.getUserAgent$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1106,7 +1106,7 @@ class WindowsWebViewHostApi {
 
   Future<void> setJavaScriptEnabled(int textureId, bool enabled) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setJavaScriptEnabled$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setJavaScriptEnabled$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1126,7 +1126,7 @@ class WindowsWebViewHostApi {
 
   Future<bool> clearCookies(int textureId) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.clearCookies$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.clearCookies$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1147,7 +1147,7 @@ class WindowsWebViewHostApi {
 
   Future<void> setCookie(int textureId, WindowsCookieData cookie) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setCookie$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setCookie$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1167,7 +1167,7 @@ class WindowsWebViewHostApi {
 
   Future<List<WindowsCookieData?>> getCookies(int textureId, String url) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.getCookies$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.getCookies$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1188,7 +1188,7 @@ class WindowsWebViewHostApi {
 
   Future<void> deleteCookie(int textureId, WindowsCookieData cookie) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.deleteCookie$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.deleteCookie$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1212,7 +1212,7 @@ class WindowsWebViewHostApi {
     String url,
   ) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.deleteCookiesWithNameAndUrl$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.deleteCookiesWithNameAndUrl$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1237,7 +1237,7 @@ class WindowsWebViewHostApi {
     String path,
   ) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.deleteCookiesWithNameDomainAndPath$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.deleteCookiesWithNameDomainAndPath$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1257,7 +1257,7 @@ class WindowsWebViewHostApi {
 
   Future<void> clearCache(int textureId) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.clearCache$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.clearCache$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1277,7 +1277,7 @@ class WindowsWebViewHostApi {
 
   Future<void> clearLocalStorage(int textureId) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.clearLocalStorage$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.clearLocalStorage$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1297,7 +1297,7 @@ class WindowsWebViewHostApi {
 
   Future<bool> clearAllWebsiteData(int textureId) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.clearAllWebsiteData$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.clearAllWebsiteData$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1318,7 +1318,7 @@ class WindowsWebViewHostApi {
 
   Future<void> setCacheDisabled(int textureId, bool disabled) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setCacheDisabled$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setCacheDisabled$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1338,7 +1338,7 @@ class WindowsWebViewHostApi {
 
   Future<void> openDevTools(int textureId) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.openDevTools$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.openDevTools$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1358,7 +1358,7 @@ class WindowsWebViewHostApi {
 
   Future<void> setBackgroundColor(int textureId, int color) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setBackgroundColor$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setBackgroundColor$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1378,7 +1378,7 @@ class WindowsWebViewHostApi {
 
   Future<void> setZoomControlEnabled(int textureId, bool enabled) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setZoomControlEnabled$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setZoomControlEnabled$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1398,7 +1398,7 @@ class WindowsWebViewHostApi {
 
   Future<void> setZoomFactor(int textureId, double zoomFactor) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setZoomFactor$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setZoomFactor$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1418,7 +1418,7 @@ class WindowsWebViewHostApi {
 
   Future<void> setPopupWindowPolicy(int textureId, int policy) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setPopupWindowPolicy$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setPopupWindowPolicy$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1441,7 +1441,7 @@ class WindowsWebViewHostApi {
     bool enabled,
   ) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setNavigationRequestCallbacksEnabled$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setNavigationRequestCallbacksEnabled$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1466,7 +1466,7 @@ class WindowsWebViewHostApi {
     bool prompt,
   ) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setJavaScriptDialogCallbacksEnabled$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setJavaScriptDialogCallbacksEnabled$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1486,7 +1486,7 @@ class WindowsWebViewHostApi {
 
   Future<void> suspend(int textureId) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.suspend$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.suspend$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1506,7 +1506,7 @@ class WindowsWebViewHostApi {
 
   Future<void> resume(int textureId) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.resume$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.resume$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1529,7 +1529,7 @@ class WindowsWebViewHostApi {
     WindowsVirtualHostMappingData mapping,
   ) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setVirtualHostNameMapping$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setVirtualHostNameMapping$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1552,7 +1552,7 @@ class WindowsWebViewHostApi {
     String hostName,
   ) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.clearVirtualHostNameMapping$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.clearVirtualHostNameMapping$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1572,7 +1572,7 @@ class WindowsWebViewHostApi {
 
   Future<void> setFpsLimit(int textureId, int maxFps) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setFpsLimit$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setFpsLimit$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1595,7 +1595,7 @@ class WindowsWebViewHostApi {
     WindowsPointerUpdateData update,
   ) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setPointerUpdate$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setPointerUpdate$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1615,7 +1615,7 @@ class WindowsWebViewHostApi {
 
   Future<void> setCursorPos(int textureId, WindowsPointData position) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setCursorPos$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setCursorPos$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1638,7 +1638,7 @@ class WindowsWebViewHostApi {
     WindowsPointerButtonData button,
   ) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setPointerButton$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setPointerButton$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1658,7 +1658,7 @@ class WindowsWebViewHostApi {
 
   Future<void> setScrollDelta(int textureId, WindowsPointData delta) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setScrollDelta$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setScrollDelta$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1678,7 +1678,7 @@ class WindowsWebViewHostApi {
 
   Future<void> setSize(int textureId, WindowsSizeData size) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setSize$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setSize$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1698,7 +1698,7 @@ class WindowsWebViewHostApi {
 
   Future<void> setSurfaceAttached(int textureId, bool attached) async {
     final pigeonVar_channelName =
-        'dev.flutter.pigeon.webview_all_windows.WindowsWebViewHostApi.setSurfaceAttached$pigeonVar_messageChannelSuffix';
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setSurfaceAttached$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
