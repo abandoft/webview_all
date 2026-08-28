@@ -1,1 +1,1 @@
-rootProject.name = "webview_all"
+rootProject.name = "webview_all_android"

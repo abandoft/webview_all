@@ -33,7 +33,7 @@ public interface WebViewFlutterAndroidExternalApi {
    * {@code FlutterPluginBinding.getPlugin} implementation.
    *
    * @param binding the plugin binding provided by the Flutter engine. If the binding doesn't
-   *     contain an attached instance of {@link WebViewFlutterPlugin}, this method returns null.
+   *     contain an attached instance of {@link WebviewAllAndroidPlugin}, this method returns null.
    * @param identifier the associated identifier of the `WebView`.
    * @return the `WebView` associated with `identifier` or null if a `WebView` instance associated
    *     with `identifier` could not be found.
@@ -42,9 +42,9 @@ public interface WebViewFlutterAndroidExternalApi {
   @Nullable
   static WebView getWebView(
       @NonNull FlutterPlugin.FlutterPluginBinding binding, long identifier) {
-    final WebViewFlutterPlugin webViewPlugin =
-        (WebViewFlutterPlugin)
-            binding.getFlutterEngine().getPlugins().get(WebViewFlutterPlugin.class);
+    final WebviewAllAndroidPlugin webViewPlugin =
+        (WebviewAllAndroidPlugin)
+            binding.getFlutterEngine().getPlugins().get(WebviewAllAndroidPlugin.class);
 
     return getWebViewFromPlugin(webViewPlugin, identifier);
   }
@@ -56,8 +56,8 @@ public interface WebViewFlutterAndroidExternalApi {
    * underlying `WebView`.
    *
    * @deprecated Use {@link #getWebView(FlutterPlugin.FlutterPluginBinding, long)} instead.
-   * @param engine the execution environment the {@link WebViewFlutterPlugin} should belong to. If
-   *     the engine doesn't contain an attached instance of {@link WebViewFlutterPlugin}, this
+   * @param engine the execution environment the {@link WebviewAllAndroidPlugin} should belong to.
+   *     If the engine doesn't contain an attached instance of {@link WebviewAllAndroidPlugin}, this
    *     method returns null.
    * @param identifier the associated identifier of the `WebView`.
    * @return the `WebView` associated with `identifier` or null if a `WebView` instance associated
@@ -66,14 +66,15 @@ public interface WebViewFlutterAndroidExternalApi {
   @Deprecated
   @Nullable
   static WebView getWebView(@NonNull FlutterEngine engine, long identifier) {
-    final WebViewFlutterPlugin webViewPlugin =
-        (WebViewFlutterPlugin) engine.getPlugins().get(WebViewFlutterPlugin.class);
+    final WebviewAllAndroidPlugin webViewPlugin =
+        (WebviewAllAndroidPlugin)
+            engine.getPlugins().get(WebviewAllAndroidPlugin.class);
 
     return getWebViewFromPlugin(webViewPlugin, identifier);
   }
 
   private static WebView getWebViewFromPlugin(
-      @Nullable WebViewFlutterPlugin webViewPlugin, long identifier) {
+      @Nullable WebviewAllAndroidPlugin webViewPlugin, long identifier) {
     if (webViewPlugin != null && webViewPlugin.getInstanceManager() != null) {
       final Object instance = webViewPlugin.getInstanceManager().getInstance(identifier);
       if (instance instanceof WebView) {

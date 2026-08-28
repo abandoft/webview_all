@@ -19,6 +19,9 @@ import 'android_webkit_constants.dart';
 import 'platform_views_service_proxy.dart';
 import 'weak_reference_utils.dart';
 
+const String _androidWebViewPlatformViewType =
+    'com.abandoft.webview_all_android/webview';
+
 final Expando<Set<VoidCallback>> _androidNavigationStartCallbacks =
     Expando<Set<VoidCallback>>();
 
@@ -537,7 +540,7 @@ class AndroidWebViewController extends PlatformWebViewController {
   /// This is typically used by other plugins to retrieve the native `WebView`
   /// from an `InstanceManager`.
   ///
-  /// See Java method `WebViewFlutterPlugin.getWebView`.
+  /// See Java method `WebViewFlutterAndroidExternalApi.getWebView`.
   int get webViewIdentifier =>
       android_webview.PigeonInstanceManager.instance.getIdentifier(_webView)!;
 
@@ -1633,7 +1636,7 @@ class AndroidWebViewWidget extends PlatformWebViewWidget {
           ValueKey<AndroidWebViewWidgetCreationParams>(
             params as AndroidWebViewWidgetCreationParams,
           ),
-      viewType: 'plugins.flutter.io/webview',
+      viewType: _androidWebViewPlatformViewType,
       surfaceFactory:
           (BuildContext context, PlatformViewController controller) {
             return AndroidViewSurface(
@@ -1726,7 +1729,7 @@ class AndroidCustomViewWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return PlatformViewLink(
       key: key,
-      viewType: 'plugins.flutter.io/webview',
+      viewType: _androidWebViewPlatformViewType,
       surfaceFactory:
           (BuildContext context, PlatformViewController controller) {
             return AndroidViewSurface(
@@ -1763,7 +1766,7 @@ AndroidViewController _initAndroidView(
   if (displayWithHybridComposition) {
     return platformViewsServiceProxy.initExpensiveAndroidView(
       id: params.id,
-      viewType: 'plugins.flutter.io/webview',
+      viewType: _androidWebViewPlatformViewType,
       layoutDirection: layoutDirection,
       creationParams: identifier,
       creationParamsCodec: const StandardMessageCodec(),
@@ -1771,7 +1774,7 @@ AndroidViewController _initAndroidView(
   } else {
     return platformViewsServiceProxy.initSurfaceAndroidView(
       id: params.id,
-      viewType: 'plugins.flutter.io/webview',
+      viewType: _androidWebViewPlatformViewType,
       layoutDirection: layoutDirection,
       creationParams: identifier,
       creationParamsCodec: const StandardMessageCodec(),

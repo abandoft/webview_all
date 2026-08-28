@@ -8,6 +8,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.content.Context;
@@ -37,23 +38,29 @@ public class WebViewFlutterAndroidExternalApiTest {
   @SuppressWarnings("deprecation")
   @Test
   public void getWebViewFromEngineAndBinding() {
-    final WebViewFlutterPlugin webViewFlutterPlugin = new WebViewFlutterPlugin();
+    final WebviewAllAndroidPlugin webviewAllAndroidPlugin =
+        new WebviewAllAndroidPlugin();
 
     when(mockPluginBinding.getApplicationContext()).thenReturn(mockContext);
     when(mockPluginBinding.getPlatformViewRegistry()).thenReturn(mockViewRegistry);
     when(mockPluginBinding.getBinaryMessenger()).thenReturn(mockBinaryMessenger);
 
-    webViewFlutterPlugin.onAttachedToEngine(mockPluginBinding);
+    webviewAllAndroidPlugin.onAttachedToEngine(mockPluginBinding);
+    verify(mockViewRegistry)
+        .registerViewFactory(
+            org.mockito.ArgumentMatchers.eq("com.abandoft.webview_all_android/webview"),
+            org.mockito.ArgumentMatchers.any());
 
     final AndroidWebkitLibraryPigeonInstanceManager instanceManager =
-        webViewFlutterPlugin.getInstanceManager();
+        webviewAllAndroidPlugin.getInstanceManager();
     assertNotNull(instanceManager);
 
     final WebView mockWebView = mock(WebView.class);
     instanceManager.addDartCreatedInstance(mockWebView, 0);
 
     final PluginRegistry mockPluginRegistry = mock(PluginRegistry.class);
-    when(mockPluginRegistry.get(WebViewFlutterPlugin.class)).thenReturn(webViewFlutterPlugin);
+    when(mockPluginRegistry.get(WebviewAllAndroidPlugin.class))
+        .thenReturn(webviewAllAndroidPlugin);
 
     final FlutterEngine mockFlutterEngine = mock(FlutterEngine.class);
     when(mockFlutterEngine.getPlugins()).thenReturn(mockPluginRegistry);
@@ -63,6 +70,6 @@ public class WebViewFlutterAndroidExternalApiTest {
     assertEquals(WebViewFlutterAndroidExternalApi.getWebView(mockPluginBinding, 0), mockWebView);
     assertNull(WebViewFlutterAndroidExternalApi.getWebView(mockPluginBinding, 1));
 
-    webViewFlutterPlugin.onDetachedFromEngine(mockPluginBinding);
+    webviewAllAndroidPlugin.onDetachedFromEngine(mockPluginBinding);
   }
 }

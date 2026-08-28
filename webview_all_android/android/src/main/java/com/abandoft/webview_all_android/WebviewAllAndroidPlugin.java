@@ -15,7 +15,9 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
  *
  * <p>Register this in an add to app scenario to gracefully handle activity and context changes.
  */
-public class WebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
+public class WebviewAllAndroidPlugin implements FlutterPlugin, ActivityAware {
+  private static final String VIEW_TYPE = "com.abandoft.webview_all_android/webview";
+
   private FlutterPluginBinding pluginBinding;
   private ProxyApiRegistrar proxyApiRegistrar;
 
@@ -26,7 +28,7 @@ public class WebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
    * <p>Registration should eventually be handled automatically by v2 of the
    * GeneratedPluginRegistrant. https://github.com/flutter/flutter/issues/42694
    */
-  public WebViewFlutterPlugin() {}
+  public WebviewAllAndroidPlugin() {}
 
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
@@ -42,7 +44,7 @@ public class WebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
     binding
         .getPlatformViewRegistry()
         .registerViewFactory(
-            "plugins.flutter.io/webview",
+            VIEW_TYPE,
             new FlutterViewFactory(proxyApiRegistrar.getInstanceManager()));
 
     proxyApiRegistrar.setUp();

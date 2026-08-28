@@ -2342,7 +2342,7 @@ void main() {
       when(
         mockPlatformViewsService.initSurfaceAndroidView(
           id: anyNamed('id'),
-          viewType: anyNamed('viewType'),
+          viewType: 'com.abandoft.webview_all_android/webview',
           layoutDirection: anyNamed('layoutDirection'),
           creationParams: anyNamed('creationParams'),
           creationParamsCodec: anyNamed('creationParamsCodec'),
@@ -2368,7 +2368,7 @@ void main() {
       verify(
         mockPlatformViewsService.initSurfaceAndroidView(
           id: anyNamed('id'),
-          viewType: anyNamed('viewType'),
+          viewType: 'com.abandoft.webview_all_android/webview',
           layoutDirection: anyNamed('layoutDirection'),
           creationParams: anyNamed('creationParams'),
           creationParamsCodec: anyNamed('creationParamsCodec'),
@@ -2394,7 +2394,7 @@ void main() {
       when(
         mockPlatformViewsService.initExpensiveAndroidView(
           id: anyNamed('id'),
-          viewType: anyNamed('viewType'),
+          viewType: 'com.abandoft.webview_all_android/webview',
           layoutDirection: anyNamed('layoutDirection'),
           creationParams: anyNamed('creationParams'),
           creationParamsCodec: anyNamed('creationParamsCodec'),
@@ -2421,7 +2421,7 @@ void main() {
       verify(
         mockPlatformViewsService.initExpensiveAndroidView(
           id: anyNamed('id'),
-          viewType: anyNamed('viewType'),
+          viewType: 'com.abandoft.webview_all_android/webview',
           layoutDirection: anyNamed('layoutDirection'),
           creationParams: anyNamed('creationParams'),
           creationParamsCodec: anyNamed('creationParamsCodec'),
