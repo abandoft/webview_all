@@ -24,7 +24,7 @@ A WebView component for all Flutter platforms, compatible with the
   - Document-start user scripts
   - Website data cleanup without a controller
   - Deterministically closable offscreen sessions
-  - ...
+  - ......
 
 ## Quick Start
 
