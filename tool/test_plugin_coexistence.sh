@@ -11,15 +11,15 @@ target="$1"
 case "$target" in
   web)
     platforms="web"
-    official_dependency="webview_flutter_web@0.2.3+4"
+    official_dependency="webview_flutter_web:0.2.3+4"
     ;;
   android)
     platforms="android"
-    official_dependency="webview_flutter@4.14.1"
+    official_dependency="webview_flutter:4.14.1"
     ;;
   apple)
     platforms="ios,macos"
-    official_dependency="webview_flutter@4.14.1"
+    official_dependency="webview_flutter:4.14.1"
     ;;
   *)
     echo "Unsupported coexistence test target: $target" >&2
@@ -42,15 +42,15 @@ flutter create \
   "$project_directory"
 
 dependencies=(
-  "webview_all@{path: $repository_root/webview_all}"
+  "webview_all:{path: $repository_root/webview_all}"
   "$official_dependency"
-  "override:webview_platform_interface@{path: $repository_root/webview_platform_interface}"
-  "override:webview_all_android@{path: $repository_root/webview_all_android}"
-  "override:webview_all_wkwebview@{path: $repository_root/webview_all_wkwebview}"
-  "override:webview_all_windows@{path: $repository_root/webview_all_windows}"
-  "override:webview_all_linux@{path: $repository_root/webview_all_linux}"
-  "override:webview_all_web@{path: $repository_root/webview_all_web}"
-  "override:webview_all_ohos@{path: $repository_root/webview_all_ohos}"
+  "override:webview_platform_interface:{path: $repository_root/webview_platform_interface}"
+  "override:webview_all_android:{path: $repository_root/webview_all_android}"
+  "override:webview_all_wkwebview:{path: $repository_root/webview_all_wkwebview}"
+  "override:webview_all_windows:{path: $repository_root/webview_all_windows}"
+  "override:webview_all_linux:{path: $repository_root/webview_all_linux}"
+  "override:webview_all_web:{path: $repository_root/webview_all_web}"
+  "override:webview_all_ohos:{path: $repository_root/webview_all_ohos}"
 )
 dart pub add \
   --directory "$project_directory" \
