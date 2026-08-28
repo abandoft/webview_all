@@ -28,9 +28,9 @@ import { WebViewClientCreator, WebViewClientHostApiImpl } from './WebViewClientH
 import { WebViewClientFlutterApiImpl } from './WebViewClientFlutterApiImpl';
 import { WebViewHostApiImpl, WebViewProxy } from './WebViewHostApiImpl';
 
-const PLUGIN_NAME = 'WebViewAllOhosPlugin';
+const PLUGIN_NAME = 'WebviewAllOhosPlugin';
 
-export class WebViewFlutterPlugin implements FlutterPlugin {
+export class WebviewAllOhosPlugin implements FlutterPlugin {
   private instanceManager: InstanceManager | null = null;
   private hostApiChannel: OhosWebViewHostApiChannel | null = null;
 

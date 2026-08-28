@@ -3,7 +3,7 @@ description: OpenHarmony implementation of the webview_all federated WebView plu
 repository: https://github.com/abandoft/webview_all
 homepage: https://github.com/abandoft/webview_all
 issue_tracker: https://github.com/abandoft/webview_all/issues
-version: 1.3.10
+version: 1.4.0
 
 environment:
   sdk: ^3.9.0
@@ -15,13 +15,13 @@ flutter:
     platforms:
       ohos:
         package: com.abandoft.webview_all_ohos
-        pluginClass: WebViewFlutterPlugin
+        pluginClass: WebviewAllOhosPlugin
         dartPluginClass: OhosWebViewPlatform
 
 dependencies:
   flutter:
     sdk: flutter
-  webview_platform_interface: ^1.3.10
+  webview_platform_interface: ^1.4.0
 
 dev_dependencies:
   flutter_test:

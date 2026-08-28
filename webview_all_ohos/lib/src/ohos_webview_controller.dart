@@ -595,12 +595,10 @@ class OhosWebViewController extends PlatformWebViewController {
     return webViewProxy.setWebContentsDebuggingEnabled(enabled);
   }
 
-  /// Identifier used to retrieve the underlying native `WKWebView`.
+  /// Identifier used to retrieve the underlying native `WebView`.
   ///
   /// This is typically used by other plugins to retrieve the native `WebView`
   /// from an `InstanceManager`.
-  ///
-  /// See the native `WebViewFlutterPlugin.getWebView` bridge method.
   int get webViewIdentifier =>
       // ignore: invalid_use_of_visible_for_testing_member
       ohos_webview.WebView.api.instanceManager.getIdentifier(_webView)!;

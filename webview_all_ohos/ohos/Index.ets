@@ -1,3 +1,3 @@
-import { WebViewFlutterPlugin } from './src/main/ets/com.abandoft.webview_all_ohos/WebViewFlutterPlugin'
+import { WebviewAllOhosPlugin } from './src/main/ets/com.abandoft.webview_all_ohos/WebviewAllOhosPlugin'
 
-export default WebViewFlutterPlugin
+export default WebviewAllOhosPlugin
