@@ -3,7 +3,7 @@ title: Web
 description: 浏览器 iframe 实现、iframe 属性、fetch 请求和安全限制。
 ---
 
-Web 由 `webview_all_web 1.3.10` 提供，底层是 HTML `iframe`。
+Web 由 `webview_all_web 1.4.0` 提供，底层是 HTML `iframe`。
 
 | 项 | 值 |
 | --- | --- |

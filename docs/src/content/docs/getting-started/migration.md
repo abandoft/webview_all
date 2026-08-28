@@ -47,6 +47,25 @@ import 'package:webview_all_ohos/webview_all_ohos.dart';
 import 'package:webview_all_web/webview_all_web.dart';
 ```
 
+## Version 1.4
+
+Flutter-managed registration requires no application changes. If an Add-to-App
+integration manually registers plugins or calls the native External APIs, update
+the affected symbols:
+
+| Platform | Before | 1.4 |
+| --- | --- | --- |
+| Android plugin | `WebViewFlutterPlugin` | `WebviewAllAndroidPlugin` |
+| Apple plugin | `WebViewFlutterPlugin` | `WebviewAllWKWebViewPlugin` |
+| Apple External API | `FWFWebViewFlutterWKWebViewExternalAPI` | `WebviewAllWKWebViewExternalAPI` |
+| Windows registration | `WebviewWindowsPluginRegisterWithRegistrar` | `WebviewAllWindowsPluginRegisterWithRegistrar` |
+| OHOS plugin | `WebViewFlutterPlugin` | `WebviewAllOhosPlugin` |
+
+The old Apple External API name remains available as a deprecated Swift
+`typealias`, so existing Swift source continues to compile. Objective-C callers
+must use `WebviewAllWKWebViewExternalAPI`; the old Objective-C runtime symbol is
+not exported because it conflicts with the official WKWebView plugin.
+
 ## Version 1.3
 
 When upgrading from `1.2`:

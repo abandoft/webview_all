@@ -51,6 +51,24 @@ import 'package:webview_all_ohos/webview_all_ohos.dart';
 import 'package:webview_all_web/webview_all_web.dart';
 ```
 
+## 1.4
+
+由 Flutter 自动注册插件的项目无需修改。如果 Add-to-App 项目手动注册插件，
+或原生代码调用了 External API，需要更新对应名称：
+
+| 平台 | 原名称 | 1.4 名称 |
+| --- | --- | --- |
+| Android 插件 | `WebViewFlutterPlugin` | `WebviewAllAndroidPlugin` |
+| Apple 插件 | `WebViewFlutterPlugin` | `WebviewAllWKWebViewPlugin` |
+| Apple External API | `FWFWebViewFlutterWKWebViewExternalAPI` | `WebviewAllWKWebViewExternalAPI` |
+| Windows 注册函数 | `WebviewWindowsPluginRegisterWithRegistrar` | `WebviewAllWindowsPluginRegisterWithRegistrar` |
+| OHOS 插件 | `WebViewFlutterPlugin` | `WebviewAllOhosPlugin` |
+
+Apple External API 的旧名称仍作为废弃的 Swift `typealias` 提供，因此现有
+Swift 源码可以继续编译。Objective-C 调用方必须改用
+`WebviewAllWKWebViewExternalAPI`；为避免与官方 WKWebView 插件发生符号冲突，
+不再导出旧 Objective-C 运行时符号。
+
 ## 1.3
 
 从 `1.2` 升级时：

@@ -3,7 +3,7 @@ title: iOS and macOS
 description: WKWebView implementation, WebKit APIs, and Apple platform differences.
 ---
 
-iOS and macOS are provided by `webview_all_wkwebview ^1.3.10`. `webview_all` registers it as the default implementation for both Apple platforms.
+iOS and macOS are provided by `webview_all_wkwebview ^1.4.0`. `webview_all` registers it as the default implementation for both Apple platforms.
 
 ## Engine
 

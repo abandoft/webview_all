@@ -3,7 +3,7 @@ title: Windows
 description: WebView2 实现、运行时设置、API 和限制。
 ---
 
-Windows 由 `webview_all_windows 1.3.10` 提供，底层使用 Microsoft Edge WebView2。
+Windows 由 `webview_all_windows 1.4.0` 提供，底层使用 Microsoft Edge WebView2。
 
 | 项 | 值 |
 | --- | --- |
