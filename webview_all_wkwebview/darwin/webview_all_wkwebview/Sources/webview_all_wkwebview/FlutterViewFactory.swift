@@ -33,7 +33,7 @@ import Foundation
       }
 
       NSLog(
-        "WebViewFlutterPluginError: UIView has been deallocated, but is still being requested as a PlatformView."
+        "WebviewAllWKWebViewPluginError: UIView has been deallocated, but is still being requested as a PlatformView."
       )
       return UIView()
     }

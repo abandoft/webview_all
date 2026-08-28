@@ -11,15 +11,18 @@ import XCTest
   import UIKit
 #endif
 
-class WebViewFlutterPluginTests: XCTestCase {
+class WebviewAllWKWebViewPluginTests: XCTestCase {
   #if os(iOS)
     @MainActor func testRegisterAddsSceneLifeCycleDelegateWhenSupported() {
       let registry = TestRegistry()
       let registrar = registry.registrar(forPlugin: "")!
 
-      WebViewFlutterPlugin.register(with: registrar)
+      WebviewAllWKWebViewPlugin.register(with: registrar)
 
       let plugin = registry.registrar.plugin!
+      XCTAssertEqual(
+        registry.registrar.registeredViewType,
+        "com.abandoft.webview_all_wkwebview/webview")
       XCTAssertTrue(registry.registrar.sceneDelegate === plugin)
       let sceneLifeCycleProtocol = NSProtocolFromString("FlutterSceneLifeCycleDelegate")
       XCTAssertNotNil(sceneLifeCycleProtocol)
@@ -27,7 +30,7 @@ class WebViewFlutterPluginTests: XCTestCase {
     }
 
     func testApplicationTerminationReleasesTheInstanceManager() {
-      let plugin = WebViewFlutterPlugin(binaryMessenger: TestBinaryMessenger())
+      let plugin = WebviewAllWKWebViewPlugin(binaryMessenger: TestBinaryMessenger())
       let view = UIView()
       _ = plugin.proxyApiRegistrar!.instanceManager.addHostCreatedInstance(view)
 

@@ -12,7 +12,10 @@
   #error("Unsupported platform.")
 #endif
 
-public class WebViewFlutterPlugin: NSObject, FlutterPlugin {
+private let webviewAllWKWebViewPlatformViewType =
+  "com.abandoft.webview_all_wkwebview/webview"
+
+public class WebviewAllWKWebViewPlugin: NSObject, FlutterPlugin {
   var proxyApiRegistrar: ProxyAPIRegistrar?
   #if os(iOS)
     private weak var compatibilityBinaryMessenger: AnyObject?
@@ -30,7 +33,7 @@ public class WebViewFlutterPlugin: NSObject, FlutterPlugin {
     #else
       let binaryMessenger = registrar.messenger
     #endif
-    let plugin = WebViewFlutterPlugin(binaryMessenger: binaryMessenger)
+    let plugin = WebviewAllWKWebViewPlugin(binaryMessenger: binaryMessenger)
 
     let viewFactory = FlutterViewFactory(instanceManager: plugin.proxyApiRegistrar!.instanceManager)
     #if os(iOS)
@@ -38,7 +41,7 @@ public class WebViewFlutterPlugin: NSObject, FlutterPlugin {
       registrar.addApplicationDelegate(plugin)
       plugin.registerForSceneLifeCycle(with: registrar)
     #endif
-    registrar.register(viewFactory, withId: "plugins.flutter.io/webview")
+    registrar.register(viewFactory, withId: webviewAllWKWebViewPlatformViewType)
     registrar.publish(plugin)
   }
 
@@ -49,7 +52,7 @@ public class WebViewFlutterPlugin: NSObject, FlutterPlugin {
   private func tearDownProxyAPIRegistrar() {
     #if os(iOS)
       if let compatibilityBinaryMessenger {
-        WebViewFlutterPluginLookup.unregister(self, for: compatibilityBinaryMessenger)
+        WebviewAllWKWebViewPluginLookup.unregister(self, for: compatibilityBinaryMessenger)
         self.compatibilityBinaryMessenger = nil
       }
     #endif
@@ -61,7 +64,7 @@ public class WebViewFlutterPlugin: NSObject, FlutterPlugin {
 }
 
 #if os(iOS)
-  extension WebViewFlutterPlugin: FlutterApplicationLifeCycleDelegate {
+  extension WebviewAllWKWebViewPlugin: FlutterApplicationLifeCycleDelegate {
     public func applicationWillTerminate(_ application: UIApplication) {
       tearDownProxyAPIRegistrar()
     }
@@ -74,7 +77,7 @@ public class WebViewFlutterPlugin: NSObject, FlutterPlugin {
     private func registerForCompatibilityLookup(binaryMessenger: FlutterBinaryMessenger) {
       let messengerObject = binaryMessenger as AnyObject
       compatibilityBinaryMessenger = messengerObject
-      WebViewFlutterPluginLookup.register(self, for: binaryMessenger)
+      WebviewAllWKWebViewPluginLookup.register(self, for: binaryMessenger)
     }
 
     private func registerForSceneLifeCycle(with registrar: FlutterPluginRegistrar) {
@@ -87,10 +90,10 @@ public class WebViewFlutterPlugin: NSObject, FlutterPlugin {
         return
       }
 
-      if !class_conformsToProtocol(WebViewFlutterPlugin.self, sceneLifeCycleProtocol) {
-        _ = class_addProtocol(WebViewFlutterPlugin.self, sceneLifeCycleProtocol)
+      if !class_conformsToProtocol(WebviewAllWKWebViewPlugin.self, sceneLifeCycleProtocol) {
+        _ = class_addProtocol(WebviewAllWKWebViewPlugin.self, sceneLifeCycleProtocol)
       }
-      guard class_conformsToProtocol(WebViewFlutterPlugin.self, sceneLifeCycleProtocol) else {
+      guard class_conformsToProtocol(WebviewAllWKWebViewPlugin.self, sceneLifeCycleProtocol) else {
         return
       }
 

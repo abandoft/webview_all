@@ -18,6 +18,9 @@ import 'common/web_kit.g.dart';
 import 'common/webkit_constants.dart';
 import 'webkit_ssl_auth_error.dart';
 
+const String _webKitWebViewPlatformViewType =
+    'com.abandoft.webview_all_wkwebview/webview';
+
 final Expando<Set<VoidCallback>> _webKitNavigationStartCallbacks =
     Expando<Set<VoidCallback>>();
 
@@ -459,7 +462,7 @@ class WebKitWebViewController extends PlatformWebViewController {
   /// from an `FWFInstanceManager`.
   ///
   /// See Objective-C method
-  /// `FLTWebViewFlutterPlugin:webViewForIdentifier:withPluginRegistry`.
+  /// `WebviewAllWKWebViewExternalAPI.webView(forIdentifier:withPluginRegistry:)`.
   int get webViewIdentifier =>
       PigeonInstanceManager.instance.getIdentifier(_webView.nativeWebView)!;
 
@@ -1678,7 +1681,7 @@ class WebKitWebViewWidget extends PlatformWebViewWidget {
     if (defaultTargetPlatform == TargetPlatform.macOS) {
       return AppKitView(
         key: key,
-        viewType: 'plugins.flutter.io/webview',
+        viewType: _webKitWebViewPlatformViewType,
         onPlatformViewCreated: (_) {},
         layoutDirection: params.layoutDirection,
         gestureRecognizers: params.gestureRecognizers,
@@ -1690,7 +1693,7 @@ class WebKitWebViewWidget extends PlatformWebViewWidget {
     } else {
       return UiKitView(
         key: key,
-        viewType: 'plugins.flutter.io/webview',
+        viewType: _webKitWebViewPlatformViewType,
         onPlatformViewCreated: (_) {},
         layoutDirection: params.layoutDirection,
         gestureRecognizers: params.gestureRecognizers,

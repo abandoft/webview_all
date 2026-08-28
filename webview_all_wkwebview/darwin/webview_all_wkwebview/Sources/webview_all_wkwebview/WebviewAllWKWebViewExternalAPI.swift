@@ -14,12 +14,12 @@ import WebKit
 
 /// App and package facing native API provided by the `webview_all_wkwebview` plugin.
 ///
-/// This class follows the convention of breaking changes of the Dart API, which means that any
-/// changes to the class that are not backwards compatible will only be made with a major version
-/// change of the plugin. Native code other than this external API does not follow breaking change
-/// conventions, so app or plugin clients should not use any other native APIs.
-@objc(FWFWebViewFlutterWKWebViewExternalAPI)
-public class FWFWebViewFlutterWKWebViewExternalAPI: NSObject {
+/// Starting with version 1.4.0, this class follows the breaking-change convention of the Dart API,
+/// so future backwards-incompatible changes will only be made with a major version change of the
+/// plugin. Native code other than this external API does not follow breaking change conventions,
+/// so app or plugin clients should not use any other native APIs.
+@objc(WebviewAllWKWebViewExternalAPI)
+public class WebviewAllWKWebViewExternalAPI: NSObject {
   /// Retrieves the `WKWebView` that is associated with `identifier`.
   ///
   /// See the Dart method `WebKitWebViewController.webViewIdentifier` to get the identifier of an
@@ -31,8 +31,8 @@ public class FWFWebViewFlutterWKWebViewExternalAPI: NSObject {
   public static func webView(
     forIdentifier identifier: Int64, withPluginRegistry registry: FlutterPluginRegistry
   ) -> WKWebView? {
-    let plugin = registry.valuePublished(byPlugin: "WebViewFlutterPlugin")
-    guard let webviewPlugin = plugin as? WebViewFlutterPlugin else {
+    let plugin = registry.valuePublished(byPlugin: "WebviewAllWKWebViewPlugin")
+    guard let webviewPlugin = plugin as? WebviewAllWKWebViewPlugin else {
       return nil
     }
 
@@ -48,7 +48,8 @@ public class FWFWebViewFlutterWKWebViewExternalAPI: NSObject {
     public static func webView(
       forIdentifier identifier: Int64, withPluginRegistrar registrar: FlutterPluginRegistrar
     ) -> WKWebView? {
-      guard let webviewPlugin = WebViewFlutterPluginLookup.plugin(publishedBy: registrar) else {
+      guard let webviewPlugin = WebviewAllWKWebViewPluginLookup.plugin(publishedBy: registrar)
+      else {
         return nil
       }
 
@@ -57,10 +58,17 @@ public class FWFWebViewFlutterWKWebViewExternalAPI: NSObject {
   #endif
 
   private static func webView(
-    forIdentifier identifier: Int64, withPlugin webviewPlugin: WebViewFlutterPlugin
+    forIdentifier identifier: Int64, withPlugin webviewPlugin: WebviewAllWKWebViewPlugin
   ) -> WKWebView? {
     let webView: WKWebView? = webviewPlugin.proxyApiRegistrar?.instanceManager.instance(
       forIdentifier: identifier)
     return webView
   }
 }
+
+/// Deprecated Swift source-compatible name for the External API.
+///
+/// This alias does not export the old Objective-C runtime symbol, allowing the package to coexist
+/// with `webview_flutter_wkwebview`.
+@available(*, deprecated, renamed: "WebviewAllWKWebViewExternalAPI")
+public typealias FWFWebViewFlutterWKWebViewExternalAPI = WebviewAllWKWebViewExternalAPI

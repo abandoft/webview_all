@@ -6,11 +6,11 @@
   import Flutter
   import Foundation
 
-  private final class WebViewFlutterPluginLookupEntry {
+  private final class WebviewAllWKWebViewPluginLookupEntry {
     weak var binaryMessenger: AnyObject?
-    weak var plugin: WebViewFlutterPlugin?
+    weak var plugin: WebviewAllWKWebViewPlugin?
 
-    init(binaryMessenger: AnyObject, plugin: WebViewFlutterPlugin) {
+    init(binaryMessenger: AnyObject, plugin: WebviewAllWKWebViewPlugin) {
       self.binaryMessenger = binaryMessenger
       self.plugin = plugin
     }
@@ -21,13 +21,13 @@
   /// Flutter 3.44 added `valuePublishedByPlugin:` to `FlutterPluginRegistrar`. Earlier engines
   /// expose the same binary messenger to every registrar belonging to an engine, so a weak,
   /// messenger-scoped lookup preserves engine isolation without extending either object's lifetime.
-  enum WebViewFlutterPluginLookup {
+  enum WebviewAllWKWebViewPluginLookup {
     private static let lock = NSLock()
-    private static var entries: [ObjectIdentifier: WebViewFlutterPluginLookupEntry] = [:]
+    private static var entries: [ObjectIdentifier: WebviewAllWKWebViewPluginLookupEntry] = [:]
     private static let valuePublishedSelector = NSSelectorFromString("valuePublishedByPlugin:")
 
     static func register(
-      _ plugin: WebViewFlutterPlugin, for binaryMessenger: FlutterBinaryMessenger
+      _ plugin: WebviewAllWKWebViewPlugin, for binaryMessenger: FlutterBinaryMessenger
     ) {
       let messengerObject = binaryMessenger as AnyObject
       let identifier = ObjectIdentifier(messengerObject)
@@ -35,12 +35,12 @@
       lock.lock()
       defer { lock.unlock() }
       removeExpiredEntries()
-      entries[identifier] = WebViewFlutterPluginLookupEntry(
+      entries[identifier] = WebviewAllWKWebViewPluginLookupEntry(
         binaryMessenger: messengerObject, plugin: plugin)
     }
 
     static func unregister(
-      _ plugin: WebViewFlutterPlugin, for binaryMessenger: AnyObject
+      _ plugin: WebviewAllWKWebViewPlugin, for binaryMessenger: AnyObject
     ) {
       let identifier = ObjectIdentifier(binaryMessenger)
 
@@ -56,7 +56,9 @@
       entries.removeValue(forKey: identifier)
     }
 
-    static func plugin(publishedBy registrar: FlutterPluginRegistrar) -> WebViewFlutterPlugin? {
+    static func plugin(
+      publishedBy registrar: FlutterPluginRegistrar
+    ) -> WebviewAllWKWebViewPlugin? {
       if let plugin = pluginFromOfficialRegistrarAPI(registrar) {
         return plugin
       }
@@ -65,22 +67,22 @@
 
     private static func pluginFromOfficialRegistrarAPI(
       _ registrar: FlutterPluginRegistrar
-    ) -> WebViewFlutterPlugin? {
+    ) -> WebviewAllWKWebViewPlugin? {
       guard
         let registrarObject = registrar as? NSObject,
         registrarObject.responds(to: valuePublishedSelector),
         let publishedValue = registrarObject.perform(
-          valuePublishedSelector, with: "WebViewFlutterPlugin"
+          valuePublishedSelector, with: "WebviewAllWKWebViewPlugin"
         )?.takeUnretainedValue()
       else {
         return nil
       }
-      return publishedValue as? WebViewFlutterPlugin
+      return publishedValue as? WebviewAllWKWebViewPlugin
     }
 
     private static func compatibilityPlugin(
       for binaryMessenger: FlutterBinaryMessenger
-    ) -> WebViewFlutterPlugin? {
+    ) -> WebviewAllWKWebViewPlugin? {
       let messengerObject = binaryMessenger as AnyObject
       let identifier = ObjectIdentifier(messengerObject)
 
