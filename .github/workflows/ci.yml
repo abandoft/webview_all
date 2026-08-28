@@ -32,6 +32,9 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Verify generated channel namespaces
+        run: python3 tool/normalize_pigeon_namespaces.py --check all
+
       - name: Analyze and test Dart packages
         shell: bash
         run: |
@@ -127,6 +130,9 @@ jobs:
           flutter pub get
           flutter build web
 
+      - name: Verify coexistence with the official Web plugin
+        run: tool/test_plugin_coexistence.sh web
+
   android:
     name: Android native tests and build (${{ matrix.flutter }})
     runs-on: ubuntu-latest
@@ -164,6 +170,10 @@ jobs:
       - name: Run Android plugin unit tests
         working-directory: examples/platform
         run: android/gradlew -p android :webview_all_android:testDebugUnitTest
+
+      - name: Verify coexistence with the official Android plugin
+        if: matrix.flutter == '3.44.x'
+        run: tool/test_plugin_coexistence.sh android
 
   apple:
     name: Apple native builds (${{ matrix.flutter }})
@@ -213,6 +223,10 @@ jobs:
             GCC_TREAT_WARNINGS_AS_ERRORS=YES \
             CODE_SIGNING_ALLOWED=NO \
             -quiet
+
+      - name: Verify coexistence with the official Apple plugin
+        if: matrix.flutter == '3.44.x'
+        run: tool/test_plugin_coexistence.sh apple
 
       - name: Run macOS integration tests
         if: matrix.flutter == '3.44.x'
