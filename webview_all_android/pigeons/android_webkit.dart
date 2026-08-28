@@ -4,6 +4,7 @@
 
 import 'package:pigeon/pigeon.dart';
 
+// Run ../tool/normalize_pigeon_namespaces.py android after generation.
 @ConfigurePigeon(
   PigeonOptions(
     copyrightHeader: 'pigeons/copyright.txt',

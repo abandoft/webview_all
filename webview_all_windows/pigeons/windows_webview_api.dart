@@ -1,5 +1,6 @@
 import 'package:pigeon/pigeon.dart';
 
+// Run ../tool/normalize_pigeon_namespaces.py windows after generation.
 @ConfigurePigeon(
   PigeonOptions(
     dartOut: 'lib/src/windows_webview_api.g.dart',
