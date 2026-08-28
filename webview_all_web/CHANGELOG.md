@@ -1,3 +1,8 @@
+## 1.4.0
+
+* Fix registration, rendering, and communication conflicts with other WebView plugins.
+* Unify native plugin entry point and Apple External API names.
+
 ## 1.3.10
 
 * Fix Windows rendering failures on affected devices and improve frame capture and resize stability.
