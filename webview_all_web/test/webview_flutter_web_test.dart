@@ -4,13 +4,14 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_web_plugins/flutter_web_plugins.dart';
+import 'package:webview_all_web/src/webview_all_web_plugin.dart';
 import 'package:webview_all_web/webview_all_web.dart';
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 void main() {
   group('WebWebViewPlatform', () {
     test('registerWith', () {
-      WebWebViewPlatform.registerWith(Registrar());
+      WebviewAllWebPlugin.registerWith(Registrar());
       expect(WebViewPlatform.instance, isA<WebWebViewPlatform>());
     });
 

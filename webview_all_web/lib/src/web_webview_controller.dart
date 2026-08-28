@@ -151,7 +151,7 @@ class WebWebViewControllerCreationParams
   /// The underlying element used as the WebView.
   @visibleForTesting
   final web.HTMLIFrameElement iFrame = web.HTMLIFrameElement()
-    ..id = 'webView${_nextIFrameId++}'
+    ..id = 'webview_all_web_${_nextIFrameId++}'
     ..style.width = '100%'
     ..style.height = '100%'
     ..style.border = 'none'

@@ -39,7 +39,7 @@ void main() {
       test('sets iFrame fields', () {
         final params = WebWebViewControllerCreationParams();
 
-        expect(params.iFrame.id, contains('webView'));
+        expect(params.iFrame.id, startsWith('webview_all_web_'));
         expect(params.iFrame.style.width, '100%');
         expect(params.iFrame.style.height, '100%');
         expect(params.iFrame.style.borderStyle, 'none');
