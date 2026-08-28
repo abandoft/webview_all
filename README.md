@@ -1,6 +1,6 @@
 # WebView All
 
-[Documentation](https://abandoft.github.io/webview_all) | [中文文档](https://abandoft.github.io/webview_all/zh)
+[English Doc](https://abandoft.github.io/webview_all) | [中文文档](https://abandoft.github.io/webview_all/zh)
 
 A WebView component for all Flutter platforms, compatible with the
 [webview_flutter](https://pub.dev/packages/webview_flutter) API.
@@ -14,6 +14,17 @@ A WebView component for all Flutter platforms, compatible with the
 |Linux|webkit2gtk-4.1|[WebKitGTK](https://webkitgtk.org)|
 |OHOS|API 12+|[ArkWeb](https://developer.huawei.com/consumer/en/doc/harmonyos-references-V5/ts-basic-components-web-V5)|
 |Web|Any|[js-interop](https://dart.dev/interop/js-interop)|
+
+## Features
+
+- Comprehensive support for all platforms
+- Full compatibility with the `webview_flutter` API
+- Additional features:
+  - Promise-aware JavaScript calls
+  - Document-start user scripts
+  - Website data cleanup without a controller
+  - Deterministically closable offscreen sessions
+  - ...
 
 ## Quick Start
 
@@ -38,7 +49,3 @@ Widget build(BuildContext context) {
 ```
 
 For detailed usage, API coverage, and platform limits, see the [Documentation](https://abandoft.github.io/webview_all).
-
-The latest API also supports Promise-aware JavaScript calls, document-start
-user scripts, controller-independent website-data cleanup, and deterministically
-closable offscreen sessions on supported native platforms.

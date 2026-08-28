@@ -1,6 +1,6 @@
 # WebView All
 
-[Documentation](https://abandoft.github.io/webview_all) | [中文文档](https://abandoft.github.io/webview_all/zh)
+[English Doc](https://abandoft.github.io/webview_all) | [中文文档](https://abandoft.github.io/webview_all/zh)
 
 支持所有 Flutter 平台的 WebView 组件，兼容[webview_flutter](https://pub.dev/packages/webview_flutter)接口。
 
@@ -13,6 +13,17 @@
 |Linux|webkit2gtk-4.1|[WebKitGTK](https://webkitgtk.org)|
 |OHOS|API 12+|[ArkWeb](https://developer.huawei.com/consumer/cn/doc/harmonyos-references-V5/ts-basic-components-web-V5)|
 |Web|Any|[js-interop](https://dart.dev/interop/js-interop)|
+
+## 项目特色
+
+- 完善的全平台支持
+- 全面兼容 `webview_flutter` 接口
+- 更多特性支持！
+  - 支持 Promise 的 JavaScript 调用
+  - 支持 document-start 用户脚本
+  - 无需依赖 controller 的网站数据清理
+  - 可确定关闭的离屏会话
+  - ...
 
 ## 快速入门
 
@@ -37,6 +48,3 @@ Widget build(BuildContext context) {
 ```
 
 更详细的用法、接口覆盖和平台限制请参考[中文文档](https://abandoft.github.io/webview_all/zh)
-
-latest API 还支持等待 Promise 的 JavaScript 调用、document-start 用户脚本、
-无需 controller 的网站数据清理，以及受支持原生平台上可确定性关闭的离屏会话。
