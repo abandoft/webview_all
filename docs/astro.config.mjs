@@ -171,22 +171,6 @@ export default defineConfig({
             },
           ],
         },
-        {
-          label: 'Release',
-          translations: { 'zh-CN': '发布' },
-          items: [
-            {
-              label: 'Compatibility',
-              translations: { 'zh-CN': '兼容性' },
-              slug: 'release/compatibility',
-            },
-            {
-              label: 'CI and Pages',
-              translations: { 'zh-CN': 'CI 和 Pages' },
-              slug: 'release/ci-and-deployment',
-            },
-          ],
-        },
       ],
     }),
   ],
