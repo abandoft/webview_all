@@ -399,14 +399,11 @@ return {
 
     final _X11Window window = await _findCurrentX11Window();
     await _runXdotool(<String>['windowfocus', window.id]);
-    await _runXdotool(<String>[
-      'mousemove',
-      '--sync',
-      '--window',
-      window.id,
-      '${window.width * 3 ~/ 4}',
-      '${window.height ~/ 2}',
-    ]);
+    await _moveX11Pointer(
+      window,
+      x: window.width * 3 ~/ 4,
+      y: window.height ~/ 2,
+    );
     await _runXdotool(<String>['click', '1']);
     await pointerDown.future.timeout(const Duration(seconds: 5));
 
@@ -428,20 +425,176 @@ return {
         tester.binding.shouldPropagateDevicePointerEvents;
     tester.binding.shouldPropagateDevicePointerEvents = true;
     try {
-      await _runXdotool(<String>[
-        'mousemove',
-        '--sync',
-        '--window',
-        window.id,
-        '${window.width ~/ 4}',
-        '${window.height ~/ 2}',
-      ]);
+      await _moveX11Pointer(
+        window,
+        x: window.width ~/ 4,
+        y: window.height ~/ 2,
+      );
       await _runXdotool(<String>['click', '1']);
       await flutterPointerDown.future.timeout(const Duration(seconds: 5));
     } finally {
       tester.binding.shouldPropagateDevicePointerEvents =
           propagatedDeviceEvents;
     }
+  });
+
+  testWidgets('Linux native view follows rectangular Flutter clipping', (
+    WidgetTester tester,
+  ) async {
+    if (!Platform.isLinux) {
+      return;
+    }
+
+    final bool hasXdotool = await _hasExecutable('xdotool');
+    if (!hasXdotool) {
+      if (Platform.environment['CI'] == 'true') {
+        fail('xdotool is required for the Linux native clipping test.');
+      }
+      return;
+    }
+
+    final Completer<void> pageFinished = Completer<void>();
+    final Completer<void> firstFlutterTap = Completer<void>();
+    final Completer<void> clippedFlutterTap = Completer<void>();
+    final Completer<void> firstWebPointerDown = Completer<void>();
+    final Completer<void> restoredWebPointerDown = Completer<void>();
+    var flutterTapCount = 0;
+    var webPointerCount = 0;
+    var translationX = -90.0;
+    late StateSetter setTestState;
+    final controller = WebViewController();
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await (controller.platform as LinuxWebViewController).dispose();
+    });
+    await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    await controller.addJavaScriptChannel(
+      'LinuxClipTest',
+      onMessageReceived: (JavaScriptMessage message) {
+        if (message.message != 'pointer-down') {
+          return;
+        }
+        webPointerCount += 1;
+        if (webPointerCount == 1 && !firstWebPointerDown.isCompleted) {
+          firstWebPointerDown.complete();
+        } else if (webPointerCount == 2 &&
+            !restoredWebPointerDown.isCompleted) {
+          restoredWebPointerDown.complete();
+        }
+      },
+    );
+    await controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageFinished: (_) {
+          if (!pageFinished.isCompleted) {
+            pageFinished.complete();
+          }
+        },
+      ),
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            setTestState = setState;
+            return Row(
+              children: <Widget>[
+                Expanded(
+                  child: SizedBox.expand(
+                    key: const Key('linux-clip-flutter-target'),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        flutterTapCount += 1;
+                        if (flutterTapCount == 1 &&
+                            !firstFlutterTap.isCompleted) {
+                          firstFlutterTap.complete();
+                        } else if (flutterTapCount == 2 &&
+                            !clippedFlutterTap.isCompleted) {
+                          clippedFlutterTap.complete();
+                        }
+                      },
+                      child: const Center(child: Text('Flutter clip target')),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ClipRect(
+                    child: Transform.translate(
+                      offset: Offset(translationX, 0),
+                      child: WebViewWidget(controller: controller),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+    await controller.loadHtmlString('''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>html, body { margin: 0; width: 100%; height: 100%; background: #ff00ff; }</style>
+</head>
+<body onmousedown="LinuxClipTest.postMessage('pointer-down')"></body>
+</html>
+''');
+    await pageFinished.future.timeout(const Duration(seconds: 10));
+
+    final _X11Window window = await _findCurrentX11Window();
+    await _runXdotool(<String>['windowfocus', window.id]);
+    final bool propagatedDeviceEvents =
+        tester.binding.shouldPropagateDevicePointerEvents;
+    tester.binding.shouldPropagateDevicePointerEvents = true;
+    try {
+      await _moveX11Pointer(
+        window,
+        x: window.width ~/ 4,
+        y: window.height ~/ 2,
+      );
+      await _runXdotool(<String>['click', '1']);
+      await firstFlutterTap.future.timeout(const Duration(seconds: 5));
+
+      await _moveX11Pointer(
+        window,
+        x: window.width ~/ 2 - 45,
+        y: window.height ~/ 2,
+      );
+      await _runXdotool(<String>['click', '1']);
+      await clippedFlutterTap.future.timeout(const Duration(seconds: 5));
+    } finally {
+      tester.binding.shouldPropagateDevicePointerEvents =
+          propagatedDeviceEvents;
+    }
+    expect(webPointerCount, 0);
+
+    await _moveX11Pointer(
+      window,
+      x: window.width * 3 ~/ 4,
+      y: window.height ~/ 2,
+    );
+    await _runXdotool(<String>['click', '1']);
+    await firstWebPointerDown.future.timeout(const Duration(seconds: 5));
+
+    setTestState(() => translationX = -1000);
+    await tester.pump();
+    await tester.pump();
+    setTestState(() => translationX = -90);
+    await tester.pump();
+    await tester.pump();
+
+    await _moveX11Pointer(
+      window,
+      x: window.width * 3 ~/ 4,
+      y: window.height ~/ 2,
+    );
+    await _runXdotool(<String>['click', '1']);
+    await restoredWebPointerDown.future.timeout(const Duration(seconds: 5));
   });
 
   testWidgets('runJavaScriptReturningResult', (WidgetTester tester) async {
@@ -1657,6 +1810,26 @@ Future<ProcessResult> _runXdotool(List<String> arguments) async {
     );
   }
   return ProcessResult(process.pid, exitCode, output, error);
+}
+
+Future<void> _moveX11Pointer(
+  _X11Window window, {
+  required int x,
+  required int y,
+}) async {
+  await _runXdotool(<String>[
+    'mousemove',
+    '--window',
+    window.id,
+    '${x - 1}',
+    '$y',
+    'mousemove',
+    '--sync',
+    '--window',
+    window.id,
+    '$x',
+    '$y',
+  ]);
 }
 
 Future<_X11Window> _findCurrentX11Window() async {
