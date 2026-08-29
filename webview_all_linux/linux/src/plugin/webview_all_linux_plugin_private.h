@@ -20,7 +20,6 @@ struct _WebviewAllLinuxPlugin {
   GHashTable *webviews;
   gint next_webview_id;
   guint input_region_update_source_id;
-  gboolean input_region_warning_emitted;
   gboolean disposing;
 };
 
@@ -29,6 +28,7 @@ typedef struct {
   gint id;
   WebKitUserContentManager *content_manager;
   WebKitWebView *web_view;
+  GtkWidget *clip_container;
   FlMethodChannel *method_channel;
   FlEventChannel *event_channel;
   gboolean event_listening;
@@ -57,6 +57,10 @@ typedef struct {
   gint frame_y;
   gint frame_width;
   gint frame_height;
+  gint clip_x;
+  gint clip_y;
+  gint clip_width;
+  gint clip_height;
   gint64 frame_sequence;
   gboolean visible;
   double last_scroll_x;

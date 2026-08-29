@@ -55,6 +55,33 @@ gint frame_extent(double origin, double extent, gint rounded_origin) {
   return static_cast<gint>(clamp_double(rounded_extent, 0.0, maximum));
 }
 
+gint clamp_int64_to_gint(gint64 value) {
+  return static_cast<gint>(CLAMP(value, static_cast<gint64>(G_MININT),
+                                 static_cast<gint64>(G_MAXINT)));
+}
+
+GtkWidget *ensure_clip_container(LinuxWebView *webview, GtkOverlay *overlay) {
+  if (webview->clip_container != nullptr) {
+    return webview->clip_container;
+  }
+
+  GtkWidget *container = gtk_layout_new(nullptr, nullptr);
+  gtk_widget_set_halign(container, GTK_ALIGN_START);
+  gtk_widget_set_valign(container, GTK_ALIGN_START);
+  gtk_widget_set_hexpand(container, FALSE);
+  gtk_widget_set_vexpand(container, FALSE);
+  g_object_set_data(G_OBJECT(container), kLinuxWebViewInstanceKey, webview);
+  webview->clip_container = container;
+  g_object_add_weak_pointer(
+      G_OBJECT(container),
+      reinterpret_cast<gpointer *>(&webview->clip_container));
+
+  gtk_layout_put(GTK_LAYOUT(container), GTK_WIDGET(webview->web_view), 0, 0);
+  gtk_overlay_add_overlay(overlay, container);
+  gtk_overlay_set_overlay_pass_through(overlay, container, FALSE);
+  return container;
+}
+
 void append_header_to_map(const char *name, const char *value,
                           gpointer user_data) {
   FlValue *headers = static_cast<FlValue *>(user_data);
@@ -358,7 +385,7 @@ void instance_method_call_cb(FlMethodChannel *channel,
       respond(method_call, success_response());
       return;
     }
-    if (gtk_widget_get_parent(widget) == nullptr) {
+    if (webview->clip_container == nullptr) {
       GtkOverlay *overlay = ensure_overlay(webview->plugin);
       if (overlay == nullptr) {
         respond(method_call,
@@ -366,32 +393,76 @@ void instance_method_call_cb(FlMethodChannel *channel,
                                "Unable to attach the Linux WebView."));
         return;
       }
-      gtk_overlay_add_overlay(overlay, widget);
-      gtk_overlay_set_overlay_pass_through(overlay, widget, FALSE);
+      ensure_clip_container(webview, overlay);
     }
     webview->frame_sequence = frame_sequence;
     const double x = map_lookup_double(args, "x", 0);
     const double y = map_lookup_double(args, "y", 0);
     const double width = map_lookup_double(args, "width", 0);
     const double height = map_lookup_double(args, "height", 0);
+    const double clip_x = map_lookup_double(args, "clipX", x);
+    const double clip_y = map_lookup_double(args, "clipY", y);
+    const double clip_width = map_lookup_double(args, "clipWidth", width);
+    const double clip_height = map_lookup_double(args, "clipHeight", height);
     webview->frame_x = floor_to_gint(x);
     webview->frame_y = floor_to_gint(y);
     webview->frame_width = frame_extent(x, width, webview->frame_x);
     webview->frame_height = frame_extent(y, height, webview->frame_y);
+    const gint requested_clip_x = floor_to_gint(clip_x);
+    const gint requested_clip_y = floor_to_gint(clip_y);
+    const gint requested_clip_width =
+        frame_extent(clip_x, clip_width, requested_clip_x);
+    const gint requested_clip_height =
+        frame_extent(clip_y, clip_height, requested_clip_y);
+    const gint64 clip_left =
+        MAX(static_cast<gint64>(webview->frame_x),
+            static_cast<gint64>(requested_clip_x));
+    const gint64 clip_top =
+        MAX(static_cast<gint64>(webview->frame_y),
+            static_cast<gint64>(requested_clip_y));
+    const gint64 clip_right =
+        MIN(static_cast<gint64>(webview->frame_x) + webview->frame_width,
+            static_cast<gint64>(requested_clip_x) + requested_clip_width);
+    const gint64 clip_bottom =
+        MIN(static_cast<gint64>(webview->frame_y) + webview->frame_height,
+            static_cast<gint64>(requested_clip_y) + requested_clip_height);
+    webview->clip_x = clamp_int64_to_gint(clip_left);
+    webview->clip_y = clamp_int64_to_gint(clip_top);
+    webview->clip_width = clip_right > clip_left
+                              ? clamp_int64_to_gint(clip_right - clip_left)
+                              : 0;
+    webview->clip_height = clip_bottom > clip_top
+                               ? clamp_int64_to_gint(clip_bottom - clip_top)
+                               : 0;
     webview->visible = map_lookup_bool(args, "visible", TRUE) &&
-                       webview->frame_width > 0 && webview->frame_height > 0;
+                       webview->frame_width > 0 && webview->frame_height > 0 &&
+                       webview->clip_width > 0 && webview->clip_height > 0;
     gtk_widget_set_halign(widget, GTK_ALIGN_START);
     gtk_widget_set_valign(widget, GTK_ALIGN_START);
     gtk_widget_set_size_request(widget, webview->frame_width,
                                 webview->frame_height);
+    GtkWidget *clip_container = webview->clip_container;
+    // Keep WebKit at the full Flutter widget size and move it inside a smaller
+    // GtkLayout viewport. Resizing WebKit to the clip would reflow the page.
+    gtk_widget_set_size_request(clip_container, webview->clip_width,
+                                webview->clip_height);
+    gtk_layout_set_size(GTK_LAYOUT(clip_container), webview->clip_width,
+                        webview->clip_height);
+    gtk_layout_move(
+        GTK_LAYOUT(clip_container), widget,
+        clamp_int64_to_gint(static_cast<gint64>(webview->frame_x) -
+                            webview->clip_x),
+        clamp_int64_to_gint(static_cast<gint64>(webview->frame_y) -
+                            webview->clip_y));
     if (webview->plugin->overlay != nullptr) {
       gtk_widget_queue_resize(GTK_WIDGET(webview->plugin->overlay));
     }
     if (webview->visible) {
       gtk_widget_show(widget);
+      gtk_widget_show(clip_container);
     } else {
       release_linux_webview_focus(webview);
-      gtk_widget_hide(widget);
+      gtk_widget_hide(clip_container);
     }
     schedule_flutter_view_input_region_update(webview->plugin);
     respond(method_call, success_response());

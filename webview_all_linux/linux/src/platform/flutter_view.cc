@@ -133,24 +133,24 @@ static gboolean overlay_get_child_position_cb(GtkOverlay *overlay,
     return FALSE;
   }
 
-  gint frame_x = webview->frame_x;
-  gint frame_y = webview->frame_y;
+  gint clip_x = webview->clip_x;
+  gint clip_y = webview->clip_y;
   if (self->flutter_view != nullptr &&
       gtk_widget_get_parent(self->flutter_view) == GTK_WIDGET(overlay)) {
     GtkAllocation flutter_view_allocation;
     gtk_widget_get_allocation(self->flutter_view, &flutter_view_allocation);
-    frame_x = static_cast<gint>(
-        CLAMP(static_cast<gint64>(frame_x) + flutter_view_allocation.x,
+    clip_x = static_cast<gint>(
+        CLAMP(static_cast<gint64>(clip_x) + flutter_view_allocation.x,
               static_cast<gint64>(G_MININT), static_cast<gint64>(G_MAXINT)));
-    frame_y = static_cast<gint>(
-        CLAMP(static_cast<gint64>(frame_y) + flutter_view_allocation.y,
+    clip_y = static_cast<gint>(
+        CLAMP(static_cast<gint64>(clip_y) + flutter_view_allocation.y,
               static_cast<gint64>(G_MININT), static_cast<gint64>(G_MAXINT)));
   }
 
-  allocation->x = frame_x;
-  allocation->y = frame_y;
-  allocation->width = webview->frame_width;
-  allocation->height = webview->frame_height;
+  allocation->x = clip_x;
+  allocation->y = clip_y;
+  allocation->width = webview->clip_width;
+  allocation->height = webview->clip_height;
   return TRUE;
 }
 
@@ -179,8 +179,6 @@ static void attach_linux_webview_host(WebviewAllLinuxPlugin *self,
   self->flutter_view = view_widget;
   self->overlay = overlay;
   self->flutter_input_widget = input_widget;
-  self->input_region_warning_emitted = FALSE;
-
   if (self->flutter_input_widget == nullptr) {
     g_warning(
         "webview_all_linux could not locate Flutter's GTK input widget; "
@@ -286,40 +284,29 @@ void update_flutter_view_input_region(WebviewAllLinuxPlugin* self) {
   g_hash_table_iter_init(&iter, self->webviews);
   while (g_hash_table_iter_next(&iter, &key, &value)) {
     LinuxWebView* webview = static_cast<LinuxWebView*>(value);
-    if (webview == nullptr || !webview->visible || webview->frame_width <= 0 ||
-        webview->frame_height <= 0 || webview->web_view == nullptr ||
-        !gtk_widget_get_mapped(GTK_WIDGET(webview->web_view))) {
+    if (webview == nullptr || !webview->visible || webview->clip_width <= 0 ||
+        webview->clip_height <= 0 || webview->clip_container == nullptr ||
+        !gtk_widget_get_mapped(webview->clip_container)) {
       continue;
     }
 
-    gint translated_x = 0;
-    gint translated_y = 0;
-    if (!gtk_widget_translate_coordinates(GTK_WIDGET(webview->web_view),
-                                          input_widget, 0, 0, &translated_x,
-                                          &translated_y)) {
-      if (!self->input_region_warning_emitted) {
-        g_warning(
-            "webview_all_linux could not translate the WebView input region "
-            "into Flutter content coordinates; the top-level window was left "
-            "unchanged.");
-        self->input_region_warning_emitted = TRUE;
-      }
-      continue;
-    }
+    // Flutter reports geometry in the logical coordinate space used by its
+    // input surface. Using the stored clip also avoids punching an input hole
+    // for the hidden portion of WebKit's full layout allocation.
+    const gint translated_x = webview->clip_x;
+    const gint translated_y = webview->clip_y;
 
-    const gint webview_width =
-        gtk_widget_get_allocated_width(GTK_WIDGET(webview->web_view));
-    const gint webview_height =
-        gtk_widget_get_allocated_height(GTK_WIDGET(webview->web_view));
-    if (webview_width <= 0 || webview_height <= 0) {
+    const gint clip_width = webview->clip_width;
+    const gint clip_height = webview->clip_height;
+    if (clip_width <= 0 || clip_height <= 0) {
       continue;
     }
     const gint left = MAX(0, translated_x);
     const gint top = MAX(0, translated_y);
     const gint64 translated_right =
-        static_cast<gint64>(translated_x) + webview_width;
+        static_cast<gint64>(translated_x) + clip_width;
     const gint64 translated_bottom =
-        static_cast<gint64>(translated_y) + webview_height;
+        static_cast<gint64>(translated_y) + clip_height;
     const gint right =
         static_cast<gint>(MIN(static_cast<gint64>(width), translated_right));
     const gint bottom =

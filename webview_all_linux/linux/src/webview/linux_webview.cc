@@ -734,7 +734,17 @@ void destroy_linux_webview(gpointer data) {
     resolve_all_pending_requests(webview);
     g_object_set_data(G_OBJECT(webview->web_view), kLinuxWebViewInstanceKey,
                       nullptr);
-    gtk_widget_destroy(GTK_WIDGET(webview->web_view));
+    if (webview->clip_container != nullptr) {
+      g_object_set_data(G_OBJECT(webview->clip_container),
+                        kLinuxWebViewInstanceKey, nullptr);
+      g_object_remove_weak_pointer(
+          G_OBJECT(webview->clip_container),
+          reinterpret_cast<gpointer *>(&webview->clip_container));
+      gtk_widget_destroy(webview->clip_container);
+      webview->clip_container = nullptr;
+    } else {
+      gtk_widget_destroy(GTK_WIDGET(webview->web_view));
+    }
     g_object_unref(webview->web_view);
   }
   g_clear_object(&webview->method_channel);
