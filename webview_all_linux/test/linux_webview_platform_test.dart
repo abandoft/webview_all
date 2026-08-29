@@ -155,6 +155,7 @@ void main() {
 
     await controller.setFrame(
       const Rect.fromLTWH(10, 20, 300, 180),
+      clipRect: const Rect.fromLTWH(10, 40, 300, 160),
       visible: true,
     );
     await controller.setFrame(Rect.zero, visible: false);
@@ -165,6 +166,22 @@ void main() {
     expect(frameCalls, hasLength(2));
     expect((frameCalls[0].arguments as Map<Object?, Object?>)['sequence'], 1);
     expect((frameCalls[1].arguments as Map<Object?, Object?>)['sequence'], 2);
+    expect(
+      (frameCalls[0].arguments as Map<Object?, Object?>),
+      containsPair('clipX', 10),
+    );
+    expect(
+      (frameCalls[0].arguments as Map<Object?, Object?>),
+      containsPair('clipY', 40),
+    );
+    expect(
+      (frameCalls[0].arguments as Map<Object?, Object?>),
+      containsPair('clipWidth', 300),
+    );
+    expect(
+      (frameCalls[0].arguments as Map<Object?, Object?>),
+      containsPair('clipHeight', 160),
+    );
   });
 
   testWidgets('keeps full native geometry at the Flutter viewport edge', (
@@ -208,6 +225,277 @@ void main() {
     expect(arguments['y'], -20);
     expect(arguments['width'], 100);
     expect(arguments['height'], 80);
+    expect(arguments['clipX'], 0);
+    expect(arguments['clipY'], 0);
+    expect(arguments['clipWidth'], 60);
+    expect(arguments['clipHeight'], 60);
+  });
+
+  testWidgets(
+    'tracks scrolling with ancestor clipping and restores after re-entry',
+    (WidgetTester tester) async {
+      final List<MethodCall> calls = <MethodCall>[];
+      _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+      final LinuxWebViewController controller = LinuxWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final LinuxWebViewWidget platformWidget = LinuxWebViewWidget(
+        PlatformWebViewWidgetCreationParams(controller: controller),
+      );
+      final ScrollController scrollController = ScrollController();
+      addTearDown(scrollController.dispose);
+
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 200,
+              height: 180,
+              child: ListView(
+                controller: scrollController,
+                children: <Widget>[
+                  const SizedBox(height: 100),
+                  SizedBox(
+                    height: 160,
+                    child: Builder(builder: platformWidget.build),
+                  ),
+                  const SizedBox(height: 400),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      Map<Object?, Object?> latestFrame() =>
+          calls
+                  .lastWhere((MethodCall call) => call.method == 'setFrame')
+                  .arguments
+              as Map<Object?, Object?>;
+
+      expect(latestFrame()['y'], 100);
+      expect(latestFrame()['height'], 160);
+      expect(latestFrame()['clipY'], 100);
+      expect(latestFrame()['clipHeight'], 80);
+
+      scrollController.jumpTo(150);
+      await tester.pump();
+      expect(latestFrame()['visible'], isTrue);
+      expect(latestFrame()['y'], -50);
+      expect(latestFrame()['height'], 160);
+      expect(latestFrame()['clipY'], 0);
+      expect(latestFrame()['clipHeight'], 110);
+
+      final int stableCallCount = calls
+          .where((MethodCall call) => call.method == 'setFrame')
+          .length;
+      await tester.pump();
+      await tester.pump();
+      expect(
+        calls.where((MethodCall call) => call.method == 'setFrame'),
+        hasLength(stableCallCount),
+      );
+
+      scrollController.jumpTo(300);
+      await tester.pump();
+      expect(latestFrame()['visible'], isFalse);
+
+      scrollController.jumpTo(150);
+      await tester.pump();
+      await tester.pump();
+      expect(latestFrame()['visible'], isTrue);
+      expect(latestFrame()['y'], -50);
+      expect(latestFrame()['clipY'], 0);
+      expect(latestFrame()['clipHeight'], 110);
+    },
+  );
+
+  testWidgets('tracks a WebView that starts outside the scroll viewport', (
+    WidgetTester tester,
+  ) async {
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final LinuxWebViewWidget platformWidget = LinuxWebViewWidget(
+      PlatformWebViewWidgetCreationParams(controller: controller),
+    );
+    final ScrollController scrollController = ScrollController(
+      initialScrollOffset: 300,
+    );
+    addTearDown(scrollController.dispose);
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 200,
+            height: 180,
+            child: ListView(
+              controller: scrollController,
+              children: <Widget>[
+                const SizedBox(height: 100),
+                SizedBox(
+                  height: 160,
+                  child: Builder(builder: platformWidget.build),
+                ),
+                const SizedBox(height: 400),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      calls.where(
+        (MethodCall call) =>
+            call.method == 'setFrame' &&
+            (call.arguments as Map<Object?, Object?>)['visible'] == true,
+      ),
+      isEmpty,
+    );
+
+    scrollController.jumpTo(150);
+    await tester.pump();
+    await tester.pump();
+    final Map<Object?, Object?> arguments =
+        calls
+                .lastWhere(
+                  (MethodCall call) =>
+                      call.method == 'setFrame' &&
+                      (call.arguments as Map<Object?, Object?>)['visible'] ==
+                          true,
+                )
+                .arguments
+            as Map<Object?, Object?>;
+    expect(arguments['y'], -50);
+    expect(arguments['height'], 160);
+    expect(arguments['clipY'], 0);
+    expect(arguments['clipHeight'], 110);
+  });
+
+  testWidgets('intersects translated geometry with a ClipRect ancestor', (
+    WidgetTester tester,
+  ) async {
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final LinuxWebViewWidget platformWidget = LinuxWebViewWidget(
+      PlatformWebViewWidgetCreationParams(controller: controller),
+    );
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 800,
+            height: 600,
+            child: Row(
+              children: <Widget>[
+                const Expanded(child: SizedBox.expand()),
+                Expanded(
+                  child: ClipRect(
+                    child: Transform.translate(
+                      offset: const Offset(-90, 0),
+                      child: Builder(builder: platformWidget.build),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final Map<Object?, Object?> arguments =
+        calls
+                .lastWhere(
+                  (MethodCall call) =>
+                      call.method == 'setFrame' &&
+                      (call.arguments as Map<Object?, Object?>)['visible'] ==
+                          true,
+                )
+                .arguments
+            as Map<Object?, Object?>;
+    expect(arguments['x'], 310);
+    expect(arguments['y'], 0);
+    expect(arguments['width'], 400);
+    expect(arguments['height'], 600);
+    expect(arguments['clipX'], 400);
+    expect(arguments['clipY'], 0);
+    expect(arguments['clipWidth'], 310);
+    expect(arguments['clipHeight'], 600);
+  });
+
+  testWidgets('hides native view for non-rectangular ancestor clips', (
+    WidgetTester tester,
+  ) async {
+    final List<MethodCall> calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final LinuxWebViewController controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final LinuxWebViewWidget platformWidget = LinuxWebViewWidget(
+      PlatformWebViewWidgetCreationParams(controller: controller),
+    );
+    Widget Function(Widget child)? clipBuilder;
+
+    Widget buildWebView() {
+      final Widget webView = SizedBox(
+        width: 100,
+        height: 80,
+        child: Builder(builder: platformWidget.build),
+      );
+      return Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: clipBuilder?.call(webView) ?? webView,
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildWebView());
+    await tester.pump();
+    expect(
+      (calls.lastWhere((MethodCall call) => call.method == 'setFrame').arguments
+          as Map<Object?, Object?>)['visible'],
+      isTrue,
+    );
+
+    clipBuilder = (Widget child) => ClipOval(child: child);
+    await tester.pumpWidget(buildWebView());
+    await tester.pump();
+    expect(
+      (calls.lastWhere((MethodCall call) => call.method == 'setFrame').arguments
+          as Map<Object?, Object?>)['visible'],
+      isFalse,
+    );
+
+    clipBuilder = (Widget child) => ClipRSuperellipse(
+      borderRadius: BorderRadius.circular(16),
+      child: child,
+    );
+    await tester.pumpWidget(buildWebView());
+    await tester.pump();
+    expect(
+      (calls.lastWhere((MethodCall call) => call.method == 'setFrame').arguments
+          as Map<Object?, Object?>)['visible'],
+      isFalse,
+    );
   });
 
   testWidgets('keeps native geometry in logical pixels on HiDPI displays', (

@@ -34,10 +34,40 @@ class _LinuxPlatformWebView extends StatefulWidget {
   State<_LinuxPlatformWebView> createState() => _LinuxPlatformWebViewState();
 }
 
+class _LinuxViewGeometry {
+  const _LinuxViewGeometry({required this.frame, required this.clip});
+
+  static const _LinuxViewGeometry hidden = _LinuxViewGeometry(
+    frame: Rect.zero,
+    clip: Rect.zero,
+  );
+
+  final Rect frame;
+  final Rect clip;
+
+  bool get isVisible =>
+      _isUsableRect(frame) && _isUsableRect(clip) && frame.overlaps(clip);
+
+  static bool _isUsableRect(Rect rect) =>
+      rect.left.isFinite &&
+      rect.top.isFinite &&
+      rect.right.isFinite &&
+      rect.bottom.isFinite &&
+      rect.width > 0 &&
+      rect.height > 0;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _LinuxViewGeometry && other.frame == frame && other.clip == clip;
+
+  @override
+  int get hashCode => Object.hash(frame, clip);
+}
+
 class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
     with WidgetsBindingObserver {
-  Rect _lastRect = Rect.zero;
-  bool _attached = false;
+  _LinuxViewGeometry _lastGeometry = _LinuxViewGeometry.hidden;
+  bool _geometryVisible = false;
   bool _applicationVisible = true;
   bool _visibilityCheckScheduled = false;
 
@@ -48,6 +78,7 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
     _applicationVisible = _isApplicationVisible(
       WidgetsBinding.instance.lifecycleState,
     );
+    _scheduleVisibilityCheck();
   }
 
   @override
@@ -67,8 +98,9 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
     if (applicationVisible) {
       // Keep the native view hidden until Flutter paints its current geometry.
       // The window may have moved or resized while the app was suspended.
-      _attached = false;
+      _geometryVisible = false;
       _markGeometryNeedsUpdate();
+      _scheduleVisibilityCheck();
     } else {
       _syncFrame(widget.controller);
     }
@@ -81,36 +113,44 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
       return;
     }
 
-    final Rect currentRect = _lastRect;
-    _setFrameSafely(oldWidget.controller, Rect.zero, visible: false);
+    final _LinuxViewGeometry currentGeometry = _lastGeometry;
+    _setFrameSafely(
+      oldWidget.controller,
+      _LinuxViewGeometry.hidden,
+      visible: false,
+    );
     _setFrameSafely(
       widget.controller,
-      _attached && _applicationVisible ? currentRect : Rect.zero,
-      visible: _attached && _applicationVisible,
+      _geometryVisible && _applicationVisible
+          ? currentGeometry
+          : _LinuxViewGeometry.hidden,
+      visible: _geometryVisible && _applicationVisible,
     );
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _setFrameSafely(widget.controller, Rect.zero, visible: false);
+    _setFrameSafely(
+      widget.controller,
+      _LinuxViewGeometry.hidden,
+      visible: false,
+    );
     super.dispose();
   }
 
-  void _pushRect(Rect rect, {required bool visible}) {
-    _lastRect = rect;
-    _attached = visible;
+  void _pushGeometry(_LinuxViewGeometry geometry, {required bool visible}) {
+    _lastGeometry = geometry;
+    _geometryVisible = visible;
     _syncFrame(widget.controller);
-    if (visible) {
-      _scheduleVisibilityCheck();
-    }
+    _scheduleVisibilityCheck();
   }
 
   void _syncFrame(LinuxWebViewController controller) {
-    final bool visible = _attached && _applicationVisible;
+    final bool visible = _geometryVisible && _applicationVisible;
     _setFrameSafely(
       controller,
-      visible ? _lastRect : Rect.zero,
+      visible ? _lastGeometry : _LinuxViewGeometry.hidden,
       visible: visible,
     );
   }
@@ -126,13 +166,13 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
   }
 
   void _scheduleVisibilityCheck() {
-    if (_visibilityCheckScheduled || !_attached || !_applicationVisible) {
+    if (_visibilityCheckScheduled || !_applicationVisible) {
       return;
     }
     _visibilityCheckScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((Duration _) {
       _visibilityCheckScheduled = false;
-      if (!mounted || !_attached || !_applicationVisible) {
+      if (!mounted || !_applicationVisible) {
         return;
       }
       final RenderObject? renderObject = context.findRenderObject();
@@ -151,12 +191,16 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
 
   void _setFrameSafely(
     LinuxWebViewController controller,
-    Rect rect, {
+    _LinuxViewGeometry geometry, {
     required bool visible,
   }) {
     unawaited(() async {
       try {
-        await controller.setFrame(rect, visible: visible);
+        await controller.setFrame(
+          geometry.frame,
+          clipRect: geometry.clip,
+          visible: visible,
+        );
       } on StateError catch (error) {
         if (!error.toString().contains('disposed')) {
           debugPrint(
@@ -171,16 +215,13 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
     }());
   }
 
-  void _handleGeometryChanged(Rect rect) {
-    final bool visible =
-        rect.left.isFinite &&
-        rect.top.isFinite &&
-        rect.width.isFinite &&
-        rect.height.isFinite &&
-        rect.width > 0 &&
-        rect.height > 0;
-    if (_attached != visible || rect != _lastRect) {
-      _pushRect(visible ? rect : Rect.zero, visible: visible);
+  void _handleGeometryChanged(_LinuxViewGeometry geometry) {
+    final bool visible = geometry.isVisible;
+    if (_geometryVisible != visible || geometry != _lastGeometry) {
+      _pushGeometry(
+        visible ? geometry : _LinuxViewGeometry.hidden,
+        visible: visible,
+      );
     }
   }
 
@@ -188,7 +229,8 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
   Widget build(BuildContext context) {
     return _LinuxGeometryObserver(
       onGeometryChanged: _handleGeometryChanged,
-      onDetached: () => _pushRect(Rect.zero, visible: false),
+      onDetached: () =>
+          _pushGeometry(_LinuxViewGeometry.hidden, visible: false),
       child: const SizedBox.expand(),
     );
   }
@@ -201,7 +243,7 @@ class _LinuxGeometryObserver extends SingleChildRenderObjectWidget {
     required Widget child,
   }) : super(child: child);
 
-  final ValueChanged<Rect> onGeometryChanged;
+  final ValueChanged<_LinuxViewGeometry> onGeometryChanged;
   final VoidCallback onDetached;
 
   @override
@@ -225,14 +267,15 @@ class _LinuxGeometryObserver extends SingleChildRenderObjectWidget {
 
 class _LinuxGeometryRenderBox extends RenderProxyBox {
   _LinuxGeometryRenderBox({
-    required ValueChanged<Rect> onGeometryChanged,
+    required ValueChanged<_LinuxViewGeometry> onGeometryChanged,
     required VoidCallback onDetached,
   }) : _onGeometryChanged = onGeometryChanged,
        _onDetached = onDetached;
 
-  ValueChanged<Rect> _onGeometryChanged;
+  ValueChanged<_LinuxViewGeometry> _onGeometryChanged;
   VoidCallback _onDetached;
   bool _reportedUnsupportedTransform = false;
+  bool _reportedUnsupportedClip = false;
 
   bool get isEffectivelyPainted {
     RenderObject child = this;
@@ -257,7 +300,7 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
     return root is RenderView ? root : null;
   }
 
-  set onGeometryChanged(ValueChanged<Rect> value) {
+  set onGeometryChanged(ValueChanged<_LinuxViewGeometry> value) {
     _onGeometryChanged = value;
   }
 
@@ -273,22 +316,22 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
 
   /// Recomputes the on-screen rect of this box and reports it.
   ///
-  /// Called from [paint] and, while visible, from a per-frame post-frame
-  /// callback so the native overlay keeps tracking the Flutter layout during
-  /// sliver scrolling.
+  /// Called from [paint] and from each already-scheduled Flutter frame so the
+  /// native overlay keeps tracking composited movement during sliver scrolling
+  /// and can detect when a previously clipped child re-enters the viewport.
   void syncGeometry() {
     if (!attached) {
-      _onGeometryChanged(Rect.zero);
+      _onGeometryChanged(_LinuxViewGeometry.hidden);
       return;
     }
     if (!isEffectivelyPainted) {
-      _onGeometryChanged(Rect.zero);
+      _onGeometryChanged(_LinuxViewGeometry.hidden);
       return;
     }
     final RenderView? renderView = _renderView;
     final RenderBox? renderRoot = renderView?.child;
     if (renderView == null || renderRoot == null) {
-      _onGeometryChanged(Rect.zero);
+      _onGeometryChanged(_LinuxViewGeometry.hidden);
       return;
     }
     // GTK and RenderView layout both use logical pixels. Targeting the
@@ -324,13 +367,109 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
         );
         _reportedUnsupportedTransform = true;
       }
-      _onGeometryChanged(Rect.zero);
+      _onGeometryChanged(_LinuxViewGeometry.hidden);
       return;
     }
 
-    final Rect rect = Rect.fromPoints(topLeft, bottomRight);
-    final Rect viewport = Offset.zero & renderView.size;
-    _onGeometryChanged(rect.overlaps(viewport) ? rect : Rect.zero);
+    final Rect frame = Rect.fromPoints(topLeft, bottomRight);
+    Rect clip = frame.intersect(Offset.zero & renderView.size);
+
+    RenderObject child = this;
+    RenderObject? ancestor = parent;
+    while (ancestor != null && ancestor != renderView) {
+      final Rect? localClip = ancestor.describeApproximatePaintClip(child);
+      if (localClip != null) {
+        if (_hasNonRectangularClip(ancestor)) {
+          _reportUnsupportedClip();
+          _onGeometryChanged(_LinuxViewGeometry.hidden);
+          return;
+        }
+        final Rect? transformedClip = _transformAxisAlignedRect(
+          ancestor.getTransformTo(renderRoot),
+          localClip,
+        );
+        if (transformedClip == null) {
+          _reportUnsupportedClip();
+          _onGeometryChanged(_LinuxViewGeometry.hidden);
+          return;
+        }
+        clip = clip.intersect(transformedClip);
+        if (!_LinuxViewGeometry._isUsableRect(clip)) {
+          _onGeometryChanged(_LinuxViewGeometry.hidden);
+          return;
+        }
+      }
+      if (identical(ancestor, renderRoot)) {
+        break;
+      }
+      child = ancestor;
+      ancestor = ancestor.parent;
+    }
+
+    _onGeometryChanged(_LinuxViewGeometry(frame: frame, clip: clip));
+  }
+
+  bool _hasNonRectangularClip(RenderObject ancestor) {
+    if (ancestor is RenderClipRRect ||
+        ancestor is RenderClipRSuperellipse ||
+        ancestor is RenderClipOval ||
+        ancestor is RenderClipPath ||
+        ancestor is RenderPhysicalShape) {
+      return true;
+    }
+    if (ancestor is RenderPhysicalModel) {
+      return ancestor.shape != BoxShape.rectangle ||
+          (ancestor.borderRadius != null &&
+              ancestor.borderRadius != BorderRadius.zero);
+    }
+    return false;
+  }
+
+  Rect? _transformAxisAlignedRect(Matrix4 transform, Rect rect) {
+    final List<Offset> corners = <Offset>[
+      MatrixUtils.transformPoint(transform, rect.topLeft),
+      MatrixUtils.transformPoint(transform, rect.topRight),
+      MatrixUtils.transformPoint(transform, rect.bottomRight),
+      MatrixUtils.transformPoint(transform, rect.bottomLeft),
+    ];
+    if (corners.any(
+      (Offset point) => !point.dx.isFinite || !point.dy.isFinite,
+    )) {
+      return null;
+    }
+
+    const double epsilon = 0.000001;
+    bool horizontal(Offset first, Offset second) =>
+        (first.dy - second.dy).abs() <= epsilon;
+    bool vertical(Offset first, Offset second) =>
+        (first.dx - second.dx).abs() <= epsilon;
+
+    final bool horizontalFirst =
+        horizontal(corners[0], corners[1]) &&
+        vertical(corners[1], corners[2]) &&
+        horizontal(corners[2], corners[3]) &&
+        vertical(corners[3], corners[0]);
+    final bool verticalFirst =
+        vertical(corners[0], corners[1]) &&
+        horizontal(corners[1], corners[2]) &&
+        vertical(corners[2], corners[3]) &&
+        horizontal(corners[3], corners[0]);
+    if (!horizontalFirst && !verticalFirst) {
+      return null;
+    }
+
+    return MatrixUtils.transformRect(transform, rect);
+  }
+
+  void _reportUnsupportedClip() {
+    if (_reportedUnsupportedClip) {
+      return;
+    }
+    debugPrint(
+      'webview_all_linux: non-rectangular or transformed Flutter clips cannot '
+      'be represented by a native GTK overlay; the native WebView was hidden.',
+    );
+    _reportedUnsupportedClip = true;
   }
 
   @override
