@@ -2,6 +2,7 @@
 
 * Fix registration, rendering, and communication conflicts with other WebView plugins.
 * Unify native plugin entry point and Apple External API names.
+* Fix Linux WebView positioning, clipping, and pointer input while scrolling or partially visible.
 
 ## 1.3.10
 

@@ -2,6 +2,7 @@
 
 * 修复与其他 WebView 插件共存时的注册、渲染和通信冲突。
 * 统一原生插件入口及 Apple External API 命名。
+* 修复 Linux WebView 滚动及部分可见时的位置、裁剪和点击响应。
 
 ## 1.3.10
 
