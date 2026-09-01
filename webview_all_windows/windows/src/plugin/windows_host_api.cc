@@ -152,7 +152,13 @@ WindowsHostApi::WindowsHostApi(flutter::TextureRegistrar *textures,
 
 WindowsHostApi::~WindowsHostApi() {
   lifetime_state_->owner = nullptr;
-  webview_all_windows::WindowsWebViewHostApi::SetUp(messenger_, nullptr);
+  // Deliberately no SetUp(messenger_, nullptr) here. This destructor only runs
+  // from a plugin registrar destruction callback, which FlutterWindowsEngine
+  // fires from Stop() *after* its own destructor has already nulled the
+  // messenger's engine pointer -- so unregistering would dereference null
+  // inside FlutterDesktopMessengerSetCallback. The dispatcher is torn down
+  // with the engine anyway. See flutter/flutter#118611 and the contract
+  // documented on flutter::MethodChannel::SetMethodCallHandler.
   instances_.clear();
   if (registrar_ != nullptr && window_proc_delegate_id_ >= 0) {
     registrar_->UnregisterTopLevelWindowProcDelegate(window_proc_delegate_id_);
