@@ -264,25 +264,24 @@ return {
 
     await tester.pumpWidget(WebViewWidget(controller: controller));
     await pageFinished.future.timeout(const Duration(seconds: 15));
-    await _waitForCondition(
-      () async => await _countWindowsRendererProcesses() > rendererCountBefore,
-      reason: 'Creating a Windows WebView did not start a renderer process.',
-      timeout: const Duration(seconds: 15),
-    );
     final int rendererCountWhileMounted =
         await _countWindowsRendererProcesses();
+    expect(
+      rendererCountWhileMounted,
+      greaterThan(rendererCountBefore),
+      reason: 'Creating a Windows WebView did not start a renderer process.',
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     await windowsController.dispose();
     disposed = true;
 
-    await _waitForCondition(
-      () async => await _countWindowsRendererProcesses() <= rendererCountBefore,
+    await _waitForWindowsRendererProcessCount(
+      (int count) => count <= rendererCountBefore,
       reason:
           'Disposing the Windows controller did not restore the renderer '
           'process count from $rendererCountWhileMounted to '
           '$rendererCountBefore.',
-      timeout: const Duration(seconds: 15),
     );
     await expectLater(controller.currentUrl(), throwsStateError);
   });
@@ -1589,7 +1588,78 @@ bool _isWKWebView() {
       defaultTargetPlatform == TargetPlatform.macOS;
 }
 
-Future<int> _countWindowsRendererProcesses() async {
+const Duration _windowsProcessProbeTimeout = Duration(seconds: 30);
+const Duration _windowsProcessTerminationTimeout = Duration(seconds: 2);
+const Duration _windowsProcessPollInterval = Duration(milliseconds: 500);
+const int _windowsProcessProbeAttempts = 2;
+
+/// Runs [script] with a shared timeout and terminates stalled attempts.
+Future<ProcessResult> _runWindowsProcessProbe(
+  String script, {
+  Duration timeout = _windowsProcessProbeTimeout,
+}) async {
+  final Stopwatch stopwatch = Stopwatch()..start();
+  TimeoutException? lastTimeout;
+
+  for (var attempt = 0; attempt < _windowsProcessProbeAttempts; attempt++) {
+    final Duration remaining = timeout - stopwatch.elapsed;
+    final int remainingAttempts = _windowsProcessProbeAttempts - attempt;
+    if (remaining <= Duration.zero) {
+      break;
+    }
+    final Duration attemptTimeout = Duration(
+      microseconds: remaining.inMicroseconds ~/ remainingAttempts,
+    );
+    try {
+      return await _runWindowsProcessProbeAttempt(script, attemptTimeout);
+    } on TimeoutException catch (error) {
+      lastTimeout = error;
+    }
+  }
+
+  throw TestFailure(
+    'Windows process inspection did not complete after '
+    '$_windowsProcessProbeAttempts attempts within '
+    '${timeout.inSeconds} seconds. Last error: $lastTimeout',
+  );
+}
+
+Future<ProcessResult> _runWindowsProcessProbeAttempt(
+  String script,
+  Duration timeout,
+) async {
+  final Process process = await Process.start('powershell.exe', <String>[
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    script,
+  ]);
+  final Future<String> stdout = systemEncoding.decodeStream(process.stdout);
+  final Future<String> stderr = systemEncoding.decodeStream(process.stderr);
+
+  late final int exitCode;
+  try {
+    exitCode = await process.exitCode.timeout(timeout);
+  } on TimeoutException {
+    process.kill();
+    try {
+      await process.exitCode.timeout(_windowsProcessTerminationTimeout);
+    } on TimeoutException {
+      throw TestFailure(
+        'Timed-out Windows process probe ${process.pid} could not be '
+        'terminated.',
+      );
+    }
+    await Future.wait(<Future<String>>[stdout, stderr]);
+    throw TimeoutException('Windows process inspection timed out.', timeout);
+  }
+
+  return ProcessResult(process.pid, exitCode, await stdout, await stderr);
+}
+
+Future<int> _countWindowsRendererProcesses({
+  Duration timeout = _windowsProcessProbeTimeout,
+}) async {
   final String script =
       r'''
 $rootProcessId = __ROOT_PROCESS_ID__
@@ -1613,12 +1683,10 @@ while ($pendingIds.Count -gt 0) {
 }).Count
 '''
           .replaceFirst('__ROOT_PROCESS_ID__', '$pid');
-  final ProcessResult result = await Process.run('powershell.exe', <String>[
-    '-NoProfile',
-    '-NonInteractive',
-    '-Command',
+  final ProcessResult result = await _runWindowsProcessProbe(
     script,
-  ]).timeout(const Duration(seconds: 10));
+    timeout: timeout,
+  );
   if (result.exitCode != 0) {
     throw TestFailure(
       'Failed to inspect Windows WebView2 renderer processes: '
@@ -1630,6 +1698,37 @@ while ($pendingIds.Count -gt 0) {
     throw TestFailure('Unexpected renderer process count: ${result.stdout}');
   }
   return count;
+}
+
+Future<int> _waitForWindowsRendererProcessCount(
+  bool Function(int count) condition, {
+  required String reason,
+  Duration timeout = _windowsProcessProbeTimeout,
+}) async {
+  final Stopwatch stopwatch = Stopwatch()..start();
+  int? lastCount;
+
+  while (stopwatch.elapsed < timeout) {
+    final Duration remaining = timeout - stopwatch.elapsed;
+    lastCount = await _countWindowsRendererProcesses(timeout: remaining);
+    if (condition(lastCount)) {
+      return lastCount;
+    }
+
+    final Duration delayBudget = timeout - stopwatch.elapsed;
+    if (delayBudget <= Duration.zero) {
+      break;
+    }
+    await Future<void>.delayed(
+      delayBudget < _windowsProcessPollInterval
+          ? delayBudget
+          : _windowsProcessPollInterval,
+    );
+  }
+
+  throw TestFailure(
+    '$reason Last observed renderer process count: $lastCount.',
+  );
 }
 
 Future<void> _waitForCondition(
