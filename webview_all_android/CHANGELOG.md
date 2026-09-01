@@ -1,3 +1,7 @@
+## 1.4.1
+
+* Fix a crash when exiting Windows applications.
+
 ## 1.4.0
 
 * Fix registration, rendering, and communication conflicts with other WebView plugins.
