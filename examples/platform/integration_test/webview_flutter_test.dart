@@ -1589,6 +1589,31 @@ bool _isWKWebView() {
       defaultTargetPlatform == TargetPlatform.macOS;
 }
 
+/// Runs [script] in PowerShell, retrying once if the probe stalls.
+///
+/// A single `Win32_Process` query costs roughly 0.7s even on an idle machine,
+/// nearly all of it PowerShell and WMI start-up rather than the enumeration
+/// itself, and this probe is polled in a loop while WebView2 processes are
+/// starting and exiting. A contended CI runner can push one call well past a
+/// short deadline, so give it real headroom and absorb a single stall instead
+/// of failing the whole suite.
+Future<ProcessResult> _runWindowsProcessProbe(String script) async {
+  Future<ProcessResult> run() {
+    return Process.run('powershell.exe', <String>[
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      script,
+    ]).timeout(const Duration(seconds: 30));
+  }
+
+  try {
+    return await run();
+  } on TimeoutException {
+    return await run();
+  }
+}
+
 Future<int> _countWindowsRendererProcesses() async {
   final String script =
       r'''
@@ -1613,12 +1638,7 @@ while ($pendingIds.Count -gt 0) {
 }).Count
 '''
           .replaceFirst('__ROOT_PROCESS_ID__', '$pid');
-  final ProcessResult result = await Process.run('powershell.exe', <String>[
-    '-NoProfile',
-    '-NonInteractive',
-    '-Command',
-    script,
-  ]).timeout(const Duration(seconds: 10));
+  final ProcessResult result = await _runWindowsProcessProbe(script);
   if (result.exitCode != 0) {
     throw TestFailure(
       'Failed to inspect Windows WebView2 renderer processes: '
