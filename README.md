@@ -20,11 +20,12 @@ A WebView component for all Flutter platforms, compatible with the
 - Comprehensive support for all platforms
 - Full compatibility with the `webview_flutter` API
 - Additional features:
-  - Promise-aware JavaScript calls
-  - Document-start user scripts
+  - Promise-aware asynchronous JavaScript calls
+  - Custom JavaScript injection before page scripts execute
+  - Desktop download controls and Windows debugging and shortcut settings
+  - Richer Web interactions and iframe configuration
   - Website data cleanup without a controller
-  - Deterministically closable offscreen sessions
-  - ......
+  - Offscreen WebView sessions that can be explicitly closed
 
 ## Quick Start
 

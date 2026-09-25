@@ -19,11 +19,12 @@
 - 完善的全平台支持
 - 全面兼容 `webview_flutter` 接口
 - 更多特性支持！
-  - 支持 Promise 的 JavaScript 调用
-  - 支持 document-start 用户脚本
-  - 无需依赖 controller 的网站数据清理
-  - 可确定关闭的离屏会话
-  - ......
+  - Promise 异步 JavaScript 调用
+  - 页面脚本执行前的自定义 JavaScript 注入
+  - 桌面端下载控制及 Windows 调试与快捷键设置
+  - 更丰富的 Web 端交互与 iframe 配置
+  - 无需 controller 的网站数据清理
+  - 可主动关闭的离屏 WebView 会话
 
 ## 快速入门
 
