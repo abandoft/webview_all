@@ -1350,6 +1350,7 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
     _subscribeToCursor();
     _controller._renderingError.addListener(_handleRenderingErrorChanged);
     _scheduleSurfaceSizeReport();
+    _scheduleVisibilityCheck();
   }
 
   void _handleRenderingErrorChanged() {
@@ -1418,6 +1419,7 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
       _surfacePainted = false;
       context.findRenderObject()?.markNeedsPaint();
       WidgetsBinding.instance.ensureVisualUpdate();
+      _scheduleVisibilityCheck();
     }
     _syncSurfaceAttachment();
   }
@@ -1444,28 +1446,28 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
     _surfaceAttached = shouldAttach;
     if (shouldAttach) {
       _controller._attachSurface();
-      _scheduleVisibilityCheck();
     } else {
       _controller._detachSurface();
     }
   }
 
   void _scheduleVisibilityCheck() {
-    if (_visibilityCheckScheduled || !_surfaceAttached) {
+    if (_visibilityCheckScheduled || !mounted || !_applicationVisible) {
       return;
     }
     _visibilityCheckScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((Duration _) {
       _visibilityCheckScheduled = false;
-      if (!mounted || !_surfaceAttached) {
+      if (!mounted || !_applicationVisible) {
         return;
       }
       final RenderObject? renderObject = context.findRenderObject();
-      if (renderObject is _WindowsSurfaceRenderBox &&
-          !renderObject.isEffectivelyPainted) {
-        _handleSurfacePainted(false);
-        return;
+      if (renderObject is _WindowsSurfaceRenderBox) {
+        _handleSurfacePainted(
+          renderObject.attached && renderObject.isEffectivelyPainted,
+        );
       }
+      // Retained layers can become visible again without repainting the child.
       _scheduleVisibilityCheck();
     });
   }
