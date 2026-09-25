@@ -6,6 +6,7 @@ class LinuxWebViewControllerCreationParams
     extends PlatformWebViewControllerCreationParams {
   const LinuxWebViewControllerCreationParams({
     this.developerExtrasEnabled,
+    this.downloadsEnabled,
     this.javascriptCanOpenWindowsAutomatically,
     this.mediaPlaybackRequiresUserGesture,
     this.mediaPlaybackAllowsInline,
@@ -22,6 +23,7 @@ class LinuxWebViewControllerCreationParams
   const LinuxWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
     PlatformWebViewControllerCreationParams params, {
     this.developerExtrasEnabled,
+    this.downloadsEnabled,
     this.javascriptCanOpenWindowsAutomatically,
     this.mediaPlaybackRequiresUserGesture,
     this.mediaPlaybackAllowsInline,
@@ -37,6 +39,10 @@ class LinuxWebViewControllerCreationParams
 
   /// Whether WebKitGTK developer extras are enabled for this WebView.
   final bool? developerExtrasEnabled;
+
+  /// Whether this WebView can start downloads. Null preserves the WebKitGTK
+  /// default (enabled). Disabled downloads are cancelled before saving a file.
+  final bool? downloadsEnabled;
 
   /// Whether JavaScript is allowed to open windows automatically.
   final bool? javascriptCanOpenWindowsAutomatically;

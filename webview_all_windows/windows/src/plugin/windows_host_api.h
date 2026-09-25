@@ -159,6 +159,12 @@ private:
                                                  int64_t color) override;
   std::optional<FlutterError> SetZoomControlEnabled(int64_t texture_id,
                                                     bool enabled) override;
+  std::optional<FlutterError> SetDevToolsEnabled(int64_t texture_id,
+                                                 bool enabled) override;
+  std::optional<FlutterError>
+  SetBrowserAcceleratorKeysEnabled(int64_t texture_id, bool enabled) override;
+  std::optional<FlutterError> SetDownloadsEnabled(int64_t texture_id,
+                                                  bool enabled) override;
   std::optional<FlutterError> SetZoomFactor(int64_t texture_id,
                                             double zoom_factor) override;
   std::optional<FlutterError> SetPopupWindowPolicy(int64_t texture_id,

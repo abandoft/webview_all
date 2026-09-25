@@ -71,6 +71,9 @@ public:
   std::optional<std::string> GetUserAgent();
   bool SetJavaScriptEnabled(bool enabled);
   bool SetZoomControlEnabled(bool enabled);
+  HRESULT SetDevToolsEnabled(bool enabled);
+  HRESULT SetBrowserAcceleratorKeysEnabled(bool enabled);
+  HRESULT SetDownloadsEnabled(bool enabled);
   bool SetBackgroundColor(int64_t color);
   bool SetZoomFactor(double zoom_factor);
   bool OpenDevTools();

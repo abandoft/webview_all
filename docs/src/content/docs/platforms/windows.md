@@ -82,10 +82,25 @@ renderer if hardware device creation fails.
 ```dart
 final params = const WindowsWebViewControllerCreationParams(
   popupWindowPolicy: WindowsPopupWindowPolicy.sameWindow,
+  devToolsEnabled: false,
+  browserAcceleratorKeysEnabled: false,
+  downloadsEnabled: false,
 );
 
 final controller = WebViewController.fromPlatformCreationParams(params);
 ```
+
+DevTools user access is disabled by default in all build modes. Set
+`devToolsEnabled: true` to enable it, or use `kDebugMode` from
+`package:flutter/foundation.dart` to enable it only in debug builds.
+Browser shortcuts and downloads keep their native defaults (enabled) when
+omitted. The DevTools default and explicit settings are applied before the first navigation and retained
+when initialization is retried. A failed setting is reported to the caller;
+navigation remains blocked until the setting is successfully applied or changed.
+Disabling browser shortcuts requires `ICoreWebView2Settings3`; disabling downloads
+requires a successfully registered `ICoreWebView2_4` download handler. Unsupported
+restrictions report `not_supported`; native failures report `method_failed` with
+the setting name and HRESULT.
 
 `WindowsPopupWindowPolicy`:
 
@@ -119,9 +134,17 @@ final widget = WebViewWidget.fromPlatformCreationParams(
 | `setPopupWindowPolicy(policy)` | Changes popup handling after creation. |
 | `setZoomFactor(double zoomFactor)` | Sets WebView2 zoom factor. |
 | `setCacheDisabled(bool disabled)` | Toggles cache bypass behavior. |
+| `setDevToolsEnabled(bool enabled)` | Controls the menu and keyboard shortcuts for opening DevTools. Disabled by default; does not block `openDevTools()`. |
+| `setBrowserAcceleratorKeysEnabled(bool enabled)` | Enables or disables browser accelerator keys such as F5, Ctrl+P, and Ctrl+F. Enabled by default. |
+| `setDownloadsEnabled(bool enabled)` | Allows new downloads or cancels them without saving the downloaded file. Enabled by default; ongoing downloads are unchanged. |
 | `dispose()` | Permanently releases this controller and its WebView2 resources. |
 
 Common APIs implemented on Windows include request loading with method, headers, and body; JavaScript execution; JavaScript channels; console messages; JavaScript dialogs; permission requests; HTTP errors; HTTP auth; SSL auth; scroll position; scrollbars; background color; user agent override; and overscroll styling.
+
+DevTools and browser-shortcut changes take effect on the next top-level
+navigation. Editing shortcuts such as copy and paste remain available; disabling
+browser shortcuts does not forward them to Flutter. These switches control
+WebView behavior and do not constitute a sandbox for untrusted content.
 
 `onNavigationRequest` covers controller loads and WebView2 main-frame navigations initiated by page content, including redirects and popups opened with `sameWindow`. Controller loads are approved before native dispatch so custom methods, headers, and bodies are preserved. Page-initiated navigations wait for the asynchronous Dart policy through cancel-and-replay, and the intentional cancellation is suppressed from `onWebResourceError`.
 

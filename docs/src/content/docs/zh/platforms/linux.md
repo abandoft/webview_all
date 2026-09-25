@@ -24,6 +24,7 @@ Linux WebView 是 native GTK widget。插件会在标准 Flutter runner realize
 ```dart
 final params = const LinuxWebViewControllerCreationParams(
   developerExtrasEnabled: true,
+  downloadsEnabled: false,
   mediaPlaybackRequiresUserGesture: false,
   pageCacheEnabled: true,
   allowFileAccessFromFileUrls: false,
@@ -34,12 +35,17 @@ final params = const LinuxWebViewControllerCreationParams(
 
 所有字段都可为 `null`，表示保留 WebKitGTK 默认值。
 
+下载默认允许。可在创建时设置 `downloadsEnabled: false`，或在加载内容前等待
+`setDownloadsEnabled(false)` 完成，取消新下载并阻止保存文件。已开始的下载和
+其他 WebView 不受影响。允许下载时沿用 WebKitGTK 的默认保存位置。
+
 ## 主要 API
 
 | API | 作用 |
 | --- | --- |
 | `setDeveloperExtrasEnabled` | 启用开发者功能。 |
 | `openDevTools` | 打开 Web Inspector。 |
+| `setDownloadsEnabled` | 控制此 WebView 是否允许新下载，默认允许。 |
 | `setJavaScriptCanOpenWindowsAutomatically` | 控制 JS popup。 |
 | `setMediaPlaybackRequiresUserGesture` | 控制媒体自动播放。 |
 | `setMediaPlaybackAllowsInline` | 控制内联媒体播放。 |

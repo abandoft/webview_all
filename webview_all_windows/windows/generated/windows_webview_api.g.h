@@ -524,6 +524,12 @@ public:
                                                          int64_t color) = 0;
   virtual std::optional<FlutterError> SetZoomControlEnabled(int64_t texture_id,
                                                             bool enabled) = 0;
+  virtual std::optional<FlutterError> SetDevToolsEnabled(int64_t texture_id,
+                                                         bool enabled) = 0;
+  virtual std::optional<FlutterError>
+  SetBrowserAcceleratorKeysEnabled(int64_t texture_id, bool enabled) = 0;
+  virtual std::optional<FlutterError> SetDownloadsEnabled(int64_t texture_id,
+                                                          bool enabled) = 0;
   virtual std::optional<FlutterError> SetZoomFactor(int64_t texture_id,
                                                     double zoom_factor) = 0;
   virtual std::optional<FlutterError> SetPopupWindowPolicy(int64_t texture_id,

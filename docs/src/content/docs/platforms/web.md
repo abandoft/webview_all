@@ -35,7 +35,7 @@ final controller = WebViewController.fromPlatformCreationParams(params);
 | Param | Meaning |
 | --- | --- |
 | `iFrameAllow` | Sets iframe `allow`. |
-| `iFrameSandbox` | Sets iframe `sandbox` when JavaScript is unrestricted. |
+| `iFrameSandbox` | Sets iframe sandbox permissions. Disabling JavaScript removes `allow-scripts` without adding permissions. |
 | `iFrameReferrerPolicy` | Sets iframe `referrerpolicy`. |
 | `iFrameAttributes` | Additional iframe attributes. `null` removes an attribute. |
 | `httpRequestFactory` | Test hook for fetch-backed loads. |
@@ -43,6 +43,11 @@ final controller = WebViewController.fromPlatformCreationParams(params);
 Attribute names are validated before they reach the DOM. Empty or malformed
 names are rejected, and `id`, `src`, and `srcdoc` are reserved because the
 controller owns iframe identity and document loading.
+
+An explicit sandbox is preserved when JavaScript is disabled, including an empty
+sandbox (all restrictions). Only `allow-scripts` is removed; switching back to
+unrestricted mode restores the configured value. Sandbox changes apply to the
+next document load, not to a document already loaded in the iframe.
 
 ## Controller API
 

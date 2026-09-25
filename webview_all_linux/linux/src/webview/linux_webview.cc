@@ -1,5 +1,6 @@
 #include "common/method_channel_utils.h"
 #include "plugin/webview_all_linux_plugin_private.h"
+#include "webview/download_policy.h"
 #include "webview/webview_internal.h"
 
 #include <libsoup/soup.h>
@@ -726,6 +727,8 @@ void destroy_linux_webview(gpointer data) {
   }
 
   if (webview->web_view != nullptr) {
+    delete webview->download_policy;
+    webview->download_policy = nullptr;
     webview->visible = FALSE;
     release_linux_webview_focus(webview);
     if (webview->plugin != nullptr && !webview->plugin->disposing) {
@@ -804,6 +807,7 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
   webview->vertical_scrollbar_enabled = TRUE;
   webview->horizontal_scrollbar_enabled = TRUE;
   webview->zoom_enabled = TRUE;
+  webview->download_policy = new DownloadPolicy(webview->web_view);
   webview->media_playback_requires_user_gesture = -1;
   webview->frame_sequence = 0;
   webview->over_scroll_behavior = "";

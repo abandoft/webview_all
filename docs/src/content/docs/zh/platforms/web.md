@@ -29,6 +29,10 @@ final params = WebWebViewControllerCreationParams(
 iframe 属性名会在写入 DOM 前校验。空名称、非法名称以及由控制器管理的
 `id`、`src`、`srcdoc` 都会被拒绝，避免破坏实例标识和加载状态。
 
+关闭 JavaScript 时会保留自定义 sandbox 的其他限制，仅移除 `allow-scripts`；
+空字符串仍表示启用全部 sandbox 限制。恢复 JavaScript 后会还原用户配置。
+sandbox 的修改在下次文档加载时生效，不会改变已经加载的文档。
+
 ## 主要 API
 
 | API | 作用 |

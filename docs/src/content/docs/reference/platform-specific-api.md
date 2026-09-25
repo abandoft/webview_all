@@ -35,7 +35,7 @@ Package: `webview_all_windows`.
 
 Main types: `WindowsWebViewController`, `WindowsWebViewWidget`, `WindowsNavigationDelegate`, `WindowsWebViewCookieManager`, `WindowsWebViewDataManager`, `WindowsWebViewCookie`, `WindowsPlatformSslAuthError`, `WindowsWebResourceRequest`, `WindowsWebResourceResponse`, `WindowsWebResourceError`.
 
-Important APIs: idempotent `ensureEnvironment`, strict `initializeEnvironment`, `getWebViewVersion`, `openDevTools`, `suspend`, `resume`, `setPopupWindowPolicy`, `setZoomFactor`, `setCacheDisabled`, Windows-specific deterministic `dispose`, full cookie set/query/delete. `WindowsWebViewDataManagerCreationParams` carries the same environment options into controller-independent data cleanup. Removing the widget does not dispose a reusable controller; call `dispose` only when its owner will never use it again.
+Important APIs: idempotent `ensureEnvironment`, strict `initializeEnvironment`, `getWebViewVersion`, `openDevTools`, `setDevToolsEnabled`, `setBrowserAcceleratorKeysEnabled`, `setDownloadsEnabled`, `suspend`, `resume`, `setPopupWindowPolicy`, `setZoomFactor`, `setCacheDisabled`, Windows-specific deterministic `dispose`, full cookie set/query/delete. `WindowsWebViewDataManagerCreationParams` carries the same environment options into controller-independent data cleanup. Removing the widget does not dispose a reusable controller; call `dispose` only when its owner will never use it again.
 
 ## Linux
 
@@ -43,7 +43,7 @@ Package: `webview_all_linux`.
 
 Main types: `LinuxWebViewController`, `LinuxWebViewWidget`, `LinuxNavigationDelegate`, `LinuxWebViewCookieManager`, `LinuxWebViewDataManager`, `LinuxWebResourceRequest`, `LinuxWebResourceResponse`, `LinuxWebResourceError`, `LinuxPlatformWebViewPermissionRequest`, `LinuxPlatformSslAuthError`.
 
-Important APIs: WebKitGTK developer extras, Inspector, JS popup, media settings, page cache, file URL access, font size, zoom factor, and the pre-existing Linux-specific `dispose()` for optional early release. Normal cleanup is automatic through its finalizer; no common controller lifecycle API is added.
+Important APIs: WebKitGTK developer extras, Inspector, `setDownloadsEnabled`, JS popup, media settings, page cache, file URL access, font size, zoom factor, and the pre-existing Linux-specific `dispose()` for optional early release. Normal cleanup is automatic through its finalizer; no common controller lifecycle API is added.
 
 ## OHOS
 

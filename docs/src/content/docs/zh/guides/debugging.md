@@ -31,6 +31,20 @@ final version = await WindowsWebViewController.getWebViewVersion();
 
 `getWebViewVersion()` 可用于启动时确认 WebView2 Runtime 是否存在。
 
+插件在所有构建模式下默认关闭 DevTools 的用户入口，需要时可按 controller
+开启菜单和快捷键入口（包括 F12 和 Ctrl+Shift+I）：
+
+```dart
+await windows.setDevToolsEnabled(true);
+```
+
+建议在加载内容前设置；运行时修改会在下次顶层导航时生效。该开关不会关闭已经
+打开的 DevTools，也不影响应用主动调用 `openDevTools()`。
+
+如需仅在调试构建中开放用户入口，可在 `WindowsWebViewControllerCreationParams`
+中设置 `devToolsEnabled: kDebugMode`，并从 `package:flutter/foundation.dart`
+导入 `kDebugMode`。使用 DevTools 快捷键还需要保持浏览器快捷键启用。
+
 ## Linux
 
 ```dart

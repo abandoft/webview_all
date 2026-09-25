@@ -20,6 +20,10 @@ import 'package:webview_all_android/webview_all_android.dart';
 import 'package:webview_all_linux/webview_all_linux.dart';
 import 'package:webview_all_wkwebview/webview_all_wkwebview.dart';
 import 'package:webview_all_windows/webview_all_windows.dart';
+import 'package:webview_all_windows/src/windows_webview_native.dart'
+    as native_windows;
+import 'package:webview_all_windows/src/windows_webview_types.dart'
+    as windows_types;
 
 Future<void> main() async {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -38,6 +42,13 @@ Future<void> main() async {
         request.response.writeln('${request.headers}');
       } else if (request.uri.path == '/favicon.ico') {
         request.response.statusCode = HttpStatus.notFound;
+      } else if (request.uri.path.startsWith('/webview_all_download_')) {
+        request.response.headers.contentType = ContentType.text;
+        request.response.headers.set(
+          'Content-Disposition',
+          'attachment; filename="${request.uri.pathSegments.last}"',
+        );
+        request.response.write('webview_all');
       } else if (request.uri.path == '/http-basic-authentication') {
         final List<String>? authHeader =
             request.headers[HttpHeaders.authorizationHeader];
@@ -226,6 +237,125 @@ return {
             ),
       ),
     );
+  });
+
+  testWidgets('Windows controller can refuse downloads', (
+    WidgetTester tester,
+  ) async {
+    if (!Platform.isWindows) {
+      return;
+    }
+
+    final String stamp = DateTime.now().microsecondsSinceEpoch.toString();
+    final files = <String>{};
+    final controllers = List<WebViewController>.generate(
+      2,
+      (_) => WebViewController.fromPlatformCreationParams(
+        const WindowsWebViewControllerCreationParams(
+          devToolsEnabled: false,
+          browserAcceleratorKeysEnabled: false,
+        ),
+      ),
+    );
+    final windows = controllers
+        .map((controller) => controller.platform as WindowsWebViewController)
+        .toList();
+    final subscriptions =
+        <StreamSubscription<native_windows.WebviewDownloadEvent>>[];
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      for (final controller in windows) {
+        await controller.dispose();
+      }
+      for (final subscription in subscriptions) {
+        await subscription.cancel();
+      }
+      for (final String path in files) {
+        final file = File(path);
+        if (file.existsSync()) {
+          file.deleteSync();
+        }
+      }
+    });
+
+    for (final controller in controllers) {
+      await controller.currentUrl();
+    }
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Column(
+          children: controllers
+              .map(
+                (controller) =>
+                    Expanded(child: WebViewWidget(controller: controller)),
+              )
+              .toList(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final native = tester
+        .widgetList<native_windows.Webview>(find.byType(native_windows.Webview))
+        .map((widget) => widget.controller)
+        .toList();
+    expect(native, hasLength(2));
+    for (final controller in native) {
+      subscriptions.add(
+        controller.onDownloadEvent.listen((event) {
+          if (event.resultFilePath.isNotEmpty &&
+              File(event.resultFilePath).uri.pathSegments.last.startsWith(
+                'webview_all_download_$stamp',
+              )) {
+            files.add(event.resultFilePath);
+          }
+        }),
+      );
+    }
+
+    Future<void> download({
+      required int index,
+      required bool enabled,
+      required String suffix,
+    }) async {
+      final name = 'webview_all_download_${stamp}_$suffix.txt';
+      final url = '$prefixUrl/$name';
+      final result = native[index].onDownloadEvent
+          .firstWhere(
+            (event) =>
+                event.url == url &&
+                (event.kind ==
+                        windows_types
+                            .WebviewDownloadEventKind
+                            .downloadCompleted ||
+                    event.kind ==
+                        windows_types
+                            .WebviewDownloadEventKind
+                            .downloadCancelled),
+          )
+          .timeout(const Duration(seconds: 20));
+      await controllers[index].loadRequest(Uri.parse(url));
+      final event = await result;
+      expect(
+        event.kind,
+        enabled
+            ? windows_types.WebviewDownloadEventKind.downloadCompleted
+            : windows_types.WebviewDownloadEventKind.downloadCancelled,
+      );
+      final file = File(event.resultFilePath);
+      expect(file.uri.pathSegments.last, name);
+      expect(file.existsSync(), enabled);
+      if (enabled) {
+        expect(file.readAsStringSync(), 'webview_all');
+      }
+    }
+
+    await download(index: 0, enabled: true, suffix: 'default');
+    await windows[0].setDownloadsEnabled(false);
+    await download(index: 0, enabled: false, suffix: 'disabled');
+    await download(index: 1, enabled: true, suffix: 'independent');
+    await windows[0].setDownloadsEnabled(true);
+    await download(index: 0, enabled: true, suffix: 'enabled');
   });
 
   testWidgets('Windows controller releases its renderer process', (

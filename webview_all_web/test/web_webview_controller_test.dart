@@ -1299,18 +1299,11 @@ void main() {
 
           await controller.setJavaScriptMode(JavaScriptMode.disabled);
 
-          expect(params.iFrame.getAttribute('sandbox'), isNotNull);
-          expect(
-            params.iFrame.getAttribute('sandbox'),
-            isNot(contains('allow-scripts')),
-          );
+          expect(params.iFrame.getAttribute('sandbox'), 'allow-forms');
 
           await controller.setIFrameSandbox('allow-popups');
 
-          expect(
-            params.iFrame.getAttribute('sandbox'),
-            isNot(contains('allow-scripts')),
-          );
+          expect(params.iFrame.getAttribute('sandbox'), 'allow-popups');
 
           await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
 
@@ -1319,6 +1312,38 @@ void main() {
           await controller.setIFrameSandbox(null);
 
           expect(params.iFrame.getAttribute('sandbox'), isNull);
+        },
+      );
+
+      test(
+        'keeps explicit sandbox permissions when scripts are disabled',
+        () async {
+          final params = WebWebViewControllerCreationParams(iFrameSandbox: '');
+          final controller = WebWebViewController(params);
+          await controller.setJavaScriptMode(JavaScriptMode.disabled);
+          expect(params.iFrame.getAttribute('sandbox'), '');
+
+          await controller.setIFrameSandbox(
+            'ALLOW-SCRIPTS\tallow-downloads\nallow-forms',
+          );
+          expect(
+            params.iFrame.getAttribute('sandbox'),
+            'allow-downloads allow-forms',
+          );
+          await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+          expect(
+            params.iFrame.getAttribute('sandbox'),
+            'ALLOW-SCRIPTS\tallow-downloads\nallow-forms',
+          );
+
+          await controller.setJavaScriptMode(JavaScriptMode.disabled);
+          await controller.setIFrameSandbox(null);
+          expect(
+            params.iFrame.getAttribute('sandbox'),
+            isNot(contains('allow-scripts')),
+          );
+          await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+          expect(params.iFrame.hasAttribute('sandbox'), isFalse);
         },
       );
 

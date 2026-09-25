@@ -1,3 +1,10 @@
+## 1.4.2
+
+* Add Windows controls for DevTools, browser shortcuts, and downloads, configurable at creation and at runtime.
+* Disable Windows DevTools menu and keyboard entry points by default; enable them explicitly when needed.
+* Add per-WebView download controls on Linux.
+* Preserve custom iframe sandbox restrictions when disabling JavaScript on Web.
+
 ## 1.4.1
 
 * Fix a crash when exiting Windows applications.

@@ -269,6 +269,12 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Test native download policies
+        run: |
+          cmake -S webview_all_linux/linux/test -B build/linux-native-tests
+          cmake --build build/linux-native-tests
+          xvfb-run -a ctest --test-dir build/linux-native-tests --output-on-failure
+
       - name: Build Linux example
         working-directory: examples/platform
         run: |

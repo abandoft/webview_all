@@ -1,4 +1,5 @@
 #include "common/method_channel_utils.h"
+#include "webview/download_policy.h"
 #include "webview/webview_internal.h"
 
 #include <libsoup/soup.h>
@@ -134,6 +135,11 @@ guint map_lookup_guint(FlValue *map, const gchar *key, guint fallback) {
 void apply_webkit_settings(LinuxWebView *webview, FlValue *args) {
   WebKitSettings *settings = webkit_web_view_get_settings(webview->web_view);
   FlValue *value = nullptr;
+
+  value = map_lookup(args, "downloadsEnabled");
+  if (value != nullptr && fl_value_get_type(value) == FL_VALUE_TYPE_BOOL) {
+    webview->download_policy->SetEnabled(fl_value_get_bool(value));
+  }
 
   value = map_lookup(args, "developerExtrasEnabled");
   if (value != nullptr && fl_value_get_type(value) == FL_VALUE_TYPE_BOOL) {
@@ -764,6 +770,18 @@ void instance_method_call_cb(FlMethodChannel *channel,
     WebKitSettings *settings = webkit_web_view_get_settings(webview->web_view);
     webkit_settings_set_enable_developer_extras(
         settings, map_lookup_bool(args, "enabled", FALSE));
+    respond(method_call, success_response());
+    return;
+  }
+
+  if (strcmp(method, "setDownloadsEnabled") == 0) {
+    FlValue *enabled = map_lookup(args, "enabled");
+    if (enabled == nullptr || fl_value_get_type(enabled) != FL_VALUE_TYPE_BOOL) {
+      respond(method_call, error_response("invalid_arguments",
+                                         "enabled must be a boolean"));
+      return;
+    }
+    webview->download_policy->SetEnabled(fl_value_get_bool(enabled));
     respond(method_call, success_response());
     return;
   }

@@ -136,7 +136,8 @@ class WebWebViewControllerCreationParams
   /// Value for the iframe `allow` attribute.
   final String? iFrameAllow;
 
-  /// Value for the iframe `sandbox` attribute while JavaScript is unrestricted.
+  /// Permissions for the iframe `sandbox` attribute. Disabling JavaScript
+  /// removes `allow-scripts` without adding permissions to an explicit sandbox.
   final String? iFrameSandbox;
 
   /// Value for the iframe `referrerpolicy` attribute.
@@ -865,7 +866,14 @@ class WebWebViewController extends PlatformWebViewController {
     if (_javaScriptMode == JavaScriptMode.disabled) {
       _webWebViewParams.iFrame.setAttribute(
         'sandbox',
-        _javaScriptDisabledSandbox,
+        _customSandbox == null
+            ? _javaScriptDisabledSandbox
+            : _customSandbox!
+                  .split(RegExp(r'[\t\n\f\r ]+'))
+                  .where(
+                    (String token) => token.toLowerCase() != 'allow-scripts',
+                  )
+                  .join(' '),
       );
     } else {
       _setIFrameAttribute(_webWebViewParams.iFrame, 'sandbox', _customSandbox);

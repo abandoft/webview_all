@@ -35,7 +35,7 @@ if (controller.platform is WindowsWebViewController) {
 
 主要类型：`WindowsWebViewController`、`WindowsWebViewWidget`、`WindowsNavigationDelegate`、`WindowsWebViewCookieManager`、`WindowsWebViewDataManager`、`WindowsWebViewCookie`、`WindowsPlatformSslAuthError`、`WindowsWebResourceRequest`、`WindowsWebResourceResponse`、`WindowsWebResourceError`。
 
-重要 API：幂等的 `ensureEnvironment`、严格的 `initializeEnvironment`、`getWebViewVersion`、`openDevTools`、`suspend`、`resume`、`setPopupWindowPolicy`、`setZoomFactor`、`setCacheDisabled`、Windows 专属的确定性 `dispose`、完整 cookie 设置/查询/删除。`WindowsWebViewDataManagerCreationParams` 可把同一套环境参数传给无需 controller 的数据清理。移除组件不会销毁仍可复用的 controller；仅在其所有者确认不再使用时调用 `dispose`。
+重要 API：幂等的 `ensureEnvironment`、严格的 `initializeEnvironment`、`getWebViewVersion`、`openDevTools`、`setDevToolsEnabled`、`setBrowserAcceleratorKeysEnabled`、`setDownloadsEnabled`、`suspend`、`resume`、`setPopupWindowPolicy`、`setZoomFactor`、`setCacheDisabled`、Windows 专属的确定性 `dispose`、完整 cookie 设置/查询/删除。`WindowsWebViewDataManagerCreationParams` 可把同一套环境参数传给无需 controller 的数据清理。移除组件不会销毁仍可复用的 controller；仅在其所有者确认不再使用时调用 `dispose`。
 
 ## Linux
 
@@ -43,7 +43,7 @@ if (controller.platform is WindowsWebViewController) {
 
 主要类型：`LinuxWebViewController`、`LinuxWebViewWidget`、`LinuxNavigationDelegate`、`LinuxWebViewCookieManager`、`LinuxWebViewDataManager`、`LinuxWebResourceRequest`、`LinuxWebResourceResponse`、`LinuxWebResourceError`、`LinuxPlatformWebViewPermissionRequest`、`LinuxPlatformSslAuthError`。
 
-重要 API：WebKitGTK developer extras、Inspector、JS popup、media settings、page cache、file URL access、font size、zoom factor，以及可选提前释放资源的既有 Linux 专属 `dispose()`。正常生命周期由 finalizer 自动清理，没有给公共 controller 增加生命周期 API。
+重要 API：WebKitGTK developer extras、Inspector、`setDownloadsEnabled`、JS popup、media settings、page cache、file URL access、font size、zoom factor，以及可选提前释放资源的既有 Linux 专属 `dispose()`。正常生命周期由 finalizer 自动清理，没有给公共 controller 增加生命周期 API。
 
 ## OHOS
 

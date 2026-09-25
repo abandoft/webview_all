@@ -29,6 +29,7 @@ runner realizes `FlView`; applications do not need to modify their runner.
 ```dart
 final params = const LinuxWebViewControllerCreationParams(
   developerExtrasEnabled: true,
+  downloadsEnabled: false,
   javascriptCanOpenWindowsAutomatically: true,
   mediaPlaybackRequiresUserGesture: false,
   mediaPlaybackAllowsInline: true,
@@ -45,12 +46,18 @@ final params = const LinuxWebViewControllerCreationParams(
 
 Each field is nullable. `null` leaves the WebKitGTK default unchanged.
 
+Downloads are allowed by default. Set `downloadsEnabled: false` at creation, or
+await `setDownloadsEnabled(false)` before loading content, to cancel new
+downloads before a file is saved. Ongoing downloads and other WebViews are not
+affected. Allowed downloads use WebKitGTK's default download destination.
+
 ## Controller API
 
 | API | Purpose |
 | --- | --- |
 | `setDeveloperExtrasEnabled(bool enabled)` | Enables WebKitGTK developer extras. |
 | `openDevTools()` | Opens the Web Inspector. |
+| `setDownloadsEnabled(bool enabled)` | Allows or cancels new downloads for this WebView. Enabled by default. |
 | `setJavaScriptCanOpenWindowsAutomatically(bool enabled)` | Controls JavaScript popups. |
 | `setMediaPlaybackRequiresUserGesture(bool require)` | Controls media autoplay policy. |
 | `setMediaPlaybackAllowsInline(bool allow)` | Controls inline media playback. |

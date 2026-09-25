@@ -1396,6 +1396,69 @@ class WindowsWebViewHostApi {
     );
   }
 
+  Future<void> setDevToolsEnabled(int textureId, bool enabled) async {
+    final pigeonVar_channelName =
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setDevToolsEnabled$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[textureId, enabled],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  Future<void> setBrowserAcceleratorKeysEnabled(
+    int textureId,
+    bool enabled,
+  ) async {
+    final pigeonVar_channelName =
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setBrowserAcceleratorKeysEnabled$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[textureId, enabled],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  Future<void> setDownloadsEnabled(int textureId, bool enabled) async {
+    final pigeonVar_channelName =
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setDownloadsEnabled$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[textureId, enabled],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
   Future<void> setZoomFactor(int textureId, double zoomFactor) async {
     final pigeonVar_channelName =
         'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setZoomFactor$pigeonVar_messageChannelSuffix';

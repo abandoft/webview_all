@@ -35,6 +35,23 @@ final windows = controller.platform as WindowsWebViewController;
 await windows.openDevTools();
 ```
 
+The plugin disables user access to DevTools by default in all build modes.
+Enable the menu and keyboard entry points (including F12 and Ctrl+Shift+I)
+per controller when needed:
+
+```dart
+await windows.setDevToolsEnabled(true);
+```
+
+Apply this setting before loading content; runtime changes take effect on the
+next top-level navigation. It does not close existing DevTools or prevent the
+app from calling `openDevTools()` explicitly.
+
+To allow user access only in debug builds, pass `devToolsEnabled: kDebugMode`
+to `WindowsWebViewControllerCreationParams`. Import `kDebugMode` from
+`package:flutter/foundation.dart`. Browser shortcuts must also be enabled for
+the DevTools shortcuts to work.
+
 Check runtime availability:
 
 ```dart

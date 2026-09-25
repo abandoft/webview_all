@@ -151,6 +151,8 @@ class LinuxWebViewController extends PlatformWebViewController {
     final Map<String, Object?> settings = <String, Object?>{
       if (_linuxParams.developerExtrasEnabled case final bool value)
         'developerExtrasEnabled': value,
+      if (_linuxParams.downloadsEnabled case final bool value)
+        'downloadsEnabled': value,
       if (_linuxParams.javascriptCanOpenWindowsAutomatically
           case final bool value)
         'javascriptCanOpenWindowsAutomatically': value,
@@ -669,6 +671,16 @@ class LinuxWebViewController extends PlatformWebViewController {
 
   /// Opens the WebKitGTK web inspector for this WebView.
   Future<void> openDevTools() => _invoke<void>('openDevTools');
+
+  /// Sets whether this WebView can start downloads. Enabled by default.
+  ///
+  /// When disabled, new downloads are cancelled before saving a file. Downloads
+  /// already in progress are not cancelled. Other WebViews are not affected.
+  Future<void> setDownloadsEnabled(bool enabled) {
+    return _invoke<void>('setDownloadsEnabled', <String, Object?>{
+      'enabled': enabled,
+    });
+  }
 
   /// Sets whether JavaScript may open windows automatically.
   Future<void> setJavaScriptCanOpenWindowsAutomatically(bool enabled) {

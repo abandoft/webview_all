@@ -231,6 +231,7 @@ Webview::Webview(
   if (SUCCEEDED(webview_->get_Settings(settings.put()))) {
     settings_ = settings;
     settings2_ = settings.try_query<ICoreWebView2Settings2>();
+    settings3_ = settings.try_query<ICoreWebView2Settings3>();
     if (settings2_) {
       wil::unique_cotaskmem_string default_user_agent;
       if (SUCCEEDED(settings2_->get_UserAgent(&default_user_agent)) &&
@@ -901,10 +902,29 @@ void Webview::RegisterEventHandlers() {
 
   auto webview24 = webview_.try_query<ICoreWebView2_4>();
   if (webview24) {
-    webview24->add_DownloadStarting(
+    download_handler_result_ = webview24->add_DownloadStarting(
         Callback<ICoreWebView2DownloadStartingEventHandler>(
             [this](ICoreWebView2 *sender,
                    ICoreWebView2DownloadStartingEventArgs *args) -> HRESULT {
+              if (!downloads_enabled_) {
+                const HRESULT result = args->put_Cancel(TRUE);
+                if (FAILED(result)) {
+                  util::LogWarning("Cancelling a WebView2 download failed.");
+                } else if (download_event_callback_) {
+                  wil::com_ptr<ICoreWebView2DownloadOperation> download;
+                  wil::unique_cotaskmem_string uri;
+                  wil::unique_cotaskmem_string path;
+                  if (SUCCEEDED(args->get_DownloadOperation(download.put())) &&
+                      download && SUCCEEDED(download->get_Uri(&uri)) &&
+                      SUCCEEDED(args->get_ResultFilePath(&path))) {
+                    download_event_callback_(
+                        {WebviewDownloadEventKind::DownloadCancelled,
+                         util::Utf8FromUtf16(uri.get()),
+                         util::Utf8FromUtf16(path.get()), 0, 0});
+                  }
+                }
+                return result;
+              }
               args->put_Handled(TRUE);
 
               wil::com_ptr<ICoreWebView2DownloadOperation> download;
@@ -1416,6 +1436,30 @@ bool Webview::SetZoomControlEnabled(bool enabled) {
     return settings_->put_IsZoomControlEnabled(enabled ? TRUE : FALSE) == S_OK;
   }
   return false;
+}
+
+HRESULT Webview::SetDevToolsEnabled(bool enabled) {
+  if (settings_) {
+    return settings_->put_AreDevToolsEnabled(enabled ? TRUE : FALSE);
+  }
+  return E_NOINTERFACE;
+}
+
+HRESULT Webview::SetBrowserAcceleratorKeysEnabled(bool enabled) {
+  if (settings3_) {
+    return settings3_->put_AreBrowserAcceleratorKeysEnabled(
+        enabled ? TRUE : FALSE);
+  }
+  // Older runtimes always allow browser accelerators.
+  return enabled ? S_OK : E_NOINTERFACE;
+}
+
+HRESULT Webview::SetDownloadsEnabled(bool enabled) {
+  if (!enabled && FAILED(download_handler_result_)) {
+    return download_handler_result_;
+  }
+  downloads_enabled_ = enabled;
+  return S_OK;
 }
 
 bool Webview::SetBackgroundColor(int32_t color) {

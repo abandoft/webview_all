@@ -58,13 +58,25 @@ controller 初始化失败时，组件中心会显示错误和恢复操作：
 帧捕获及其回调统一使用该 UI 线程队列，Direct3D 硬件设备创建失败时会回退到
 WARP 软件渲染器。
 
-## Popup 策略
+## 创建参数
 
 ```dart
 final params = const WindowsWebViewControllerCreationParams(
   popupWindowPolicy: WindowsPopupWindowPolicy.sameWindow,
+  devToolsEnabled: false,
+  browserAcceleratorKeysEnabled: false,
+  downloadsEnabled: false,
 );
 ```
+
+DevTools 用户入口在所有构建模式下默认关闭，可设置 `devToolsEnabled: true`
+开启；如需仅在调试构建中开启，可使用 `package:flutter/foundation.dart` 的
+`kDebugMode`。浏览器快捷键和下载省略配置时保持原生默认值（启用）。
+DevTools 默认配置及显式配置均会在首次导航前应用，初始化
+重试时也会保留。设置失败会返回错误，后续导航需等待该配置成功应用或被修改。
+禁用浏览器快捷键需要 `ICoreWebView2Settings3`，禁用下载需要成功注册
+`ICoreWebView2_4` 下载监听。不支持的限制返回 `not_supported`；原生调用失败
+返回 `method_failed`，错误详情包含设置名称和 HRESULT。
 
 | 值 | 行为 |
 | --- | --- |
@@ -82,7 +94,14 @@ final params = const WindowsWebViewControllerCreationParams(
 | `setPopupWindowPolicy` | 运行时修改 popup 策略。 |
 | `setZoomFactor` | 设置 WebView2 缩放因子。 |
 | `setCacheDisabled` | 控制请求是否绕过 cache。 |
+| `setDevToolsEnabled` | 控制通过菜单和快捷键打开 DevTools。默认关闭，不影响 `openDevTools()`。 |
+| `setBrowserAcceleratorKeysEnabled` | 启用或禁用浏览器快捷键，例如 F5、Ctrl+P 和 Ctrl+F。默认启用。 |
+| `setDownloadsEnabled` | 允许新下载，或在开始时取消并阻止保存下载文件。默认允许，不影响已开始的下载。 |
 | `dispose` | 永久释放此 controller 及其 WebView2 资源。 |
+
+开发者工具和浏览器快捷键设置会在下次顶层导航时生效。复制、粘贴等编辑快捷键
+不受影响；禁用浏览器快捷键也不会自动将按键交给 Flutter。这些开关用于控制
+WebView 行为，不是隔离不可信内容的完整安全沙箱。
 
 `onNavigationRequest` 会覆盖 controller 加载以及页面内容触发的 WebView2 主 frame 导航，包括 redirect 和 `sameWindow` popup。controller 请求在原生分发前完成判断，因此会保留自定义 method、headers 和 body；页面导航通过取消后等待异步 Dart 决策、放行后重放来实现，策略性取消不会触发 `onWebResourceError`。
 

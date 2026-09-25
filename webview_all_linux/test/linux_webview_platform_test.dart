@@ -861,6 +861,7 @@ void main() {
     final LinuxWebViewController controller = LinuxWebViewController(
       const LinuxWebViewControllerCreationParams(
         developerExtrasEnabled: true,
+        downloadsEnabled: false,
         javascriptCanOpenWindowsAutomatically: true,
         mediaPlaybackRequiresUserGesture: false,
         mediaPlaybackAllowsInline: true,
@@ -880,6 +881,7 @@ void main() {
     expect(calls.first.method, 'applySettings');
     expect(calls.first.arguments, <String, Object?>{
       'developerExtrasEnabled': true,
+      'downloadsEnabled': false,
       'javascriptCanOpenWindowsAutomatically': true,
       'mediaPlaybackRequiresUserGesture': false,
       'mediaPlaybackAllowsInline': true,
@@ -945,6 +947,35 @@ void main() {
     expect(calls[11].arguments, <String, Object?>{'fontSize': 9});
     expect(calls[12].arguments, <String, Object?>{'zoomFactor': 1.25});
   });
+
+  test(
+    'leaves downloads enabled by default and forwards runtime changes',
+    () async {
+      final calls = <MethodCall>[];
+      _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+      final controller = LinuxWebViewController(
+        const LinuxWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
+          PlatformWebViewControllerCreationParams(),
+        ),
+      );
+      addTearDown(controller.dispose);
+      await controller.setDownloadsEnabled(false);
+      await controller.setDownloadsEnabled(true);
+      expect(calls.map((call) => call.method), <String>[
+        'setDownloadsEnabled',
+        'setDownloadsEnabled',
+      ]);
+      expect(calls.map((call) => call.arguments), <Object?>[
+        <String, Object?>{'enabled': false},
+        <String, Object?>{'enabled': true},
+      ]);
+      await controller.dispose();
+      await expectLater(
+        controller.setDownloadsEnabled(false),
+        throwsStateError,
+      );
+    },
+  );
 
   test('loads requests with method headers and body', () async {
     final List<MethodCall> calls = <MethodCall>[];

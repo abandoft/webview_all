@@ -23,8 +23,12 @@ void main() {
     _mockWindowsWebViewCreation();
   });
 
-  tearDown(() {
-    _clearWindowsWebViewCreationMock();
+  tearDown(() async {
+    try {
+      await _disposeTestControllers();
+    } finally {
+      _clearWindowsWebViewCreationMock();
+    }
   });
 
   test('registerWith sets the Windows WebView platform implementation', () {
@@ -42,13 +46,11 @@ void main() {
 
   test('creates Windows platform implementation objects', () {
     final platform = WindowsWebViewPlatform();
-
-    expect(
-      platform.createPlatformWebViewController(
-        const PlatformWebViewControllerCreationParams(),
-      ),
-      isA<WindowsWebViewController>(),
+    final controller = platform.createPlatformWebViewController(
+      const PlatformWebViewControllerCreationParams(),
     );
+    expect(controller, isA<WindowsWebViewController>());
+    _controllerDisposals.add(controller.dispose);
     expect(
       platform.createPlatformNavigationDelegate(
         const PlatformNavigationDelegateCreationParams(),
@@ -58,7 +60,7 @@ void main() {
     expect(
       platform.createPlatformWebViewWidget(
         PlatformWebViewWidgetCreationParams(
-          controller: WindowsWebViewController(
+          controller: _createWindowsController(
             const PlatformWebViewControllerCreationParams(),
           ),
         ),
@@ -198,7 +200,7 @@ void main() {
         return 'null';
       },
     );
-    final WindowsWebViewController controller = WindowsWebViewController(
+    final WindowsWebViewController controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -245,7 +247,7 @@ void main() {
       },
       onRemoveScript: removedScripts.add,
     );
-    final WindowsWebViewController controller = WindowsWebViewController(
+    final WindowsWebViewController controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -277,7 +279,7 @@ void main() {
       },
     );
     final native_webview.WebviewController controller =
-        native_webview.WebviewController();
+        _createNativeController();
 
     await controller.initialize();
     await controller.dispose();
@@ -293,7 +295,7 @@ void main() {
         disposeCallCount++;
       },
     );
-    final WindowsWebViewController controller = WindowsWebViewController(
+    final WindowsWebViewController controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -314,7 +316,7 @@ void main() {
         disposeCallCount++;
       },
     );
-    final WindowsWebViewController controller = WindowsWebViewController(
+    final WindowsWebViewController controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -328,7 +330,7 @@ void main() {
 
   test('native controller unregisters callbacks and closes streams', () async {
     final native_webview.WebviewController controller =
-        native_webview.WebviewController();
+        _createNativeController();
     final List<Future<void>> streamDoneFutures = <Future<void>>[
       controller.url.drain<void>(),
       controller.loadingState.drain<void>(),
@@ -360,7 +362,7 @@ void main() {
   test('native controller can retry after an initialization failure', () async {
     _mockWindowsWebViewCreation(creationFailureCount: 1);
     final native_webview.WebviewController controller =
-        native_webview.WebviewController();
+        _createNativeController();
 
     await expectLater(
       controller.initialize(),
@@ -376,13 +378,13 @@ void main() {
     await controller.dispose();
   });
 
-  testWidgets('native surface attachment follows the widget lifecycle', (
+  _widgetTest('native surface attachment follows the widget lifecycle', (
     WidgetTester tester,
   ) async {
     final List<bool> attachmentStates = <bool>[];
     _mockWindowsWebViewCreation(onSetSurfaceAttached: attachmentStates.add);
     final native_webview.WebviewController controller =
-        native_webview.WebviewController();
+        _createNativeController();
     await controller.initialize();
 
     await tester.pumpWidget(
@@ -404,13 +406,13 @@ void main() {
     expect(attachmentStates, <bool>[true, false]);
   });
 
-  testWidgets('native surface detaches when an ancestor stops painting', (
+  _widgetTest('native surface detaches when an ancestor stops painting', (
     WidgetTester tester,
   ) async {
     final List<bool> attachmentStates = <bool>[];
     _mockWindowsWebViewCreation(onSetSurfaceAttached: attachmentStates.add);
     final native_webview.WebviewController controller =
-        native_webview.WebviewController();
+        _createNativeController();
     await controller.initialize();
     double opacity = 1;
 
@@ -443,13 +445,13 @@ void main() {
     expect(attachmentStates, <bool>[true, false, true]);
   });
 
-  testWidgets('native surface follows the application lifecycle', (
+  _widgetTest('native surface follows the application lifecycle', (
     WidgetTester tester,
   ) async {
     final List<bool> attachmentStates = <bool>[];
     _mockWindowsWebViewCreation(onSetSurfaceAttached: attachmentStates.add);
     final native_webview.WebviewController controller =
-        native_webview.WebviewController();
+        _createNativeController();
     await controller.initialize();
     addTearDown(() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -478,13 +480,13 @@ void main() {
     expect(attachmentStates, <bool>[true, false, true]);
   });
 
-  testWidgets('native surface updates an explicit scale factor', (
+  _widgetTest('native surface updates an explicit scale factor', (
     WidgetTester tester,
   ) async {
     final List<WindowsSizeData> sizes = <WindowsSizeData>[];
     _mockWindowsWebViewCreation(onSetSize: sizes.add);
     final native_webview.WebviewController controller =
-        native_webview.WebviewController();
+        _createNativeController();
     await controller.initialize();
 
     Widget buildWebView(double scaleFactor) {
@@ -511,16 +513,15 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
-    await tester.runAsync(controller.dispose);
   });
 
-  testWidgets('native surface follows device-pixel-ratio changes', (
+  _widgetTest('native surface follows device-pixel-ratio changes', (
     WidgetTester tester,
   ) async {
     final List<WindowsSizeData> sizes = <WindowsSizeData>[];
     _mockWindowsWebViewCreation(onSetSize: sizes.add);
     final native_webview.WebviewController controller =
-        native_webview.WebviewController();
+        _createNativeController();
     await controller.initialize();
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -548,10 +549,9 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
-    await tester.runAsync(controller.dispose);
   });
 
-  testWidgets('native rendering errors are latched and can be retried', (
+  _widgetTest('native rendering errors are latched and can be retried', (
     WidgetTester tester,
   ) async {
     var sizeCalls = 0;
@@ -560,7 +560,7 @@ void main() {
       onSetSize: (WindowsSizeData size) => sizeCalls += 1,
     );
     final native_webview.WebviewController controller =
-        native_webview.WebviewController();
+        _createNativeController();
     await controller.initialize();
 
     await tester.pumpWidget(
@@ -595,10 +595,9 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
-    await tester.runAsync(controller.dispose);
   });
 
-  testWidgets('initialization error offers install and refresh actions', (
+  _widgetTest('initialization error offers install and refresh actions', (
     WidgetTester tester,
   ) async {
     var openDownloadPageCount = 0;
@@ -609,7 +608,7 @@ void main() {
         openDownloadPageCount += 1;
       },
     );
-    final WindowsWebViewController controller = WindowsWebViewController(
+    final WindowsWebViewController controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
     final WindowsWebViewWidget platformWidget = WindowsWebViewWidget(
@@ -643,7 +642,7 @@ void main() {
     expect(find.byType(Texture), findsOneWidget);
   });
 
-  testWidgets(
+  _widgetTest(
     'rendering error offers refresh without a runtime install action',
     (WidgetTester tester) async {
       _mockWindowsWebViewCreation(
@@ -656,7 +655,7 @@ void main() {
           'webView2RuntimeVersion': '1.0.0.0',
         },
       );
-      final WindowsWebViewController controller = WindowsWebViewController(
+      final WindowsWebViewController controller = _createWindowsController(
         const PlatformWebViewControllerCreationParams(),
       );
       final WindowsWebViewWidget platformWidget = WindowsWebViewWidget(
@@ -766,7 +765,7 @@ void main() {
           },
     );
 
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
     final alertRequests = <JavaScriptAlertDialogRequest>[];
@@ -845,7 +844,7 @@ void main() {
   test(
     'dispatches HTTP auth requests through the navigation delegate',
     () async {
-      final controller = WindowsWebViewController(
+      final controller = _createWindowsController(
         const PlatformWebViewControllerCreationParams(),
       );
       final delegate = WindowsNavigationDelegate(
@@ -881,7 +880,7 @@ void main() {
   );
 
   test('cancels HTTP auth requests without a handler', () async {
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
     await controller.currentUrl();
@@ -898,7 +897,7 @@ void main() {
   });
 
   test('dispatches SSL auth errors through the navigation delegate', () async {
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
     final delegate = WindowsNavigationDelegate(
@@ -934,7 +933,7 @@ void main() {
   });
 
   test('cancels SSL auth errors without a handler', () async {
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
     await controller.currentUrl();
@@ -954,7 +953,7 @@ void main() {
     final loadRequests = <WindowsLoadRequestData>[];
     _mockWindowsWebViewCreation(onLoadRequest: loadRequests.add);
 
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
     final body = Uint8List.fromList(<int>[1, 2, 3]);
@@ -997,7 +996,7 @@ void main() {
     final File file = File('${tempDir.path}/index.html')
       ..writeAsStringSync('<html></html>');
 
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -1022,7 +1021,7 @@ void main() {
     final loadRequests = <WindowsLoadRequestData>[];
     _mockWindowsWebViewCreation(onLoadRequest: loadRequests.add);
 
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -1039,7 +1038,7 @@ void main() {
   });
 
   test('dispatches HTTP response errors from Windows events', () async {
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
     final delegate = WindowsNavigationDelegate(
@@ -1087,7 +1086,7 @@ void main() {
   });
 
   test('dispatches web resource errors from Windows events', () async {
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
     final delegate = WindowsNavigationDelegate(
@@ -1132,7 +1131,7 @@ void main() {
         },
       );
 
-      final controller = WindowsWebViewController(
+      final controller = _createWindowsController(
         const PlatformWebViewControllerCreationParams(),
       );
       final List<JavaScriptConsoleMessage> consoleMessages =
@@ -1205,7 +1204,7 @@ void main() {
       },
     );
 
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -1244,7 +1243,7 @@ void main() {
       onSetJavaScriptEnabled: javaScriptEnabledValues.add,
     );
 
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -1263,7 +1262,7 @@ void main() {
         onGetUserAgent: () => 'DefaultWebView2/1.0',
       );
 
-      final controller = WindowsWebViewController(
+      final controller = _createWindowsController(
         const PlatformWebViewControllerCreationParams(),
       );
 
@@ -1289,7 +1288,7 @@ void main() {
       },
     );
 
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -1305,7 +1304,7 @@ void main() {
       onSetZoomControlEnabled: zoomControlEnabledValues.add,
     );
 
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -1316,9 +1315,356 @@ void main() {
   });
 
   test(
+    'sets DevTools, accelerator keys and downloads through WebView2',
+    () async {
+      final devToolsValues = <bool>[];
+      final acceleratorKeysValues = <bool>[];
+      final downloadsValues = <bool>[];
+      _mockWindowsWebViewCreation(
+        onSetDevToolsEnabled: devToolsValues.add,
+        onSetBrowserAcceleratorKeysEnabled: acceleratorKeysValues.add,
+        onSetDownloadsEnabled: downloadsValues.add,
+      );
+
+      final controller = _createWindowsController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+
+      await controller.setDevToolsEnabled(false);
+      await controller.setDevToolsEnabled(true);
+      await controller.setDevToolsEnabled(false);
+      await controller.setBrowserAcceleratorKeysEnabled(false);
+      await controller.setDownloadsEnabled(false);
+      await controller.setDownloadsEnabled(true);
+
+      expect(devToolsValues, <bool>[false, true, false]);
+      expect(acceleratorKeysValues, <bool>[false]);
+      expect(downloadsValues, <bool>[false, true]);
+    },
+  );
+
+  _widgetTest(
+    'WebView2 settings are re-applied after a retried initialization',
+    (WidgetTester tester) async {
+      final devToolsValues = <bool>[];
+      final acceleratorKeysValues = <bool>[];
+      final downloadsValues = <bool>[];
+      _mockWindowsWebViewCreation(
+        creationFailureCount: 1,
+        onSetDevToolsEnabled: devToolsValues.add,
+        onSetBrowserAcceleratorKeysEnabled: acceleratorKeysValues.add,
+        onSetDownloadsEnabled: downloadsValues.add,
+      );
+      final WindowsWebViewController controller = _createWindowsController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+
+      // The first environment fails, so the settings cannot reach WebView2 yet;
+      // they must still hold once the widget's refresh creates a new one.
+      for (final Future<void> Function() apply in <Future<void> Function()>[
+        () => controller.setDevToolsEnabled(false),
+        () => controller.setBrowserAcceleratorKeysEnabled(false),
+        () => controller.setDownloadsEnabled(false),
+      ]) {
+        await expectLater(apply(), throwsA(isA<PlatformException>()));
+      }
+      expect(devToolsValues, isEmpty);
+
+      final WindowsWebViewWidget platformWidget = WindowsWebViewWidget(
+        PlatformWebViewWidgetCreationParams(controller: controller),
+      );
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: SizedBox(
+            width: 800,
+            height: 600,
+            child: Builder(builder: platformWidget.build),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Refresh'));
+      await tester.pumpAndSettle();
+
+      expect(devToolsValues, <bool>[false]);
+      expect(acceleratorKeysValues, <bool>[false]);
+      expect(downloadsValues, <bool>[false]);
+    },
+  );
+
+  _widgetTest(
+    'refresh recovers a setting failure without replacing native subscriptions',
+    (WidgetTester tester) async {
+      var creations = 0;
+      _mockWindowsWebViewCreation(
+        beforeCreateWebView: () async {
+          creations++;
+        },
+        onSetDownloadsEnabled: (bool enabled) {
+          if (!enabled) throw PlatformException(code: 'not_supported');
+        },
+      );
+      final controller = _createWindowsController(
+        const WindowsWebViewControllerCreationParams(downloadsEnabled: false),
+      );
+      final platformWidget = WindowsWebViewWidget(
+        PlatformWebViewWidgetCreationParams(controller: controller),
+      );
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: SizedBox(
+            width: 800,
+            height: 600,
+            child: Builder(builder: platformWidget.build),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Refresh'), findsOneWidget);
+      expect(find.text('Install Webview2'), findsNothing);
+      await controller.setDownloadsEnabled(true);
+      await tester.tap(find.text('Refresh'));
+      await tester.pumpAndSettle();
+      expect(find.text('Refresh'), findsNothing);
+      expect(find.byType(native_webview.Webview), findsOneWidget);
+      expect(creations, 1);
+    },
+  );
+
+  for (final entry in <String, PlatformWebViewControllerCreationParams>{
+    'generic': const PlatformWebViewControllerCreationParams(),
+    'Windows': const WindowsWebViewControllerCreationParams(),
+    'converted':
+        const WindowsWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
+          PlatformWebViewControllerCreationParams(),
+        ),
+  }.entries) {
+    test(
+      '${entry.key} params disable DevTools before loading without changing other defaults',
+      () async {
+        final events = <String>[];
+        _mockWindowsWebViewCreation(
+          onSetDevToolsEnabled: (bool value) => events.add('devTools:$value'),
+          onSetBrowserAcceleratorKeysEnabled: (bool value) =>
+              events.add('keys:$value'),
+          onSetDownloadsEnabled: (bool value) => events.add('downloads:$value'),
+          onLoadRequest: (_) => events.add('load'),
+        );
+        final controller = _createWindowsController(entry.value);
+        final request = LoadRequestParams(
+          uri: Uri.parse('https://example.test'),
+        );
+        await controller.loadRequest(request);
+        await controller.loadRequest(request);
+        expect(events, <String>['devTools:false', 'load', 'load']);
+      },
+    );
+  }
+
+  for (final entry in <String, WindowsWebViewControllerCreationParams>{
+    'Windows': const WindowsWebViewControllerCreationParams(
+      devToolsEnabled: true,
+    ),
+    'converted':
+        const WindowsWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
+          PlatformWebViewControllerCreationParams(),
+          devToolsEnabled: true,
+        ),
+  }.entries) {
+    test(
+      '${entry.key} params explicitly enable DevTools before loading',
+      () async {
+        final events = <String>[];
+        _mockWindowsWebViewCreation(
+          onSetDevToolsEnabled: (bool value) => events.add('devTools:$value'),
+          onLoadRequest: (_) => events.add('load'),
+        );
+        final controller = _createWindowsController(entry.value);
+        await controller.loadRequest(
+          LoadRequestParams(uri: Uri.parse('https://example.test')),
+        );
+        expect(events, <String>['devTools:true', 'load']);
+      },
+    );
+  }
+
+  test('opens DevTools explicitly without enabling user shortcuts', () async {
+    final events = <String>[];
+    _mockWindowsWebViewCreation(
+      onSetDevToolsEnabled: (bool value) => events.add('devTools:$value'),
+      onOpenDevTools: () => events.add('open'),
+    );
+    final controller = _createWindowsController(
+      const WindowsWebViewControllerCreationParams(),
+    );
+    await controller.openDevTools();
+    expect(events, <String>['devTools:false', 'open']);
+  });
+
+  test('applies creation settings before the first navigation', () async {
+    final events = <String>[];
+    _mockWindowsWebViewCreation(
+      onSetDevToolsEnabled: (bool value) => events.add('devTools:$value'),
+      onSetBrowserAcceleratorKeysEnabled: (bool value) =>
+          events.add('keys:$value'),
+      onSetDownloadsEnabled: (bool value) => events.add('downloads:$value'),
+      onLoadRequest: (_) => events.add('load'),
+    );
+    final controller = _createWindowsController(
+      const WindowsWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
+        PlatformWebViewControllerCreationParams(),
+        devToolsEnabled: false,
+        browserAcceleratorKeysEnabled: false,
+        downloadsEnabled: false,
+      ),
+    );
+    await controller.loadRequest(
+      LoadRequestParams(uri: Uri.parse('https://example.test')),
+    );
+    expect(events, <String>[
+      'devTools:false',
+      'keys:false',
+      'downloads:false',
+      'load',
+    ]);
+  });
+
+  test('serializes changes while a native setting is in flight', () async {
+    final values = <bool>[];
+    final started = Completer<void>();
+    final release = Completer<void>();
+    _mockWindowsWebViewCreation(
+      onSetDownloadsEnabled: (bool value) async {
+        values.add(value);
+        if (value) {
+          started.complete();
+          await release.future;
+        }
+      },
+    );
+    final controller = _createWindowsController(
+      const WindowsWebViewControllerCreationParams(),
+    );
+    await controller.setDownloadsEnabled(false);
+    final enabling = controller.setDownloadsEnabled(true);
+    await started.future;
+    final disabling = controller.setDownloadsEnabled(false);
+    release.complete();
+    await Future.wait<void>(<Future<void>>[enabling, disabling]);
+    expect(values, <bool>[false, true, false]);
+  });
+
+  test(
+    'failed settings block navigation but can be corrected without recreating the WebView',
+    () async {
+      var creations = 0;
+      var loads = 0;
+      _mockWindowsWebViewCreation(
+        beforeCreateWebView: () async {
+          creations++;
+        },
+        onSetDownloadsEnabled: (bool enabled) {
+          if (!enabled) {
+            throw PlatformException(
+              code: 'not_supported',
+              details: <String, Object?>{'hresult': '0x80004002'},
+            );
+          }
+        },
+        onLoadRequest: (_) {
+          loads++;
+        },
+      );
+      final controller = _createWindowsController(
+        const WindowsWebViewControllerCreationParams(downloadsEnabled: false),
+      );
+      final request = LoadRequestParams(uri: Uri.parse('https://example.test'));
+      await expectLater(
+        controller.loadRequest(request),
+        throwsA(
+          isA<PlatformException>()
+              .having((error) => error.code, 'code', 'not_supported')
+              .having((error) => error.details, 'details', <String, Object?>{
+                'hresult': '0x80004002',
+              }),
+        ),
+      );
+      expect(loads, 0);
+      await controller.setDownloadsEnabled(true);
+      await controller.loadRequest(request);
+      expect(loads, 1);
+      expect(creations, 1);
+    },
+  );
+
+  test('a transient setting failure can be retried', () async {
+    var attempts = 0;
+    _mockWindowsWebViewCreation(
+      onSetDevToolsEnabled: (_) {
+        if (attempts++ == 0) {
+          throw PlatformException(code: 'method_failed');
+        }
+      },
+    );
+    final controller = _createWindowsController(
+      const WindowsWebViewControllerCreationParams(),
+    );
+    await expectLater(
+      controller.setDevToolsEnabled(false),
+      throwsA(
+        isA<PlatformException>().having(
+          (error) => error.code,
+          'code',
+          'method_failed',
+        ),
+      ),
+    );
+    await controller.setDevToolsEnabled(false);
+    expect(attempts, 2);
+  });
+
+  test(
+    'disposing drains in-flight settings and rejects further changes',
+    () async {
+      final started = Completer<void>();
+      final release = Completer<void>();
+      var disposed = false;
+      _mockWindowsWebViewCreation(
+        onSetDownloadsEnabled: (_) async {
+          started.complete();
+          await release.future;
+        },
+        onDisposeWebView: () {
+          disposed = true;
+        },
+      );
+      final controller = _createWindowsController(
+        const WindowsWebViewControllerCreationParams(),
+      );
+      final setting = controller.setDownloadsEnabled(false);
+      final failure = expectLater(setting, throwsStateError);
+      await started.future;
+      final disposal = controller.dispose();
+      expect(disposed, isFalse);
+      release.complete();
+      await failure;
+      await disposal;
+      expect(disposed, isTrue);
+      await expectLater(controller.setDownloadsEnabled(true), throwsStateError);
+      await expectLater(controller.setDevToolsEnabled(true), throwsStateError);
+      await expectLater(
+        controller.setBrowserAcceleratorKeysEnabled(true),
+        throwsStateError,
+      );
+    },
+  );
+
+  test(
     'dispatches Windows permission requests and returns decisions',
     () async {
-      final controller = WindowsWebViewController(
+      final controller = _createWindowsController(
         const PlatformWebViewControllerCreationParams(),
       );
       final requests = <PlatformWebViewPermissionRequest>[];
@@ -1364,7 +1710,7 @@ void main() {
   test(
     'uses the default Windows decision for unsupported permissions',
     () async {
-      final controller = WindowsWebViewController(
+      final controller = _createWindowsController(
         const PlatformWebViewControllerCreationParams(),
       );
       var callbackCalled = false;
@@ -1397,10 +1743,10 @@ void main() {
     },
   );
 
-  testWidgets('uses safe defaults when application decisions do not complete', (
+  _widgetTest('uses safe defaults when application decisions do not complete', (
     WidgetTester tester,
   ) async {
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
     final delegate = WindowsNavigationDelegate(
@@ -1476,7 +1822,7 @@ void main() {
   });
 
   test('uses safe defaults when decision callbacks throw', () async {
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
     final delegate = WindowsNavigationDelegate(
@@ -1550,7 +1896,7 @@ void main() {
   test(
     'contains callback failures and preserves completed decisions',
     () async {
-      final controller = WindowsWebViewController(
+      final controller = _createWindowsController(
         const PlatformWebViewControllerCreationParams(),
       );
       final delegate = WindowsNavigationDelegate(
@@ -1659,7 +2005,7 @@ void main() {
       },
     );
 
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -1687,7 +2033,7 @@ void main() {
     _mockWindowsWebViewCreation(
       onSetNavigationRequestCallbacksEnabled: callbackStates.add,
     );
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
     final delegate = WindowsNavigationDelegate(
@@ -1753,7 +2099,7 @@ void main() {
         debugPrint = previousDebugPrint;
       });
 
-      final controller = WindowsWebViewController(
+      final controller = _createWindowsController(
         const PlatformWebViewControllerCreationParams(),
       );
       final delegate = WindowsNavigationDelegate(
@@ -1798,7 +2144,7 @@ void main() {
           return 'null';
         },
       );
-      final controller = WindowsWebViewController(
+      final controller = _createWindowsController(
         const PlatformWebViewControllerCreationParams(),
       );
       const String channelName = 'channel-name"\\line';
@@ -1825,7 +2171,7 @@ void main() {
   test('escapes base URLs inserted into HTML', () async {
     final contents = <String>[];
     _mockWindowsWebViewCreation(onLoadStringContent: contents.add);
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -1856,7 +2202,7 @@ void main() {
     addTearDown(() => tempDir.deleteSync(recursive: true));
     final File file = File('${tempDir.path}/index.html')
       ..writeAsStringSync('<html></html>');
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -1870,7 +2216,7 @@ void main() {
   });
 
   test('rejects relative file paths and traversing asset keys', () async {
-    final controller = WindowsWebViewController(
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
 
@@ -1883,6 +2229,70 @@ void main() {
       throwsArgumentError,
     );
   });
+}
+
+final _controllerDisposals = <Future<void> Function()>[];
+
+void _widgetTest(
+  String description,
+  Future<void> Function(WidgetTester tester) callback,
+) {
+  testWidgets(description, (WidgetTester tester) async {
+    try {
+      await callback(tester);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      // Cancellation crosses the fake clock and the real EventChannel queue.
+      // Keep both moving until cleanup completes, before removing the mocks.
+      var completed = false;
+      Object? cleanupError;
+      StackTrace? cleanupStack;
+      final cleanup = _disposeTestControllers().then(
+        (_) => completed = true,
+        onError: (Object error, StackTrace stack) {
+          cleanupError = error;
+          cleanupStack = stack;
+          completed = true;
+          return true;
+        },
+      );
+      final elapsed = Stopwatch()..start();
+      while (!completed && elapsed.elapsed < const Duration(seconds: 5)) {
+        await tester.pump();
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 1)),
+        );
+      }
+      expect(completed, isTrue, reason: 'Controller cleanup did not complete.');
+      await cleanup;
+      if (cleanupError != null) {
+        Error.throwWithStackTrace(cleanupError!, cleanupStack!);
+      }
+    }
+  });
+}
+
+Future<void> _disposeTestControllers() async {
+  final disposals = _controllerDisposals.reversed.toList();
+  _controllerDisposals.clear();
+  await Future.wait<void>(
+    disposals.map((dispose) => Future<void>.sync(dispose)),
+  );
+}
+
+WindowsWebViewController _createWindowsController(
+  PlatformWebViewControllerCreationParams params,
+) {
+  final controller = WindowsWebViewController(params);
+  _controllerDisposals.add(controller.dispose);
+  return controller;
+}
+
+native_webview.WebviewController _createNativeController() {
+  final controller = native_webview.WebviewController();
+  _controllerDisposals.add(controller.dispose);
+  return controller;
 }
 
 void _mockWindowsWebViewCreation({
@@ -1908,6 +2318,10 @@ void _mockWindowsWebViewCreation({
   String? clearAllWebsiteDataFailureCode,
   void Function(bool enabled)? onSetJavaScriptEnabled,
   void Function(bool enabled)? onSetZoomControlEnabled,
+  FutureOr<void> Function(bool enabled)? onSetDevToolsEnabled,
+  void Function()? onOpenDevTools,
+  FutureOr<void> Function(bool enabled)? onSetBrowserAcceleratorKeysEnabled,
+  FutureOr<void> Function(bool enabled)? onSetDownloadsEnabled,
   void Function(bool enabled)? onSetNavigationRequestCallbacksEnabled,
   void Function(WindowsSizeData size)? onSetSize,
   int setSizeFailureCount = 0,
@@ -2088,6 +2502,46 @@ void _mockWindowsWebViewCreation({
     onSetZoomControlEnabled?.call(args[1]! as bool);
     return _encodePigeonSuccess();
   });
+  messenger.setMockMessageHandler(_hostApiChannel('openDevTools'), (
+    ByteData? message,
+  ) async {
+    onOpenDevTools?.call();
+    return _encodePigeonSuccess();
+  });
+  messenger.setMockMessageHandler(_hostApiChannel('setDevToolsEnabled'), (
+    ByteData? message,
+  ) async {
+    final args = _decodePigeonArgs(message);
+    try {
+      await onSetDevToolsEnabled?.call(args[1]! as bool);
+    } on PlatformException catch (error) {
+      return _encodePigeonError(error);
+    }
+    return _encodePigeonSuccess();
+  });
+  messenger.setMockMessageHandler(
+    _hostApiChannel('setBrowserAcceleratorKeysEnabled'),
+    (ByteData? message) async {
+      final args = _decodePigeonArgs(message);
+      try {
+        await onSetBrowserAcceleratorKeysEnabled?.call(args[1]! as bool);
+      } on PlatformException catch (error) {
+        return _encodePigeonError(error);
+      }
+      return _encodePigeonSuccess();
+    },
+  );
+  messenger.setMockMessageHandler(_hostApiChannel('setDownloadsEnabled'), (
+    ByteData? message,
+  ) async {
+    final args = _decodePigeonArgs(message);
+    try {
+      await onSetDownloadsEnabled?.call(args[1]! as bool);
+    } on PlatformException catch (error) {
+      return _encodePigeonError(error);
+    }
+    return _encodePigeonSuccess();
+  });
   messenger.setMockMessageHandler(
     _hostApiChannel('setJavaScriptDialogCallbacksEnabled'),
     (ByteData? message) async {
@@ -2194,6 +2648,13 @@ void _clearWindowsWebViewCreationMock() {
     _hostApiChannel('setZoomControlEnabled'),
     null,
   );
+  messenger.setMockMessageHandler(_hostApiChannel('setDevToolsEnabled'), null);
+  messenger.setMockMessageHandler(_hostApiChannel('openDevTools'), null);
+  messenger.setMockMessageHandler(
+    _hostApiChannel('setBrowserAcceleratorKeysEnabled'),
+    null,
+  );
+  messenger.setMockMessageHandler(_hostApiChannel('setDownloadsEnabled'), null);
   messenger.setMockMessageHandler(
     _hostApiChannel('setJavaScriptDialogCallbacksEnabled'),
     null,
@@ -2213,6 +2674,14 @@ String _hostApiChannel(String method) =>
 ByteData? _encodePigeonSuccess() {
   return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
     null,
+  ]);
+}
+
+ByteData? _encodePigeonError(PlatformException error) {
+  return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
+    error.code,
+    error.message,
+    error.details,
   ]);
 }
 

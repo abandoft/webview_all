@@ -206,6 +206,12 @@ abstract class WindowsWebViewHostApi {
 
   void setZoomControlEnabled(int textureId, bool enabled);
 
+  void setDevToolsEnabled(int textureId, bool enabled);
+
+  void setBrowserAcceleratorKeysEnabled(int textureId, bool enabled);
+
+  void setDownloadsEnabled(int textureId, bool enabled);
+
   void setZoomFactor(int textureId, double zoomFactor);
 
   void setPopupWindowPolicy(int textureId, int policy);

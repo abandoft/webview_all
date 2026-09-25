@@ -735,6 +735,18 @@ bool WebviewBridge::SetZoomControlEnabled(bool enabled) {
   return webview_->SetZoomControlEnabled(enabled);
 }
 
+HRESULT WebviewBridge::SetDevToolsEnabled(bool enabled) {
+  return webview_->SetDevToolsEnabled(enabled);
+}
+
+HRESULT WebviewBridge::SetBrowserAcceleratorKeysEnabled(bool enabled) {
+  return webview_->SetBrowserAcceleratorKeysEnabled(enabled);
+}
+
+HRESULT WebviewBridge::SetDownloadsEnabled(bool enabled) {
+  return webview_->SetDownloadsEnabled(enabled);
+}
+
 bool WebviewBridge::SetBackgroundColor(int64_t color) {
   return webview_->SetBackgroundColor(static_cast<int32_t>(color));
 }

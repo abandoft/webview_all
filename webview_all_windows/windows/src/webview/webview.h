@@ -26,7 +26,8 @@ enum class WebviewPointerEventKind { Activate, Down, Enter, Leave, Up, Update };
 enum class WebviewDownloadEventKind {
   DownloadStarted,
   DownloadCompleted,
-  DownloadProgress
+  DownloadProgress,
+  DownloadCancelled
 };
 
 enum class WebviewPermissionKind {
@@ -265,6 +266,9 @@ public:
   std::optional<std::string> GetUserAgent();
   bool SetJavaScriptEnabled(bool enabled);
   bool SetZoomControlEnabled(bool enabled);
+  HRESULT SetDevToolsEnabled(bool enabled);
+  HRESULT SetBrowserAcceleratorKeysEnabled(bool enabled);
+  HRESULT SetDownloadsEnabled(bool enabled);
   bool OpenDevTools();
   bool SetBackgroundColor(int32_t color);
   bool SetZoomFactor(double factor);
@@ -366,6 +370,7 @@ private:
       devtools_protocol_event_receiver_;
   wil::com_ptr<ICoreWebView2Settings> settings_;
   wil::com_ptr<ICoreWebView2Settings2> settings2_;
+  wil::com_ptr<ICoreWebView2Settings3> settings3_;
   std::string default_user_agent_;
   POINT last_cursor_pos_ = {0, 0};
   VirtualKeyState virtual_keys_;
@@ -375,6 +380,8 @@ private:
   bool java_script_confirm_dialog_enabled_ = false;
   bool java_script_prompt_dialog_enabled_ = false;
   bool navigation_request_callbacks_enabled_ = false;
+  bool downloads_enabled_ = true;
+  HRESULT download_handler_result_ = E_NOINTERFACE;
   uint64_t latest_navigation_request_id_ = 0;
   size_t bypass_next_navigation_count_ = 0;
   std::unordered_multiset<std::string> approved_navigation_urls_;

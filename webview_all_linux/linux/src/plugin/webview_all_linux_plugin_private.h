@@ -9,6 +9,8 @@
 
 constexpr const gchar *kLinuxWebViewInstanceKey = "webview_all_linux_instance";
 
+class DownloadPolicy;
+
 struct _WebviewAllLinuxPlugin {
   GObject parent_instance;
 
@@ -51,6 +53,7 @@ typedef struct {
   gboolean vertical_scrollbar_enabled;
   gboolean horizontal_scrollbar_enabled;
   gboolean zoom_enabled;
+  DownloadPolicy *download_policy;
   gint media_playback_requires_user_gesture;
   const gchar *over_scroll_behavior;
   gint frame_x;
