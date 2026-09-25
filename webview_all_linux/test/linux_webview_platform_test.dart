@@ -681,7 +681,7 @@ void main() {
     );
   });
 
-  testWidgets('hides native view when a Flutter ancestor stops painting', (
+  testWidgets('hides and restores a retained native view after fading', (
     WidgetTester tester,
   ) async {
     final List<MethodCall> calls = <MethodCall>[];
@@ -692,42 +692,53 @@ void main() {
     final LinuxWebViewWidget platformWidget = LinuxWebViewWidget(
       PlatformWebViewWidgetCreationParams(controller: controller),
     );
+    final child = RepaintBoundary(
+      child: SizedBox(
+        width: 320,
+        height: 180,
+        child: Builder(builder: platformWidget.build),
+      ),
+    );
     var opacity = 1.0;
 
     Widget buildWebView() {
       return Directionality(
         textDirection: TextDirection.ltr,
-        child: Opacity(
+        child: AnimatedOpacity(
           opacity: opacity,
-          child: SizedBox(
-            width: 320,
-            height: 180,
-            child: Builder(builder: platformWidget.build),
-          ),
+          duration: Duration.zero,
+          child: child,
         ),
       );
     }
 
-    await tester.pumpWidget(buildWebView());
-    await tester.pump();
-    opacity = 0;
-    await tester.pumpWidget(buildWebView());
-    await tester.pump();
-
-    final MethodCall frameCall = calls.lastWhere(
-      (MethodCall call) => call.method == 'setFrame',
-    );
-    expect((frameCall.arguments as Map<Object?, Object?>)['visible'], isFalse);
-
-    final int frameCallCount = calls
-        .where((MethodCall call) => call.method == 'setFrame')
-        .length;
-    await tester.pump();
-    await tester.pump();
-    expect(
-      calls.where((MethodCall call) => call.method == 'setFrame'),
-      hasLength(frameCallCount),
-    );
+    try {
+      await tester.pumpWidget(buildWebView());
+      await tester.pumpAndSettle();
+      for (final visible in <bool>[false, true, false, true]) {
+        opacity = visible ? 1 : 0;
+        await tester.pumpWidget(buildWebView());
+        await tester.pumpAndSettle();
+        final frameCall = calls.lastWhere((call) => call.method == 'setFrame');
+        expect(
+          (frameCall.arguments as Map<Object?, Object?>)['visible'],
+          visible,
+        );
+        final frameCallCount = calls
+            .where((call) => call.method == 'setFrame')
+            .length;
+        expect(tester.binding.hasScheduledFrame, isFalse);
+        await tester.pump();
+        expect(
+          calls.where((call) => call.method == 'setFrame'),
+          hasLength(frameCallCount),
+        );
+      }
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await tester.runAsync(controller.dispose);
+    }
   });
 
   test('dispose releases the native WebView exactly once', () async {
