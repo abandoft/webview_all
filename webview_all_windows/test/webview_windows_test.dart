@@ -445,6 +445,73 @@ void main() {
     expect(attachmentStates, <bool>[true, false, true]);
   });
 
+  for (final duration in <Duration>[
+    Duration.zero,
+    const Duration(milliseconds: 200),
+  ]) {
+    _widgetTest(
+      'retained surface restores after a ${duration.inMilliseconds} ms fade',
+      (WidgetTester tester) async {
+        final attachmentStates = <bool>[];
+        _mockWindowsWebViewCreation(onSetSurfaceAttached: attachmentStates.add);
+        final controller = _createNativeController();
+        await controller.initialize();
+        final child = RepaintBoundary(
+          child: SizedBox(
+            width: 320,
+            height: 240,
+            child: native_webview.Webview(controller),
+          ),
+        );
+        var opacity = 0.0;
+
+        Widget buildWebView() => Directionality(
+          textDirection: TextDirection.ltr,
+          child: AnimatedOpacity(
+            opacity: opacity,
+            duration: duration,
+            child: child,
+          ),
+        );
+
+        await tester.pumpWidget(buildWebView());
+        await tester.pumpAndSettle();
+        expect(attachmentStates, isEmpty);
+
+        opacity = 1;
+        await tester.pumpWidget(buildWebView());
+        await tester.pumpAndSettle();
+        final expectedStates = <bool>[true];
+        expect(attachmentStates, expectedStates);
+
+        for (var cycle = 0; cycle < 2; cycle++) {
+          opacity = 0;
+          await tester.pumpWidget(buildWebView());
+          await tester.pumpAndSettle();
+          expectedStates.add(false);
+          expect(attachmentStates, expectedStates);
+
+          opacity = 1;
+          await tester.pumpWidget(buildWebView());
+          await tester.pumpAndSettle();
+          expectedStates.add(true);
+          expect(attachmentStates, expectedStates);
+        }
+        expect(tester.binding.hasScheduledFrame, isFalse);
+        await tester.pump();
+        expect(attachmentStates, expectedStates);
+
+        opacity = 0;
+        await tester.pumpWidget(buildWebView());
+        await tester.pumpAndSettle();
+        expectedStates.add(false);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        expect(attachmentStates, expectedStates);
+      },
+    );
+  }
+
   _widgetTest('native surface follows the application lifecycle', (
     WidgetTester tester,
   ) async {
