@@ -418,6 +418,62 @@ void main() {
     await expectLater(result, completion(7));
   });
 
+  test(
+    'a javaScript channel message names the document WebView2 reports, as the main frame',
+    () async {
+      _mockWindowsWebViewCreation();
+      final WindowsWebViewController controller = _createWindowsController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final received = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        JavaScriptChannelParams(name: 'Bridge', onMessageReceived: received.add),
+      );
+
+      await _emitWindowsWebViewEvent(<String, Object?>{
+        'type': 'webMessageReceived',
+        'value': jsonEncode(<String, Object?>{
+          '__windows_webview_all_type': 'javascriptChannel',
+          'channelName': 'Bridge',
+          'message': 'hi',
+        }),
+        'source': 'https://a.example/page',
+      });
+      await _flushAsyncEvents();
+
+      expect(received, hasLength(1));
+      expect(received.single.message, 'hi');
+      expect(received.single.sourceUrl, 'https://a.example/page');
+      expect(received.single.isMainFrame, isTrue);
+    },
+  );
+
+  test('a javaScript channel message without a reported source names no sender', () async {
+    _mockWindowsWebViewCreation();
+    final WindowsWebViewController controller = _createWindowsController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final received = <JavaScriptMessage>[];
+    await controller.addJavaScriptChannel(
+      JavaScriptChannelParams(name: 'Bridge', onMessageReceived: received.add),
+    );
+
+    await _emitWindowsWebViewEvent(<String, Object?>{
+      'type': 'webMessageReceived',
+      'value': jsonEncode(<String, Object?>{
+        '__windows_webview_all_type': 'javascriptChannel',
+        'channelName': 'Bridge',
+        'message': 'hi',
+      }),
+    });
+    await _flushAsyncEvents();
+
+    expect(received, hasLength(1));
+    expect(received.single.message, 'hi');
+    expect(received.single.sourceUrl, isNull);
+    expect(received.single.isMainFrame, isNull);
+  });
+
   test('registers and removes document-start user scripts', () async {
     final List<String> addedScripts = <String>[];
     final List<String> removedScripts = <String>[];
@@ -539,6 +595,32 @@ void main() {
     );
     expect(response, isNull);
   });
+
+  test(
+    'native controller drops a web message that arrives while nothing has '
+    'ever listened to webMessage, instead of buffering a long run of them '
+    'for a later subscriber',
+    () async {
+      final native_webview.WebviewController controller =
+          _createNativeController();
+      await controller.initialize();
+
+      for (var i = 0; i < 500; i++) {
+        await _emitWindowsWebViewEvent(<String, Object?>{
+          'type': 'webMessageReceived',
+          'value': jsonEncode(i),
+        });
+      }
+      await _flushAsyncEvents();
+
+      final received = <dynamic>[];
+      final subscription = controller.webMessage.listen(received.add);
+      await _flushAsyncEvents();
+      await subscription.cancel();
+
+      expect(received, isEmpty);
+    },
+  );
 
   test('native controller can retry after an initialization failure', () async {
     _mockWindowsWebViewCreation(creationFailureCount: 1);

@@ -40,8 +40,24 @@ import 'package:flutter/foundation.dart';
 @immutable
 class JavaScriptMessage {
   /// Creates a new JavaScript message object.
-  const JavaScriptMessage({required this.message});
+  const JavaScriptMessage({
+    required this.message,
+    this.sourceUrl,
+    this.isMainFrame,
+  });
 
   /// The contents of the message that was sent by the JavaScript code.
   final String message;
+
+  /// The URL of the document that sent the message, or `null` when the
+  /// platform names none.
+  ///
+  /// On Windows this is the URL WebView2 names for the sending document, a
+  /// sandboxed document's included: a sandboxed document reports the URL it
+  /// was served from, not an opaque origin.
+  final String? sourceUrl;
+
+  /// Whether the main frame's document sent the message, when the platform
+  /// reports it; `null` otherwise.
+  final bool? isMainFrame;
 }

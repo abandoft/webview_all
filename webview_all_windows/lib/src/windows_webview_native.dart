@@ -310,6 +310,15 @@ class WebviewController extends ValueNotifier<WebviewValue> {
 
   Stream<dynamic> get webMessage => _webMessageStreamController.stream;
 
+  final StreamController<({dynamic value, String? source})>
+  _webMessageWithSourceStreamController =
+      StreamController<({dynamic value, String? source})>();
+
+  /// The decoded web message alongside the sending document's URL, when the
+  /// platform reports it.
+  Stream<({dynamic value, String? source})> get webMessageWithSource =>
+      _webMessageWithSourceStreamController.stream;
+
   final StreamController<bool>
   _containsFullScreenElementChangedStreamController =
       StreamController<bool>.broadcast();
@@ -411,9 +420,22 @@ class WebviewController extends ValueNotifier<WebviewValue> {
           case 'webMessageReceived':
             try {
               final message = json.decode(map['value']);
-              _webMessageStreamController.add(message);
+              // webMessage has no listener in this package any more
+              // (webMessageWithSource replaced it); add only while someone
+              // outside still listens, so a page that posts a long run of
+              // messages never buffers them forever in an unread stream.
+              if (_webMessageStreamController.hasListener) {
+                _webMessageStreamController.add(message);
+              }
+              _webMessageWithSourceStreamController.add((
+                value: message,
+                source: map['source'] as String?,
+              ));
             } catch (ex) {
-              _webMessageStreamController.addError(ex);
+              if (_webMessageStreamController.hasListener) {
+                _webMessageStreamController.addError(ex);
+              }
+              _webMessageWithSourceStreamController.addError(ex);
             }
             break;
           case 'containsFullScreenElementChanged':
@@ -682,6 +704,7 @@ class WebviewController extends ValueNotifier<WebviewValue> {
     unawaited(_cursorStreamController.close());
     unawaited(_focusEvents.close());
     unawaited(_webMessageStreamController.close());
+    unawaited(_webMessageWithSourceStreamController.close());
     unawaited(_containsFullScreenElementChangedStreamController.close());
   }
 

@@ -802,6 +802,52 @@ return {
     await expectLater(channelCompleter.future, completion('hello'));
   });
 
+  testWidgets(
+    'names the sending document of a JavaScript channel message',
+    (WidgetTester tester) async {
+      if (!Platform.isWindows) {
+        return;
+      }
+
+      final pageFinished = Completer<void>();
+      final controller = WebViewController();
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setNavigationDelegate(
+        NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+      );
+
+      final messages = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        'Bridge',
+        onMessageReceived: messages.add,
+      );
+
+      await controller.loadHtmlString('''
+<!DOCTYPE html>
+<html>
+<body>
+<iframe srcdoc="&lt;script&gt;Bridge.postMessage('frame');&lt;/script&gt;"></iframe>
+<script>Bridge.postMessage('top');</script>
+</body>
+</html>
+''');
+
+      await tester.pumpWidget(WebViewWidget(controller: controller));
+      await pageFinished.future;
+      await Future<void>.delayed(const Duration(seconds: 5));
+
+      final topMessages = messages.where((m) => m.message == 'top');
+      expect(topMessages, hasLength(1));
+      expect(topMessages.single.isMainFrame, isTrue);
+      expect(topMessages.single.sourceUrl, isNotNull);
+
+      final mainFrameFrameMessages = messages.where(
+        (m) => m.message == 'frame' && m.isMainFrame == true,
+      );
+      expect(mainFrameFrameMessages, isEmpty);
+    },
+  );
+
   testWidgets('resize webview', (WidgetTester tester) async {
     final initialResizeCompleter = Completer<void>();
     final buttonTapResizeCompleter = Completer<void>();
