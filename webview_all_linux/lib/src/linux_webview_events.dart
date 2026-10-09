@@ -80,7 +80,11 @@ extension LinuxWebViewControllerEventHandling on LinuxWebViewController {
         final JavaScriptChannelParams? params = _javaScriptChannels[name];
         if (params != null) {
           params.onMessageReceived(
-            JavaScriptMessage(message: '${event['message'] ?? ''}'),
+            JavaScriptMessage(
+              message: '${event['message'] ?? ''}',
+              sourceUrl: event['sourceUrl'] as String?,
+              isMainFrame: event['isMainFrame'] as bool?,
+            ),
           );
         }
         break;

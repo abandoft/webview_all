@@ -3,6 +3,24 @@
 
 #include <cstring>
 
+// The `WebKitUserMessage` name the channel extension
+// (`channel_sender_extension.c`) sends each JavaScript channel message under;
+// must match its `kChannelMessageName`.
+static const gchar kChannelMessageName[] = "webview-all-channel-message";
+
+// The isolated script world the channel script runs in; must match
+// `kChannelScriptWorldName` in `channel_sender_extension.c`.
+static const gchar kChannelScriptWorldName[] = "webview-all-channels";
+
+// The `WebKitUserMessage` name a view's channel names go to its page under;
+// must match `kChannelNamesMessageName` in `channel_sender_extension.c`.
+static const gchar kChannelNamesMessageName[] = "webview-all-channel-names";
+
+// The `WebKitUserMessage` name a new page asks for its view's channel names
+// under; must match `kChannelNamesRequestName` in `channel_sender_extension.c`.
+static const gchar kChannelNamesRequestName[] =
+    "webview-all-channel-names-request";
+
 static FlValue *serialize_js_result(JSCValue *value) {
   if (value == nullptr || jsc_value_is_null(value) ||
       jsc_value_is_undefined(value)) {
@@ -199,32 +217,71 @@ void async_javascript_message_received_cb(WebKitUserContentManager *manager,
   g_free(text);
 }
 
-void javascript_channel_message_received_cb(WebKitUserContentManager *manager,
-                                            WebKitJavascriptResult *result,
-                                            gpointer user_data) {
-  JavaScriptChannelHandlerData *data =
-      static_cast<JavaScriptChannelHandlerData *>(user_data);
-  LinuxWebView *webview = data->webview;
-  JSCValue *js_value = webkit_javascript_result_get_js_value(result);
-  gchar *text = jsc_value_to_string(js_value);
-  FlValue *event = make_event("javaScriptChannelMessage");
-  fl_value_set_string_take(
-      event, "channelName",
-      fl_value_new_string(data->name != nullptr ? data->name : ""));
-  fl_value_set_string_take(event, "message",
-                           fl_value_new_string(text != nullptr ? text : ""));
-  send_event(webview, event);
-  g_free(text);
+// Sends the view's channel names to its page, where the channel extension
+// defines them for each later document. A page that does not exist yet misses
+// them; it asks for them once it exists.
+void send_channel_names(LinuxWebView *webview) {
+  GPtrArray *names = g_ptr_array_new();
+  GHashTableIter iter;
+  gpointer key = nullptr;
+  g_hash_table_iter_init(&iter, webview->js_channels);
+  while (g_hash_table_iter_next(&iter, &key, nullptr)) {
+    g_ptr_array_add(names, key);
+  }
+  WebKitUserMessage *message = webkit_user_message_new(
+      kChannelNamesMessageName,
+      g_variant_new_strv(reinterpret_cast<const gchar *const *>(names->pdata),
+                         names->len));
+  webkit_web_view_send_message_to_page(webview->web_view, message, nullptr,
+                                       nullptr, nullptr);
+  g_ptr_array_unref(names);
 }
 
-void destroy_js_channel_handler_data(gpointer data, GClosure *closure) {
-  JavaScriptChannelHandlerData *handler_data =
-      static_cast<JavaScriptChannelHandlerData *>(data);
-  if (handler_data == nullptr) {
-    return;
+// Answers a new page's request for the channel names, and turns the channel
+// extension's channel message into a "javaScriptChannelMessage" event. Drops a
+// channel message of another shape, and one whose channel this view no longer
+// holds: a removed channel delivers nothing even while its object lingers in
+// the page.
+gboolean user_message_received_cb(WebKitWebView *web_view,
+                                  WebKitUserMessage *message,
+                                  gpointer user_data) {
+  LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
+  const gchar *name = webkit_user_message_get_name(message);
+  if (g_strcmp0(name, kChannelNamesRequestName) == 0) {
+    send_channel_names(webview);
+    return TRUE;
   }
-  g_free(handler_data->name);
-  g_free(handler_data);
+  if (g_strcmp0(name, kChannelMessageName) != 0) {
+    return FALSE;
+  }
+
+  GVariant *parameters = webkit_user_message_get_parameters(message);
+  if (parameters == nullptr ||
+      !g_variant_is_of_type(parameters, G_VARIANT_TYPE("(ssmsb)"))) {
+    return TRUE;
+  }
+
+  const gchar *channel = nullptr;
+  const gchar *text = nullptr;
+  const gchar *source_url = nullptr;
+  gboolean is_main_frame = FALSE;
+  g_variant_get(parameters, "(&s&sm&sb)", &channel, &text, &source_url,
+                &is_main_frame);
+  if (!g_hash_table_contains(webview->js_channels, channel)) {
+    return TRUE;
+  }
+
+  FlValue *event = make_event("javaScriptChannelMessage");
+  fl_value_set_string_take(event, "channelName", fl_value_new_string(channel));
+  fl_value_set_string_take(event, "message", fl_value_new_string(text));
+  if (source_url != nullptr) {
+    fl_value_set_string_take(event, "sourceUrl",
+                             fl_value_new_string(source_url));
+  }
+  fl_value_set_string_take(event, "isMainFrame",
+                           fl_value_new_bool(is_main_frame));
+  send_event(webview, event);
+  return TRUE;
 }
 
 void evaluate_javascript(WebKitWebView *web_view, const gchar *script,
@@ -241,6 +298,52 @@ static void add_user_script(WebKitUserContentManager *manager,
       WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, nullptr, nullptr);
   webkit_user_content_manager_add_script(manager, script);
   webkit_user_script_unref(script);
+}
+
+static void append_json_string(GString *json, const gchar *text) {
+  g_string_append_c(json, '"');
+  for (const gchar *cursor = text; *cursor != '\0'; ++cursor) {
+    const guchar byte = static_cast<guchar>(*cursor);
+    if (byte == '"' || byte == '\\') {
+      g_string_append_c(json, '\\');
+      g_string_append_c(json, *cursor);
+    } else if (byte < 0x20) {
+      g_string_append_printf(json, "\\u%04x", byte);
+    } else {
+      g_string_append_c(json, *cursor);
+    }
+  }
+  g_string_append_c(json, '"');
+}
+
+// Returns the isolated-world script that hands the view's channel names, as a
+// JSON array of strings, to the channel extension, or NULL when the view has
+// no channel. It covers a document that starts before the page holds the
+// names `send_channel_names` sends. Without the extension
+// `webviewAllDefineChannels` is missing, so channels deliver nothing.
+static gchar *build_channel_script(LinuxWebView *webview) {
+  if (g_hash_table_size(webview->js_channels) == 0) {
+    return nullptr;
+  }
+
+  GString *names = g_string_new("[");
+  GHashTableIter iter;
+  gpointer key = nullptr;
+  g_hash_table_iter_init(&iter, webview->js_channels);
+  while (g_hash_table_iter_next(&iter, &key, nullptr)) {
+    if (names->len > 1) {
+      g_string_append_c(names, ',');
+    }
+    append_json_string(names, static_cast<const gchar *>(key));
+  }
+  g_string_append_c(names, ']');
+
+  gchar *script = g_strdup_printf(
+      "if (typeof webviewAllDefineChannels === 'function') "
+      "webviewAllDefineChannels(%s);",
+      names->str);
+  g_string_free(names, TRUE);
+  return script;
 }
 
 gchar *build_scrollbar_style_script(LinuxWebView *webview) {
@@ -364,17 +467,16 @@ void rebuild_user_scripts(LinuxWebView *webview) {
     })();
   )");
 
-  GHashTableIter iter;
-  gpointer key = nullptr;
-  g_hash_table_iter_init(&iter, webview->js_channels);
-  while (g_hash_table_iter_next(&iter, &key, nullptr)) {
-    const gchar *name = static_cast<const gchar *>(key);
-    gchar *source = g_strdup_printf(
-        "window.%s = { postMessage: function(message) { "
-        "window.webkit.messageHandlers.%s.postMessage(String(message)); } };",
-        name, name);
-    add_user_script(webview->content_manager, source);
-    g_free(source);
+  gchar *channel_source = build_channel_script(webview);
+  if (channel_source != nullptr) {
+    WebKitUserScript *channel_script = webkit_user_script_new_for_world(
+        channel_source, WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
+        WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, kChannelScriptWorldName,
+        nullptr, nullptr);
+    webkit_user_content_manager_add_script(webview->content_manager,
+                                           channel_script);
+    webkit_user_script_unref(channel_script);
+    g_free(channel_source);
   }
 
   for (guint index = 0; index < webview->user_script_order->len; ++index) {

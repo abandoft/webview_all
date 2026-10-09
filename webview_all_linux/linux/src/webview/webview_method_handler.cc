@@ -599,46 +599,31 @@ void instance_method_call_cb(FlMethodChannel *channel,
     return;
   }
 
+  // A channel registers no script message handler: the channel extension
+  // defines the page's channel object from the names this view sends it and
+  // sends each message as a user message (see `user_message_received_cb`).
   if (strcmp(method, "addJavaScriptChannel") == 0) {
     const gchar *name = map_lookup_string(args, "name");
-    if (!webkit_user_content_manager_register_script_message_handler(
-            webview->content_manager, name)) {
+    if (name == nullptr || g_hash_table_contains(webview->js_channels, name)) {
       respond(method_call, error_response("channel_error",
                                           "Failed to register JS channel."));
       return;
     }
-    gchar *signal_name = g_strdup_printf("script-message-received::%s", name);
-    JavaScriptChannelHandlerData *data =
-        g_new0(JavaScriptChannelHandlerData, 1);
-    data->webview = webview;
-    data->name = g_strdup(name);
-    guint signal_id = g_signal_connect_data(
-        webview->content_manager, signal_name,
-        G_CALLBACK(javascript_channel_message_received_cb), data,
-        destroy_js_channel_handler_data, GConnectFlags(0));
-    g_free(signal_name);
     g_hash_table_insert(webview->js_channels, g_strdup(name),
                         GINT_TO_POINTER(1));
-    g_hash_table_insert(webview->js_channel_signal_ids, g_strdup(name),
-                        GUINT_TO_POINTER(signal_id));
     rebuild_user_scripts(webview);
+    send_channel_names(webview);
     respond(method_call, success_response());
     return;
   }
 
   if (strcmp(method, "removeJavaScriptChannel") == 0) {
     const gchar *name = map_lookup_string(args, "name");
-    gpointer signal_id_ptr =
-        g_hash_table_lookup(webview->js_channel_signal_ids, name);
-    if (signal_id_ptr != nullptr) {
-      g_signal_handler_disconnect(webview->content_manager,
-                                  GPOINTER_TO_UINT(signal_id_ptr));
-      g_hash_table_remove(webview->js_channel_signal_ids, name);
+    if (name != nullptr) {
+      g_hash_table_remove(webview->js_channels, name);
     }
-    webkit_user_content_manager_unregister_script_message_handler(
-        webview->content_manager, name);
-    g_hash_table_remove(webview->js_channels, name);
     rebuild_user_scripts(webview);
+    send_channel_names(webview);
     respond(method_call, success_response());
     return;
   }

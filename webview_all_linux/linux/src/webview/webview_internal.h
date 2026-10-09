@@ -25,10 +25,10 @@ void scroll_message_received_cb(WebKitUserContentManager *manager,
 void async_javascript_message_received_cb(WebKitUserContentManager *manager,
                                           WebKitJavascriptResult *result,
                                           gpointer user_data);
-void javascript_channel_message_received_cb(WebKitUserContentManager *manager,
-                                            WebKitJavascriptResult *result,
-                                            gpointer user_data);
-void destroy_js_channel_handler_data(gpointer data, GClosure *closure);
+void send_channel_names(LinuxWebView *webview);
+gboolean user_message_received_cb(WebKitWebView *web_view,
+                                  WebKitUserMessage *message,
+                                  gpointer user_data);
 void instance_method_call_cb(FlMethodChannel *channel,
                              FlMethodCall *method_call, gpointer user_data);
 

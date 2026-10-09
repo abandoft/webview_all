@@ -1167,6 +1167,64 @@ void main() {
     expect(arguments['mainFrameOnly'], isTrue);
   });
 
+  test(
+    'a javaScript channel message names the sending document, as a subframe',
+    () async {
+      final LinuxWebViewController controller = LinuxWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final List<JavaScriptMessage> received = <JavaScriptMessage>[];
+
+      await controller.currentUrl();
+      await controller.addJavaScriptChannel(
+        JavaScriptChannelParams(
+          name: 'Bridge',
+          onMessageReceived: received.add,
+        ),
+      );
+      await _emitLinuxWebViewEvent(<String, Object?>{
+        'type': 'javaScriptChannelMessage',
+        'channelName': 'Bridge',
+        'message': 'hi',
+        'sourceUrl': 'http://127.0.0.1:8001/frame.html',
+        'isMainFrame': false,
+      });
+
+      expect(received, hasLength(1));
+      expect(received.single.message, 'hi');
+      expect(received.single.sourceUrl, 'http://127.0.0.1:8001/frame.html');
+      expect(received.single.isMainFrame, isFalse);
+    },
+  );
+
+  test(
+    'a javaScript channel message without a reported sender names no sender',
+    () async {
+      final LinuxWebViewController controller = LinuxWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final List<JavaScriptMessage> received = <JavaScriptMessage>[];
+
+      await controller.currentUrl();
+      await controller.addJavaScriptChannel(
+        JavaScriptChannelParams(
+          name: 'Bridge',
+          onMessageReceived: received.add,
+        ),
+      );
+      await _emitLinuxWebViewEvent(<String, Object?>{
+        'type': 'javaScriptChannelMessage',
+        'channelName': 'Bridge',
+        'message': 'hi',
+      });
+
+      expect(received, hasLength(1));
+      expect(received.single.message, 'hi');
+      expect(received.single.sourceUrl, isNull);
+      expect(received.single.isMainFrame, isNull);
+    },
+  );
+
   test('dispatches HTTP response errors from Linux events', () async {
     final LinuxWebViewController controller = LinuxWebViewController(
       const PlatformWebViewControllerCreationParams(),

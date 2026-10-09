@@ -40,7 +40,6 @@ typedef struct {
   GHashTable *pending_script_dialogs;
   GHashTable *pending_tls_errors;
   GHashTable *pending_request_timeouts;
-  GHashTable *js_channel_signal_ids;
   GHashTable *js_channels;
   GHashTable *user_scripts;
   GPtrArray *user_script_order;
@@ -69,11 +68,6 @@ typedef struct {
   double last_scroll_x;
   double last_scroll_y;
 } LinuxWebView;
-
-typedef struct {
-  LinuxWebView *webview;
-  gchar *name;
-} JavaScriptChannelHandlerData;
 
 typedef struct {
   GTlsCertificate *certificate;

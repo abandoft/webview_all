@@ -52,9 +52,16 @@ class JavaScriptMessage {
   /// The URL of the document that sent the message, or `null` when the
   /// platform names none.
   ///
-  /// On Windows this is the URL WebView2 names for the sending document, a
-  /// sandboxed document's included: a sandboxed document reports the URL it
-  /// was served from, not an opaque origin.
+  /// - On Windows this is the URL WebView2 names for the sending document, a
+  ///   sandboxed document's included: a sandboxed document reports the URL it
+  ///   was served from, not an opaque origin.
+  /// - On Linux this is the URL of the document whose window holds the
+  ///   channel object, captured when that document started; it is `null` for
+  ///   an opaque origin (a sandboxed document, HTML loaded with no base URL),
+  ///   while [isMainFrame] is still reported.
+  /// - `null` means the sender is unknown: never substitute the web view's
+  ///   current URL. A URL with no http(s) origin, such as `about:srcdoc` or
+  ///   `blob:`, names no origin either, and [Uri.origin] throws for it.
   final String? sourceUrl;
 
   /// Whether the main frame's document sent the message, when the platform

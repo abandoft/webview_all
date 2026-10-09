@@ -76,6 +76,9 @@ Future<void> main() async {
           );
           request.response.statusCode = HttpStatus.unauthorized;
         }
+      } else if (request.uri.path.startsWith('/sender/')) {
+        unawaited(_serveSenderPage(request));
+        return;
       } else {
         fail('unexpected request: ${request.method} ${request.uri}');
       }
@@ -802,13 +805,210 @@ return {
     await expectLater(channelCompleter.future, completion('hello'));
   });
 
-  testWidgets(
-    'names the sending document of a JavaScript channel message',
-    (WidgetTester tester) async {
-      if (!Platform.isWindows) {
-        return;
-      }
+  testWidgets('names the sending document of a JavaScript channel message', (
+    WidgetTester tester,
+  ) async {
+    if (!(Platform.isWindows || Platform.isLinux)) {
+      return;
+    }
 
+    final pageFinished = Completer<void>();
+    final controller = WebViewController();
+    await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    await controller.setNavigationDelegate(
+      NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+    );
+
+    final messages = <JavaScriptMessage>[];
+    await controller.addJavaScriptChannel(
+      'Bridge',
+      onMessageReceived: messages.add,
+    );
+
+    await controller.loadHtmlString('''
+<!DOCTYPE html>
+<html>
+<body>
+<iframe srcdoc="&lt;script&gt;Bridge.postMessage('frame');&lt;/script&gt;"></iframe>
+<script>Bridge.postMessage('top');</script>
+</body>
+</html>
+''');
+
+    await tester.pumpWidget(WebViewWidget(controller: controller));
+    await pageFinished.future;
+    await Future<void>.delayed(const Duration(seconds: 5));
+
+    final topMessages = messages.where((m) => m.message == 'top');
+    expect(topMessages, hasLength(1));
+    expect(topMessages.single.isMainFrame, isTrue);
+
+    if (Platform.isLinux) {
+      // HTML loaded with no base URL has an opaque origin: no URL to report.
+      expect(topMessages.single.sourceUrl, isNull);
+
+      final frameMessages = messages.where((m) => m.message == 'frame');
+      expect(frameMessages, hasLength(1));
+      expect(frameMessages.single.isMainFrame, isFalse);
+      expect(frameMessages.single.sourceUrl, isNull);
+    } else {
+      expect(topMessages.single.sourceUrl, isNotNull);
+
+      final mainFrameFrameMessages = messages.where(
+        (m) => m.message == 'frame' && m.isMainFrame == true,
+      );
+      expect(mainFrameFrameMessages, isEmpty);
+    }
+  });
+
+  group('channel sender', () {
+    late HttpServer secondServer;
+    late String secondPrefixUrl;
+
+    setUpAll(() async {
+      secondServer = await HttpServer.bind(InternetAddress('127.0.0.2'), 0);
+      // The cross-origin peer, framed by the first server's pages; dart:io
+      // sends `X-Frame-Options: SAMEORIGIN` unless told otherwise.
+      secondServer.defaultResponseHeaders.removeAll('x-frame-options');
+      unawaited(
+        secondServer.forEach((HttpRequest request) {
+          unawaited(_serveSenderPage(request));
+        }),
+      );
+      secondPrefixUrl =
+          'http://${secondServer.address.address}:${secondServer.port}';
+    });
+
+    tearDownAll(() async {
+      await secondServer.close(force: true);
+    });
+
+    String U(String path) => '$prefixUrl$path';
+    String u2(String path) => '$secondPrefixUrl$path';
+    Iterable<JavaScriptMessage> M(
+      List<JavaScriptMessage> messages,
+      String text,
+    ) => messages.where((JavaScriptMessage m) => m.message == text);
+
+    testWidgets(
+      "an allowed page's message carries its URL and main-frame flag",
+      (WidgetTester tester) async {
+        final pageFinished = Completer<void>();
+        final controller = WebViewController();
+        await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+        await controller.setNavigationDelegate(
+          NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+        );
+
+        final messages = <JavaScriptMessage>[];
+        await controller.addJavaScriptChannel(
+          'Bridge',
+          onMessageReceived: messages.add,
+        );
+
+        await controller.loadRequest(Uri.parse(U('/sender/top.html')));
+        await tester.pumpWidget(WebViewWidget(controller: controller));
+        await pageFinished.future;
+        await Future<void>.delayed(const Duration(seconds: 3));
+
+        final topMessages = M(messages, 'top');
+        expect(topMessages, hasLength(1));
+        expect(topMessages.single.sourceUrl, U('/sender/top.html'));
+        expect(topMessages.single.isMainFrame, isTrue);
+      },
+    );
+
+    testWidgets(
+      "an iframe's message carries the iframe's URL and no main-frame flag",
+      (WidgetTester tester) async {
+        final pageFinished = Completer<void>();
+        final controller = WebViewController();
+        await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+        await controller.setNavigationDelegate(
+          NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+        );
+
+        final messages = <JavaScriptMessage>[];
+        await controller.addJavaScriptChannel(
+          'Bridge',
+          onMessageReceived: messages.add,
+        );
+
+        await controller.loadRequest(Uri.parse(U('/sender/top.html')));
+        await tester.pumpWidget(WebViewWidget(controller: controller));
+        await pageFinished.future;
+        await Future<void>.delayed(const Duration(seconds: 3));
+
+        final frameMessages = M(messages, 'frame');
+        expect(frameMessages, hasLength(1));
+        expect(frameMessages.single.sourceUrl, U('/sender/frame.html'));
+        expect(frameMessages.single.isMainFrame, isFalse);
+      },
+    );
+
+    testWidgets(
+      "a cross-origin iframe's message carries the iframe's URL and no "
+      'main-frame flag',
+      (WidgetTester tester) async {
+        final pageFinished = Completer<void>();
+        final controller = WebViewController();
+        await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+        await controller.setNavigationDelegate(
+          NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+        );
+
+        final messages = <JavaScriptMessage>[];
+        await controller.addJavaScriptChannel(
+          'Bridge',
+          onMessageReceived: messages.add,
+        );
+
+        final String frameUrl = u2('/sender/frame.html');
+        await controller.loadRequest(
+          Uri.parse(
+            U('/sender/cross-origin-host.html'),
+          ).replace(queryParameters: <String, String>{'frame': frameUrl}),
+        );
+        await tester.pumpWidget(WebViewWidget(controller: controller));
+        await pageFinished.future;
+        await Future<void>.delayed(const Duration(seconds: 3));
+
+        final frameMessages = M(messages, 'frame');
+        expect(frameMessages, hasLength(1));
+        expect(frameMessages.single.sourceUrl, frameUrl);
+        expect(frameMessages.single.isMainFrame, isFalse);
+        expect(M(messages, 'direct'), isEmpty);
+      },
+    );
+
+    testWidgets(
+      'an iframe calling the script message handler directly delivers '
+      'nothing',
+      (WidgetTester tester) async {
+        final pageFinished = Completer<void>();
+        final controller = WebViewController();
+        await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+        await controller.setNavigationDelegate(
+          NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+        );
+
+        final messages = <JavaScriptMessage>[];
+        await controller.addJavaScriptChannel(
+          'Bridge',
+          onMessageReceived: messages.add,
+        );
+
+        await controller.loadRequest(Uri.parse(U('/sender/top.html')));
+        await tester.pumpWidget(WebViewWidget(controller: controller));
+        await pageFinished.future;
+        await Future<void>.delayed(const Duration(seconds: 3));
+
+        expect(M(messages, 'direct'), isEmpty);
+      },
+    );
+
+    testWidgets('a page that overwrites or deletes the channel object gains '
+        'nothing', (WidgetTester tester) async {
       final pageFinished = Completer<void>();
       final controller = WebViewController();
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
@@ -822,31 +1022,668 @@ return {
         onMessageReceived: messages.add,
       );
 
-      await controller.loadHtmlString('''
-<!DOCTYPE html>
-<html>
-<body>
-<iframe srcdoc="&lt;script&gt;Bridge.postMessage('frame');&lt;/script&gt;"></iframe>
-<script>Bridge.postMessage('top');</script>
-</body>
-</html>
-''');
-
+      await controller.loadRequest(Uri.parse(U('/sender/overwrite.html')));
       await tester.pumpWidget(WebViewWidget(controller: controller));
       await pageFinished.future;
-      await Future<void>.delayed(const Duration(seconds: 5));
+      await Future<void>.delayed(const Duration(seconds: 3));
 
-      final topMessages = messages.where((m) => m.message == 'top');
-      expect(topMessages, hasLength(1));
-      expect(topMessages.single.isMainFrame, isTrue);
-      expect(topMessages.single.sourceUrl, isNotNull);
+      expect(M(messages, 'direct-top'), isEmpty);
+      expect(M(messages, 'after-overwrite'), isEmpty);
+      final saved = M(messages, 'saved');
+      expect(saved, hasLength(1));
+      expect(saved.single.sourceUrl, U('/sender/overwrite.html'));
+      expect(saved.single.isMainFrame, isTrue);
+    });
 
-      final mainFrameFrameMessages = messages.where(
-        (m) => m.message == 'frame' && m.isMainFrame == true,
+    testWidgets(
+      'a page whose script declares the channel name as a constant posts '
+      'through it',
+      (WidgetTester tester) async {
+        final pageFinished = Completer<void>();
+        final controller = WebViewController();
+        await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+        await controller.setNavigationDelegate(
+          NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+        );
+
+        final messages = <JavaScriptMessage>[];
+        await controller.addJavaScriptChannel(
+          'Bridge',
+          onMessageReceived: messages.add,
+        );
+
+        await controller.loadRequest(Uri.parse(U('/sender/alias.html')));
+        await tester.pumpWidget(WebViewWidget(controller: controller));
+        await pageFinished.future;
+        await Future<void>.delayed(const Duration(seconds: 3));
+
+        final alias = M(messages, 'alias');
+        expect(alias, hasLength(1));
+        expect(alias.single.sourceUrl, U('/sender/alias.html'));
+        expect(alias.single.isMainFrame, isTrue);
+
+        final writable =
+            await controller.runJavaScriptReturningResult(
+                  "Object.getOwnPropertyDescriptor(window, 'Bridge')"
+                  '.writable',
+                )
+                as bool;
+        expect(writable, isTrue);
+        final configurable =
+            await controller.runJavaScriptReturningResult(
+                  "Object.getOwnPropertyDescriptor(window, 'Bridge')"
+                  '.configurable',
+                )
+                as bool;
+        expect(configurable, isTrue);
+      },
+    );
+
+    testWidgets('a sandboxed document gives no URL', (
+      WidgetTester tester,
+    ) async {
+      var pageFinished = Completer<void>();
+      final controller = WebViewController();
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setNavigationDelegate(
+        NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
       );
-      expect(mainFrameFrameMessages, isEmpty);
-    },
-  );
+
+      final messages = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        'Bridge',
+        onMessageReceived: messages.add,
+      );
+
+      await controller.loadRequest(Uri.parse(U('/sender/sandboxed.html')));
+      await tester.pumpWidget(WebViewWidget(controller: controller));
+      await pageFinished.future;
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      final sandboxed = M(messages, 'sandboxed');
+      expect(sandboxed, hasLength(1));
+      expect(sandboxed.single.sourceUrl, isNull);
+      expect(sandboxed.single.isMainFrame, isTrue);
+
+      pageFinished = Completer<void>();
+      await controller.loadRequest(Uri.parse(U('/sender/sandbox-host.html')));
+      await pageFinished.future;
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      final sandboxedFrame = M(messages, 'sandboxed-frame');
+      expect(sandboxedFrame, hasLength(1));
+      expect(sandboxedFrame.single.sourceUrl, isNull);
+      expect(sandboxedFrame.single.isMainFrame, isFalse);
+
+      expect(messages.any((m) => m.sourceUrl == 'null'), isFalse);
+    });
+
+    testWidgets('a value whose toString throws gives no message', (
+      WidgetTester tester,
+    ) async {
+      final pageFinished = Completer<void>();
+      final controller = WebViewController();
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setNavigationDelegate(
+        NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+      );
+
+      final messages = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        'Bridge',
+        onMessageReceived: messages.add,
+      );
+
+      await controller.loadRequest(Uri.parse(U('/sender/throws.html')));
+      await tester.pumpWidget(WebViewWidget(controller: controller));
+      await pageFinished.future;
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      expect(messages.map((m) => m.message).toList(), <String>['after-throw']);
+    });
+
+    testWidgets(
+      'an old page posting during a same-process navigation is credited '
+      'to itself',
+      (WidgetTester tester) async {
+        final pageLoads = StreamController<String>.broadcast();
+        addTearDown(pageLoads.close);
+
+        final controller = WebViewController();
+        await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+        await controller.setNavigationDelegate(
+          NavigationDelegate(onPageFinished: pageLoads.add),
+        );
+
+        final messages = <JavaScriptMessage>[];
+        await controller.addJavaScriptChannel(
+          'Bridge',
+          onMessageReceived: messages.add,
+        );
+
+        final leavingLoaded = pageLoads.stream.firstWhere(
+          (String url) => url == U('/sender/leaving.html'),
+        );
+        await controller.loadRequest(Uri.parse(U('/sender/leaving.html')));
+        await tester.pumpWidget(WebViewWidget(controller: controller));
+        await leavingLoaded;
+
+        final slowLoaded = pageLoads.stream.firstWhere(
+          (String url) => url == U('/sender/slow.html'),
+        );
+        await controller.runJavaScript(
+          "location.href = '${U('/sender/slow.html')}'; "
+          "Bridge.postMessage('leaving');",
+        );
+        await slowLoaded;
+        await Future<void>.delayed(const Duration(seconds: 3));
+
+        final leaving = M(messages, 'leaving');
+        expect(leaving, hasLength(1));
+        expect(leaving.single.sourceUrl, U('/sender/leaving.html'));
+
+        final arrived = M(messages, 'arrived');
+        expect(arrived, hasLength(1));
+        expect(arrived.single.sourceUrl, U('/sender/slow.html'));
+      },
+    );
+
+    testWidgets('an old page posting during a cross-site navigation is never '
+        'credited to another document', (WidgetTester tester) async {
+      final pageLoads = StreamController<String>.broadcast();
+      addTearDown(pageLoads.close);
+
+      final controller = WebViewController();
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setNavigationDelegate(
+        NavigationDelegate(onPageFinished: pageLoads.add),
+      );
+
+      final messages = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        'Bridge',
+        onMessageReceived: messages.add,
+      );
+
+      final leavingLoaded = pageLoads.stream.firstWhere(
+        (String url) => url == U('/sender/leaving.html'),
+      );
+      await controller.loadRequest(Uri.parse(U('/sender/leaving.html')));
+      await tester.pumpWidget(WebViewWidget(controller: controller));
+      await leavingLoaded;
+
+      final slowLoaded = pageLoads.stream.firstWhere(
+        (String url) => url == u2('/sender/slow.html'),
+      );
+      await controller.runJavaScript(
+        "location.href = '${u2('/sender/slow.html')}'; "
+        "Bridge.postMessage('leaving');",
+      );
+      await slowLoaded;
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      final leaving = M(messages, 'leaving');
+      expect(leaving.length, anyOf(0, 1));
+      for (final JavaScriptMessage m in leaving) {
+        expect(m.sourceUrl, U('/sender/leaving.html'));
+      }
+
+      final arrived = M(messages, 'arrived');
+      expect(arrived, hasLength(1));
+      expect(arrived.single.sourceUrl, u2('/sender/slow.html'));
+    });
+
+    testWidgets('a channel added after load reaches the next document', (
+      WidgetTester tester,
+    ) async {
+      final pageLoads = StreamController<String>.broadcast();
+      addTearDown(pageLoads.close);
+
+      final controller = WebViewController();
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setNavigationDelegate(
+        NavigationDelegate(onPageFinished: pageLoads.add),
+      );
+
+      final messages = <JavaScriptMessage>[];
+
+      final firstLoaded = pageLoads.stream.firstWhere(
+        (String url) => url == U('/sender/late.html'),
+      );
+      await controller.loadRequest(Uri.parse(U('/sender/late.html')));
+      await tester.pumpWidget(WebViewWidget(controller: controller));
+      await firstLoaded;
+
+      await controller.addJavaScriptChannel(
+        'Late',
+        onMessageReceived: messages.add,
+      );
+
+      final reloaded = pageLoads.stream.firstWhere(
+        (String url) => url == U('/sender/late.html'),
+      );
+      await controller.reload();
+      await reloaded;
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      final late = M(messages, 'late');
+      expect(late, hasLength(1));
+      expect(late.single.sourceUrl, U('/sender/late.html'));
+    });
+
+    testWidgets(
+      'a document-start user script that posts at once is credited to its '
+      'document',
+      (WidgetTester tester) async {
+        // WebKit runs document-start scripts world by world in an order it
+        // does not specify, and that order may differ between web processes,
+        // so the case loads several fresh views and then reloads each.
+        const viewCount = 3;
+        final pageLoads = StreamController<String>.broadcast();
+        addTearDown(pageLoads.close);
+        Future<void> nextLoads() => pageLoads.stream
+            .where((String url) => url == U('/sender/start.html'))
+            .take(viewCount)
+            .drain<void>();
+
+        final messages = <JavaScriptMessage>[];
+        final controllers = <WebViewController>[];
+        for (var view = 0; view < viewCount; view++) {
+          final controller = WebViewController();
+          await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+          await controller.setNavigationDelegate(
+            NavigationDelegate(onPageFinished: pageLoads.add),
+          );
+          await controller.addJavaScriptChannel(
+            'Bridge',
+            onMessageReceived: messages.add,
+          );
+          await controller.addUserScript(
+            const WebViewUserScript(source: "Bridge.postMessage('boot');"),
+          );
+          controllers.add(controller);
+        }
+
+        final firstLoads = nextLoads();
+        for (final controller in controllers) {
+          await controller.loadRequest(Uri.parse(U('/sender/start.html')));
+        }
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Column(
+              children: <Widget>[
+                for (final controller in controllers)
+                  Expanded(child: WebViewWidget(controller: controller)),
+              ],
+            ),
+          ),
+        );
+        await firstLoads;
+        await Future<void>.delayed(const Duration(seconds: 3));
+        expect(M(messages, 'boot'), hasLength(viewCount));
+
+        final reloads = nextLoads();
+        for (final controller in controllers) {
+          await controller.reload();
+        }
+        await reloads;
+        await Future<void>.delayed(const Duration(seconds: 3));
+
+        final boot = M(messages, 'boot');
+        expect(boot, hasLength(2 * viewCount));
+        for (final JavaScriptMessage message in boot) {
+          expect(message.sourceUrl, U('/sender/start.html'));
+          expect(message.isMainFrame, isTrue);
+        }
+      },
+    );
+
+    testWidgets(
+      'a removed channel delivers nothing from the moment of removal',
+      (WidgetTester tester) async {
+        final pageFinished = Completer<void>();
+        final controller = WebViewController();
+        await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+        await controller.setNavigationDelegate(
+          NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+        );
+
+        final messages = <JavaScriptMessage>[];
+        await controller.addJavaScriptChannel(
+          'Bridge',
+          onMessageReceived: messages.add,
+        );
+
+        await controller.loadRequest(Uri.parse(U('/sender/top.html')));
+        await tester.pumpWidget(WebViewWidget(controller: controller));
+        await pageFinished.future;
+        await Future<void>.delayed(const Duration(seconds: 3));
+
+        messages.clear();
+        await controller.removeJavaScriptChannel('Bridge');
+        await controller.runJavaScript(
+          "try { Bridge.postMessage('after-remove'); } catch (e) {}",
+        );
+        await Future<void>.delayed(const Duration(seconds: 3));
+
+        expect(M(messages, 'after-remove'), isEmpty);
+      },
+    );
+
+    testWidgets(
+      'no helper is visible to page script, a fresh about:blank iframe '
+      'included',
+      (WidgetTester tester) async {
+        const windowExpr = 'window';
+        const iframeExpr =
+            "document.querySelectorAll('iframe')[0].contentWindow";
+
+        Future<WebViewController> openGlobals({
+          bool withChannel = false,
+        }) async {
+          final pageFinished = Completer<void>();
+          final controller = WebViewController();
+          await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+          await controller.setNavigationDelegate(
+            NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+          );
+          if (withChannel) {
+            await controller.addJavaScriptChannel(
+              'Bridge',
+              onMessageReceived: (_) {},
+            );
+          }
+          await controller.loadRequest(Uri.parse(U('/sender/globals.html')));
+          await tester.pumpWidget(WebViewWidget(controller: controller));
+          await pageFinished.future;
+          await controller.runJavaScript('''
+(function () {
+  var f = document.createElement('iframe');
+  f.src = 'about:blank';
+  document.body.appendChild(f);
+})();
+''');
+          return controller;
+        }
+
+        Future<List<String>> ownNames(
+          WebViewController controller,
+          String expr,
+        ) async {
+          final json =
+              await controller.runJavaScriptReturningResult(
+                    'JSON.stringify(Object.getOwnPropertyNames($expr))',
+                  )
+                  as String;
+          return (jsonDecode(json) as List<Object?>).cast<String>();
+        }
+
+        Future<bool> definesChannelsHelper(
+          WebViewController controller,
+          String expr,
+        ) async {
+          return await controller.runJavaScriptReturningResult(
+                "'webviewAllDefineChannels' in $expr",
+              )
+              as bool;
+        }
+
+        List<String> outsideStock(
+          List<String> names,
+          List<String> stock, {
+          String? allow,
+        }) {
+          return names.where((n) => !stock.contains(n) && n != allow).toList();
+        }
+
+        // The stock list comes from a fresh view of its own, never from the
+        // view it is later checked against. Every view loads the channel
+        // extension, so a name the extension defines in every frame, channel
+        // or not, is in the stock list too and passes here; only reading the
+        // extension's main-world writes rules that out.
+        final baseline = await openGlobals();
+        final stockWindow = await ownNames(baseline, windowExpr);
+        final stockIframe = await ownNames(baseline, iframeExpr);
+
+        final noChannel = await openGlobals();
+        final withChannel = await openGlobals(withChannel: true);
+
+        expect(
+          outsideStock(await ownNames(noChannel, windowExpr), stockWindow),
+          isEmpty,
+        );
+        expect(
+          outsideStock(await ownNames(noChannel, iframeExpr), stockIframe),
+          isEmpty,
+        );
+        expect(
+          outsideStock(
+            await ownNames(withChannel, windowExpr),
+            stockWindow,
+            allow: 'Bridge',
+          ),
+          isEmpty,
+        );
+        expect(
+          outsideStock(
+            await ownNames(withChannel, iframeExpr),
+            stockIframe,
+            allow: 'Bridge',
+          ),
+          isEmpty,
+        );
+
+        expect(await definesChannelsHelper(noChannel, windowExpr), isFalse);
+        expect(await definesChannelsHelper(noChannel, iframeExpr), isFalse);
+        expect(await definesChannelsHelper(withChannel, windowExpr), isFalse);
+        expect(await definesChannelsHelper(withChannel, iframeExpr), isFalse);
+      },
+    );
+
+    testWidgets('non-string values convert as String(value) does', (
+      WidgetTester tester,
+    ) async {
+      final pageFinished = Completer<void>();
+      final controller = WebViewController();
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setNavigationDelegate(
+        NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+      );
+
+      final messages = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        'Bridge',
+        onMessageReceived: messages.add,
+      );
+
+      await controller.loadRequest(Uri.parse(U('/sender/values.html')));
+      await tester.pumpWidget(WebViewWidget(controller: controller));
+      await pageFinished.future;
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      expect(messages.map((m) => m.message).toList(), <String>[
+        '42',
+        '[object Object]',
+        'null',
+      ]);
+    });
+
+    testWidgets('an empty message arrives with its sender', (
+      WidgetTester tester,
+    ) async {
+      final pageFinished = Completer<void>();
+      final controller = WebViewController();
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setNavigationDelegate(
+        NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+      );
+
+      final messages = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        'Bridge',
+        onMessageReceived: messages.add,
+      );
+
+      await controller.loadRequest(Uri.parse(U('/sender/empty.html')));
+      await tester.pumpWidget(WebViewWidget(controller: controller));
+      await pageFinished.future;
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      expect(messages.map((m) => m.message).toList(), <String>[
+        '',
+        'after-empty',
+      ]);
+      expect(messages.first.sourceUrl, U('/sender/empty.html'));
+      expect(messages.first.isMainFrame, isTrue);
+    });
+
+    testWidgets(
+      'non-ASCII and lone-surrogate text arrive without a GLib critical',
+      (WidgetTester tester) async {
+        final pageFinished = Completer<void>();
+        final controller = WebViewController();
+        await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+        await controller.setNavigationDelegate(
+          NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+        );
+
+        final messages = <JavaScriptMessage>[];
+        await controller.addJavaScriptChannel(
+          'Bridge',
+          onMessageReceived: messages.add,
+        );
+
+        await controller.loadRequest(Uri.parse(U('/sender/text.html')));
+        await tester.pumpWidget(WebViewWidget(controller: controller));
+        await pageFinished.future;
+        await Future<void>.delayed(const Duration(seconds: 3));
+
+        expect(
+          messages.map((m) => m.message).toList(),
+          anyOf(
+            equals(<String>['héllo 👋', 'after-surrogate']),
+            equals(<String>['héllo 👋', '�', 'after-surrogate']),
+          ),
+        );
+      },
+    );
+
+    testWidgets('a burst of 200 messages arrives complete and in order', (
+      WidgetTester tester,
+    ) async {
+      final pageFinished = Completer<void>();
+      final controller = WebViewController();
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setNavigationDelegate(
+        NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+      );
+
+      final messages = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        'Bridge',
+        onMessageReceived: messages.add,
+      );
+
+      await controller.loadRequest(Uri.parse(U('/sender/burst.html')));
+      await tester.pumpWidget(WebViewWidget(controller: controller));
+      await pageFinished.future;
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      expect(
+        messages.map((m) => m.message).toList(),
+        List<String>.generate(200, (int i) => '$i'),
+      );
+    });
+
+    testWidgets("a channel of one view stays out of another view's page", (
+      WidgetTester tester,
+    ) async {
+      final pageFinishedA = Completer<void>();
+      final controllerA = WebViewController();
+      await controllerA.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controllerA.setNavigationDelegate(
+        NavigationDelegate(onPageFinished: (_) => pageFinishedA.complete()),
+      );
+      await controllerA.addJavaScriptChannel(
+        'Bridge',
+        onMessageReceived: (_) {},
+      );
+
+      final pageFinishedB = Completer<void>();
+      final controllerB = WebViewController();
+      await controllerB.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controllerB.setNavigationDelegate(
+        NavigationDelegate(onPageFinished: (_) => pageFinishedB.complete()),
+      );
+
+      await controllerA.loadRequest(Uri.parse(U('/sender/globals.html')));
+      await controllerB.loadRequest(Uri.parse(U('/sender/globals.html')));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Column(
+            children: <Widget>[
+              Expanded(child: WebViewWidget(controller: controllerA)),
+              Expanded(child: WebViewWidget(controller: controllerB)),
+            ],
+          ),
+        ),
+      );
+
+      await pageFinishedA.future;
+      await pageFinishedB.future;
+
+      final typeofA =
+          await controllerA.runJavaScriptReturningResult('typeof window.Bridge')
+              as String;
+      final typeofB =
+          await controllerB.runJavaScriptReturningResult('typeof window.Bridge')
+              as String;
+
+      expect(typeofA, 'object');
+      expect(typeofB, 'undefined');
+    });
+
+    // Views run on the default context, the one clearAllWebsiteData clears.
+    testWidgets("clearAllWebsiteData clears a web view's storage through the "
+        'default context', (WidgetTester tester) async {
+      var pageFinished = Completer<void>();
+      final controller = WebViewController();
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setNavigationDelegate(
+        NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+      );
+
+      await controller.loadRequest(Uri.parse(U('/sender/top.html')));
+      await tester.pumpWidget(WebViewWidget(controller: controller));
+      await pageFinished.future;
+
+      await controller.runJavaScript("localStorage.setItem('probe', 'kept');");
+
+      await WebViewDataManager().clearAllWebsiteData();
+
+      pageFinished = Completer<void>();
+      await controller.reload();
+      await pageFinished.future;
+
+      String? item;
+      try {
+        item =
+            await controller.runJavaScriptReturningResult(
+                  "localStorage.getItem('probe');",
+                )
+                as String;
+      } on ArgumentError catch (exception) {
+        if (_usesDecodedJavaScriptResults() &&
+            exception.message.toString().toLowerCase().contains('null')) {
+          item = '<null>';
+        } else {
+          rethrow;
+        }
+      }
+      expect(item, _webViewNull());
+    });
+  }, skip: !Platform.isLinux);
 
   testWidgets('resize webview', (WidgetTester tester) async {
     final initialResizeCompleter = Completer<void>();
@@ -1736,6 +2573,222 @@ return {
     }
     expect(nullItem, _webViewNull());
   });
+}
+
+// Serves the pages the `channel sender` group loads under `/sender/`.
+// Writes and closes [request]'s response itself; the caller must not touch
+// it afterwards. Answers 404 for any path it does not recognize.
+Future<void> _serveSenderPage(HttpRequest request) async {
+  final String path = request.uri.path;
+  request.response.headers.contentType = ContentType.html;
+
+  if (path == '/sender/top.html') {
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<iframe src="/sender/frame.html"></iframe>
+<script>Bridge.postMessage('top');</script>
+</body>
+</html>
+''');
+  } else if (path == '/sender/frame.html') {
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+Bridge.postMessage('frame');
+try {
+  window.webkit.messageHandlers.Bridge.postMessage('direct');
+} catch (e) {}
+</script>
+</body>
+</html>
+''');
+  } else if (path == '/sender/cross-origin-host.html') {
+    final String frameUrl = const HtmlEscape(
+      HtmlEscapeMode.attribute,
+    ).convert(request.uri.queryParameters['frame'] ?? '');
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<iframe src="$frameUrl"></iframe>
+</body>
+</html>
+''');
+  } else if (path == '/sender/overwrite.html') {
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+var saved = Bridge.postMessage;
+try { Bridge.postMessage = function () {}; } catch (e) {}
+try { window.Bridge = {postMessage() {}}; } catch (e) {}
+try { delete window.Bridge; } catch (e) {}
+try {
+  Object.defineProperty(window, 'Bridge', {value: {postMessage() {}}});
+} catch (e) {}
+try {
+  window.webkit.messageHandlers.Bridge.postMessage('direct-top');
+} catch (e) {}
+Bridge.postMessage('after-overwrite');
+saved('saved');
+</script>
+</body>
+</html>
+''');
+  } else if (path == '/sender/alias.html') {
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+const Bridge = window.Bridge;
+Bridge.postMessage('alias');
+</script>
+</body>
+</html>
+''');
+  } else if (path == '/sender/sandboxed.html') {
+    request.response.headers.set(
+      'Content-Security-Policy',
+      'sandbox allow-scripts',
+    );
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<script>Bridge.postMessage('sandboxed');</script>
+</body>
+</html>
+''');
+  } else if (path == '/sender/sandbox-host.html') {
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<iframe sandbox="allow-scripts" src="/sender/sandboxed-frame.html"></iframe>
+</body>
+</html>
+''');
+  } else if (path == '/sender/sandboxed-frame.html') {
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<script>Bridge.postMessage('sandboxed-frame');</script>
+</body>
+</html>
+''');
+  } else if (path == '/sender/throws.html') {
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+try {
+  Bridge.postMessage({toString() { throw new Error('boom'); }});
+} catch (e) {}
+Bridge.postMessage('after-throw');
+</script>
+</body>
+</html>
+''');
+  } else if (path == '/sender/leaving.html' ||
+      path == '/sender/globals.html' ||
+      path == '/sender/start.html') {
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+</body>
+</html>
+''');
+  } else if (path == '/sender/slow.html') {
+    await Future<void>.delayed(const Duration(seconds: 2));
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+if (window.Bridge) Bridge.postMessage('arrived');
+</script>
+</body>
+</html>
+''');
+  } else if (path == '/sender/late.html') {
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+if (window.Late) Late.postMessage('late');
+</script>
+</body>
+</html>
+''');
+  } else if (path == '/sender/values.html') {
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+Bridge.postMessage(42);
+Bridge.postMessage({a: 1});
+Bridge.postMessage(null);
+</script>
+</body>
+</html>
+''');
+  } else if (path == '/sender/text.html') {
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+Bridge.postMessage('héllo 👋');
+Bridge.postMessage('\\uD800');
+Bridge.postMessage('after-surrogate');
+</script>
+</body>
+</html>
+''');
+  } else if (path == '/sender/burst.html') {
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+for (let i = 0; i < 200; i++) Bridge.postMessage(String(i));
+</script>
+</body>
+</html>
+''');
+  } else if (path == '/sender/empty.html') {
+    request.response.write('''
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+Bridge.postMessage('');
+Bridge.postMessage('after-empty');
+</script>
+</body>
+</html>
+''');
+  } else {
+    request.response.statusCode = HttpStatus.notFound;
+  }
+
+  try {
+    await request.response.close();
+  } on IOException {
+    // The client left first, for example a view torn down during
+    // slow.html's delay; that ends this response and fails no test.
+  }
 }
 
 // JavaScript `null` evaluate to different string values per platform.

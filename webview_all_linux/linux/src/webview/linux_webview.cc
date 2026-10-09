@@ -759,7 +759,6 @@ void destroy_linux_webview(gpointer data) {
   g_hash_table_destroy(webview->pending_script_dialogs);
   g_hash_table_destroy(webview->pending_tls_errors);
   g_hash_table_destroy(webview->pending_request_timeouts);
-  g_hash_table_destroy(webview->js_channel_signal_ids);
   g_hash_table_destroy(webview->js_channels);
   g_hash_table_destroy(webview->user_scripts);
   g_ptr_array_unref(webview->user_script_order);
@@ -776,6 +775,8 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
   g_object_ref_sink(webview->web_view);
   g_object_set_data(G_OBJECT(webview->web_view), kLinuxWebViewInstanceKey,
                     webview);
+  g_signal_connect(webview->web_view, "user-message-received",
+                   G_CALLBACK(user_message_received_cb), webview);
   webview->pending_nav_decisions =
       g_hash_table_new_full(g_direct_hash, g_direct_equal, nullptr,
                             destroy_pending_navigation_decision);
@@ -792,8 +793,6 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
       g_direct_hash, g_direct_equal, nullptr, destroy_pending_tls_error);
   webview->pending_request_timeouts =
       g_hash_table_new(g_direct_hash, g_direct_equal);
-  webview->js_channel_signal_ids =
-      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, nullptr);
   webview->js_channels =
       g_hash_table_new_full(g_str_hash, g_str_equal, g_free, nullptr);
   webview->user_scripts = g_hash_table_new_full(
