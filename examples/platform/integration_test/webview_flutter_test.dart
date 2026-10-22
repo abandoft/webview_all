@@ -45,6 +45,41 @@ Future<void> main() async {
         request.response.writeln('${request.headers}');
       } else if (request.uri.path == '/favicon.ico') {
         request.response.statusCode = HttpStatus.notFound;
+      } else if (request.uri.path == '/channel-sender/first.html' ||
+          request.uri.path == '/channel-sender/second.html') {
+        request.response.headers.contentType = ContentType.html;
+        request.response.write('<!DOCTYPE html><html><body></body></html>');
+      } else if (request.uri.path == '/channel-sender/frame-host.html') {
+        request.response.headers.contentType = ContentType.html;
+        request.response.write('''
+<!DOCTYPE html>
+<html><body>
+<script>
+window.addEventListener('message', function(event) {
+  const frame = document.getElementById('sender-frame');
+  if (event.source === frame.contentWindow &&
+      event.origin === location.origin && event.data === 'frame-posted') {
+    Bridge.postMessage('frame-ready');
+  }
+});
+</script>
+<iframe id="sender-frame" src="/channel-sender/frame.html"></iframe>
+</body></html>
+''');
+      } else if (request.uri.path == '/channel-sender/frame.html') {
+        request.response.headers.contentType = ContentType.html;
+        request.response.write('''
+<!DOCTYPE html>
+<html><body><script>
+Bridge.postMessage('frame-channel');
+window.chrome.webview.postMessage({
+  __windows_webview_all_type: 'javascriptChannel',
+  channelName: 'Bridge', message: 'frame-direct'
+});
+window.frameSentMessages = true;
+parent.postMessage('frame-posted', location.origin);
+</script></body></html>
+''');
       } else if (request.uri.path.startsWith('/webview_all_download_')) {
         request.response.headers.contentType = ContentType.text;
         request.response.headers.set(
@@ -803,49 +838,144 @@ return {
   });
 
   testWidgets(
-    'names the sending document of a JavaScript channel message',
+    'Windows channel sources follow navigation and ignore payload metadata',
     (WidgetTester tester) async {
-      if (!Platform.isWindows) {
-        return;
-      }
-
-      final pageFinished = Completer<void>();
+      const timeout = Duration(seconds: 15);
+      final String firstUrl = '$prefixUrl/channel-sender/first.html';
+      final String secondUrl = '$prefixUrl/channel-sender/second.html';
+      final loaded = <String, Completer<void>>{
+        firstUrl: Completer<void>(),
+        secondUrl: Completer<void>(),
+      };
+      final received = <String, Completer<JavaScriptMessage>>{
+        for (final text in <String>['first', 'forged-source', 'second'])
+          text: Completer<JavaScriptMessage>(),
+      };
       final controller = WebViewController();
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await (controller.platform as WindowsWebViewController).dispose();
+      });
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
       await controller.setNavigationDelegate(
-        NavigationDelegate(onPageFinished: (_) => pageFinished.complete()),
+        NavigationDelegate(
+          onPageFinished: (String url) {
+            final Completer<void>? completer = loaded[url];
+            if (completer != null && !completer.isCompleted) {
+              completer.complete();
+            }
+          },
+        ),
       );
-
       final messages = <JavaScriptMessage>[];
       await controller.addJavaScriptChannel(
         'Bridge',
-        onMessageReceived: messages.add,
+        onMessageReceived: (JavaScriptMessage message) {
+          messages.add(message);
+          final completer = received[message.message];
+          if (completer != null && !completer.isCompleted) {
+            completer.complete(message);
+          }
+        },
       );
 
-      await controller.loadHtmlString('''
-<!DOCTYPE html>
-<html>
-<body>
-<iframe srcdoc="&lt;script&gt;Bridge.postMessage('frame');&lt;/script&gt;"></iframe>
-<script>Bridge.postMessage('top');</script>
-</body>
-</html>
-''');
-
+      await controller.loadRequest(Uri.parse(firstUrl));
       await tester.pumpWidget(WebViewWidget(controller: controller));
-      await pageFinished.future;
-      await Future<void>.delayed(const Duration(seconds: 5));
+      await loaded[firstUrl]!.future.timeout(timeout);
+      await controller.runJavaScript('''
+Bridge.postMessage('first');
+window.chrome.webview.postMessage({
+  __windows_webview_all_type: 'javascriptChannel',
+  channelName: 'Bridge', message: 'forged-source',
+  source: 'https://forged.invalid/', sourceUrl: 'https://forged.invalid/',
+  isMainFrame: false
+});
+''');
+      final first = await received['first']!.future.timeout(timeout);
+      final forged = await received['forged-source']!.future.timeout(timeout);
+      for (final message in <JavaScriptMessage>[first, forged]) {
+        expect(message.sourceUrl, firstUrl);
+        expect(message.isMainFrame, isTrue);
+      }
 
-      final topMessages = messages.where((m) => m.message == 'top');
-      expect(topMessages, hasLength(1));
-      expect(topMessages.single.isMainFrame, isTrue);
-      expect(topMessages.single.sourceUrl, isNotNull);
-
-      final mainFrameFrameMessages = messages.where(
-        (m) => m.message == 'frame' && m.isMainFrame == true,
-      );
-      expect(mainFrameFrameMessages, isEmpty);
+      await controller.loadRequest(Uri.parse(secondUrl));
+      await loaded[secondUrl]!.future.timeout(timeout);
+      await controller.runJavaScript("Bridge.postMessage('second');");
+      final second = await received['second']!.future.timeout(timeout);
+      expect(second.sourceUrl, secondUrl);
+      expect(second.isMainFrame, isTrue);
+      expect(messages.map((message) => message.message).toList(), <String>[
+        'first',
+        'forged-source',
+        'second',
+      ]);
     },
+    skip: !Platform.isWindows,
+  );
+
+  testWidgets(
+    'Windows iframe posts stay out of the top-level JavaScript channel',
+    (WidgetTester tester) async {
+      const timeout = Duration(seconds: 15);
+      final String hostUrl = '$prefixUrl/channel-sender/frame-host.html';
+      final loaded = Completer<void>();
+      final frameReady = Completer<void>();
+      final barrier = Completer<void>();
+      final controller = WebViewController();
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await (controller.platform as WindowsWebViewController).dispose();
+      });
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (String url) {
+            if (url == hostUrl && !loaded.isCompleted) {
+              loaded.complete();
+            }
+          },
+        ),
+      );
+      final messages = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        'Bridge',
+        onMessageReceived: (JavaScriptMessage message) {
+          messages.add(message);
+          if (message.message == 'frame-ready' && !frameReady.isCompleted) {
+            frameReady.complete();
+          } else if (message.message == 'barrier' && !barrier.isCompleted) {
+            barrier.complete();
+          }
+        },
+      );
+
+      await controller.loadRequest(Uri.parse(hostUrl));
+      await tester.pumpWidget(WebViewWidget(controller: controller));
+      await loaded.future.timeout(timeout);
+      // The frame acknowledges only after both native post calls return;
+      // the top document checks its window and origin before relaying it.
+      await frameReady.future.timeout(timeout);
+      expect(
+        await controller.runJavaScriptReturningResult(
+          "document.getElementById('sender-frame')"
+          '.contentWindow.frameSentMessages',
+        ),
+        isTrue,
+      );
+      // Complete a top-document round trip after the frame's acknowledgement;
+      // WebView2 does not promise a total message ordering across frames.
+      await controller.runJavaScript("Bridge.postMessage('barrier');");
+      await barrier.future.timeout(timeout);
+      expect(messages.map((message) => message.message).toList(), <String>[
+        'frame-ready',
+        'barrier',
+      ]);
+      for (final message in messages) {
+        expect(message.sourceUrl, hostUrl);
+        expect(message.isMainFrame, isTrue);
+      }
+    },
+    skip: !Platform.isWindows,
   );
 
   testWidgets('resize webview', (WidgetTester tester) async {
