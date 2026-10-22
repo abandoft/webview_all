@@ -145,13 +145,12 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
           result.success(null);
           return;
         case 'WebView.loadData':
-          this.webViewApi.loadData(
+          this.finishPromise(result, this.webViewApi.loadData(
             call.argument('instanceId'),
             call.argument('data'),
             call.argument('mimeType'),
             call.argument('encoding')
-          );
-          result.success(null);
+          ));
           return;
         case 'WebView.loadDataWithBaseUrl':
           this.finishPromise(result, this.webViewApi.loadDataWithBaseUrl(
@@ -181,22 +180,24 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
           this.finishPromise(result, this.webViewApi.getUrl(call.argument('instanceId')));
           return;
         case 'WebView.canGoBack':
-          result.success(this.webViewApi.canGoBack(call.argument('instanceId')));
+          this.finishPromise(result, this.webViewApi.canGoBack(call.argument('instanceId')));
           return;
         case 'WebView.canGoForward':
-          result.success(this.webViewApi.canGoForward(call.argument('instanceId')));
+          this.finishPromise(result, this.webViewApi.canGoForward(call.argument('instanceId')));
           return;
         case 'WebView.goBack':
-          this.webViewApi.goBack(call.argument('instanceId'));
-          result.success(null);
+          this.finishPromise(result, this.webViewApi.goBack(call.argument('instanceId')));
           return;
         case 'WebView.goForward':
-          this.webViewApi.goForward(call.argument('instanceId'));
-          result.success(null);
+          this.finishPromise(result, this.webViewApi.goForward(call.argument('instanceId')));
           return;
         case 'WebView.reload':
-          this.webViewApi.reload(call.argument('instanceId'));
-          result.success(null);
+          this.finishPromise(result, this.webViewApi.reload(call.argument('instanceId')));
+          return;
+        case 'WebView.setDocumentStartScripts':
+          this.finishPromise(result, this.webViewApi.setDocumentStartScripts(
+            call.argument('instanceId'), call.argument('scripts')
+          ));
           return;
         case 'WebView.clearAllCache':
           this.webViewApi.clearAllCache(call.argument('includeDiskFiles'));
@@ -214,25 +215,23 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
           );
           return;
         case 'WebView.getTitle':
-          result.success(this.webViewApi.getTitle(call.argument('instanceId')));
+          this.finishPromise(result, this.webViewApi.getTitle(call.argument('instanceId')));
           return;
         case 'WebView.scrollTo':
-          this.webViewApi.scrollTo(call.argument('instanceId'), call.argument('x'), call.argument('y'));
-          result.success(null);
+          this.finishPromise(result, this.webViewApi.scrollTo(call.argument('instanceId'), call.argument('x'), call.argument('y')));
           return;
         case 'WebView.scrollBy':
-          this.webViewApi.scrollBy(call.argument('instanceId'), call.argument('x'), call.argument('y'));
-          result.success(null);
+          this.finishPromise(result, this.webViewApi.scrollBy(call.argument('instanceId'), call.argument('x'), call.argument('y')));
           return;
         case 'WebView.getScrollX':
-          result.success(this.webViewApi.getScrollX(call.argument('instanceId')));
+          this.finishPromise(result, this.webViewApi.getScrollX(call.argument('instanceId')));
           return;
         case 'WebView.getScrollY':
-          result.success(this.webViewApi.getScrollY(call.argument('instanceId')));
+          this.finishPromise(result, this.webViewApi.getScrollY(call.argument('instanceId')));
           return;
         case 'WebView.getScrollPosition': {
-          const point: WebViewPoint = this.webViewApi.getScrollPosition(call.argument('instanceId'));
-          result.success(point.toArray());
+          this.finishPromise(result, this.webViewApi.getScrollPosition(call.argument('instanceId'))
+            .then((point: WebViewPoint) => point.toArray()));
           return;
         }
         case 'WebView.setWebContentsDebuggingEnabled':
@@ -244,10 +243,11 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
           result.success(null);
           return;
         case 'WebView.addJavaScriptChannel':
-          this.finishPromise(result, this.webViewApi.addJavaScriptChannel(
+          this.webViewApi.addJavaScriptChannel(
             call.argument('instanceId'),
             call.argument('javaScriptChannelInstanceId')
-          ));
+          );
+          result.success(null);
           return;
         case 'WebView.removeJavaScriptChannel':
           this.webViewApi.removeJavaScriptChannel(
@@ -385,8 +385,7 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
         result.success(null);
         return;
       case 'WebSettings.setUserAgentString':
-        this.webSettingsApi.setUserAgentString(instanceId, value as string);
-        result.success(null);
+        this.finishPromise(result, this.webSettingsApi.setUserAgentString(instanceId, value as string | null));
         return;
       case 'WebSettings.setMediaPlaybackRequiresUserGesture':
         this.webSettingsApi.setMediaPlaybackRequiresUserGesture(instanceId, value as boolean);

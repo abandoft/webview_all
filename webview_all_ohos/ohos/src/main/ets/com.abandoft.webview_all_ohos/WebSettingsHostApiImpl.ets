@@ -1,7 +1,12 @@
 import { InstanceManager } from './InstanceManager';
 import { WebViewPlatformView } from './WebViewPlatformView';
+import { WebViewSettingsSnapshot } from './WebViewSettingsSnapshot';
 
 export interface WebSettings {
+  getSnapshot(): WebViewSettingsSnapshot;
+  onSettingsChanged(callback?: (snapshot: WebViewSettingsSnapshot) => void): void;
+  markApplied(revision: number): void;
+  waitUntilApplied(): Promise<void>;
   setDomStorageEnabled(flag: boolean): void;
   getDomStorageEnabled(): boolean;
   setJavaScriptCanOpenWindowsAutomatically(flag: boolean): void;
@@ -12,7 +17,7 @@ export interface WebSettings {
   getBackgroundColor(): string;
   setJavaScriptEnabled(flag: boolean): void;
   getJavaScriptEnabled(): boolean;
-  setUserAgentString(userAgentString: string): void;
+  setUserAgentString(userAgentString: string | null): Promise<void>;
   setMediaPlaybackRequiresUserGesture(require: boolean): void;
   getMediaPlaybackRequiresUserGesture(): boolean;
   setSupportZoom(support: boolean): void;
@@ -31,7 +36,7 @@ export interface WebSettings {
   setTextZoom(textZoom: number): void;
   getTextZoom(): number;
   getUserAgentString(): Promise<string>;
-  onTextZoomChanged(callback: (ratio: number) => void): void;
+  onTextZoomChanged(callback?: (ratio: number) => void): void;
   setAllowFullScreenRotate(enabled: boolean): void;
   getAllowFullScreenRotate(): boolean;
 }
@@ -76,8 +81,8 @@ export class WebSettingsHostApiImpl {
     this.settings(instanceId).setJavaScriptEnabled(flag);
   }
 
-  setUserAgentString(instanceId: number, userAgentString: string): void {
-    this.settings(instanceId).setUserAgentString(userAgentString);
+  setUserAgentString(instanceId: number, userAgentString: string | null): Promise<void> {
+    return this.settings(instanceId).setUserAgentString(userAgentString);
   }
 
   setMediaPlaybackRequiresUserGesture(instanceId: number, require: boolean): void {

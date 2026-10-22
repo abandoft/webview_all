@@ -6,6 +6,7 @@ import PlatformView, { Params } from '@ohos/flutter_ohos/src/main/ets/plugin/pla
 import Log from '@ohos/flutter_ohos/src/main/ets/util/Log';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { DownloadListener } from './DownloadListenerFlutterApiImpl';
+import { DocumentStartScriptState } from './DocumentStartScriptState';
 import { InstanceManager } from './InstanceManager';
 import { JavaScriptChannel } from './JavaScriptChannel';
 import { HttpAuthHandler, SslAuthHandler } from './OhosWebViewCallbackApiChannel';
@@ -89,9 +90,10 @@ export class WebViewPlatformView extends PlatformView {
   private dialogController: CustomDialogController | null = null;
   private scrollX: number = 0;
   private scrollY: number = 0;
-  private controllerAttached: boolean = false;
+  private readonly documentStartScripts: DocumentStartScriptState = new DocumentStartScriptState();
   private onDisposeCallback?: () => void;
   private rotation: number = 0;
+  private fullScreen: boolean = false;
   private visibleAreaEventEnable: boolean = true;
   private visibleAreaEventRatios: Array<number> = [0, 0.1, 0.2, 0.5, 0.8, 1];
   private visibleAreaEventExpectedUpdateInterval: number = 1;
@@ -107,7 +109,7 @@ export class WebViewPlatformView extends PlatformView {
   }
 
   onDownloadStart = (event: ESObject): void => {
-    if (this.downloadListener) {
+    if (!this.documentStartScripts.isDisposed() && this.downloadListener) {
       this.downloadListener.onDownloadStart(
         event.url,
         event.userAgent,
@@ -119,48 +121,62 @@ export class WebViewPlatformView extends PlatformView {
   }
 
   onPageBegin = (event: ESObject): void => {
-    if (this.webViewClient) {
+    if (this.documentStartScripts.isDisposed()) {
+      return;
+    }
+    this.setUrl(event.url);
+    if (!this.documentStartScripts.isDisposed() && this.webViewClient) {
       this.webViewClient.onPageStarted(this, event.url);
     }
   }
 
   onPageEnd = (event: ESObject): void => {
-    if (this.webViewClient) {
+    if (this.documentStartScripts.isDisposed()) {
+      return;
+    }
+    if (!this.documentStartScripts.isDisposed() && this.webViewClient) {
       this.webViewClient.onPageFinished(this, event.url);
     }
   }
 
   onErrorReceive = (event: ESObject): void => {
-    if (this.webViewClient) {
+    if (!this.documentStartScripts.isDisposed() && this.webViewClient) {
       this.webViewClient.onReceivedError(this, event.request, event.error);
     }
   }
 
   onHttpErrorReceive = (event: ESObject): void => {
-    if (this.webViewClient) {
+    if (!this.documentStartScripts.isDisposed() && this.webViewClient) {
       this.webViewClient.onReceivedHttpError(this, event.request, event.response);
     }
   }
 
   onOverrideUrlLoading = (request: WebResourceRequest): boolean => {
+    if (this.documentStartScripts.isDisposed()) {
+      return true;
+    }
     const requestUrl = request.getRequestUrl();
     if (requestUrl === 'loaded:///') {
       return true;
     }
-    if (this.webViewClient) {
+    if (!this.documentStartScripts.isDisposed() && this.webViewClient) {
       return this.webViewClient.shouldOverrideUrlLoading(this, request);
     }
     return false;
   }
 
   onRefreshAccessedHistory = (event: ESObject): void => {
-    if (this.webViewClient) {
+    if (this.documentStartScripts.isDisposed() || event.isMainFrame === false) {
+      return;
+    }
+    this.setUrl(event.url);
+    if (!this.documentStartScripts.isDisposed() && this.webViewClient) {
       this.webViewClient.doUpdateVisitedHistory(this, event.url, event.isRefreshed);
     }
   }
 
   onHttpAuthRequest = (event: ESObject): boolean => {
-    if (this.webViewClient) {
+    if (!this.documentStartScripts.isDisposed() && this.webViewClient) {
       this.webViewClient.onReceivedHttpAuthRequest(
         this,
         new OhosHttpAuthHandler(event.handler),
@@ -174,7 +190,7 @@ export class WebViewPlatformView extends PlatformView {
 
   onSslErrorEventReceive = (event: ESObject): void => {
     const handler = new OhosSslAuthHandler(event.handler as ESObject);
-    if (this.webViewClient) {
+    if (!this.documentStartScripts.isDisposed() && this.webViewClient) {
       const error: ESObject = event.error as ESObject;
       const url: string = (event.url as string) ?? this.url;
       const errorCode: number = (event.errorCode as number) ?? (error?.getErrorCode?.() as number) ?? 0;
@@ -195,38 +211,45 @@ export class WebViewPlatformView extends PlatformView {
   }
 
   onProgressChange = (event: ESObject): void => {
-    if (this.webChromeClient) {
+    if (!this.documentStartScripts.isDisposed() && this.webChromeClient) {
       this.webChromeClient.onProgressChanged(this, event.newProgress);
     }
   }
 
   onGeolocationShow = (event: ESObject): void => {
-    if (this.webChromeClient) {
+    if (!this.documentStartScripts.isDisposed() && this.webChromeClient) {
       this.webChromeClient.onGeolocationPermissionsShowPrompt(event.origin, event.geolocation);
+    } else {
+      event.geolocation.invoke(event.origin, false, false);
     }
   }
 
   onGeolocationHide = (): void => {
-    if (this.webChromeClient) {
+    if (!this.documentStartScripts.isDisposed() && this.webChromeClient) {
       this.webChromeClient.onGeolocationPermissionsHidePrompt();
     }
   }
 
   onShowFileSelector = (event: ESObject): boolean => {
-    if (this.webChromeClient) {
+    if (!this.documentStartScripts.isDisposed() && this.webChromeClient) {
       return this.webChromeClient.onShowFileChooser(this, event.result, event.fileSelector);
     }
     return false;
   }
 
   onPermissionRequest = (event: ESObject): void => {
-    if (this.webChromeClient) {
+    if (!this.documentStartScripts.isDisposed() && this.webChromeClient) {
       this.webChromeClient.onPermissionRequest(event.request);
+    } else {
+      event.request.deny();
     }
   }
 
   onConsoleMessage = (event: ESObject): boolean => {
-    if (this.webChromeClient) {
+    if (this.documentStartScripts.isDisposed()) {
+      return false;
+    }
+    if (!this.documentStartScripts.isDisposed() && this.webChromeClient) {
       this.webChromeClient.onConsoleMessage(event.message);
       return true;
     }
@@ -236,19 +259,25 @@ export class WebViewPlatformView extends PlatformView {
   }
 
   onWindowNew = (event: ESObject): void => {
-    if (this.webChromeClient) {
+    if (!this.documentStartScripts.isDisposed() && this.webChromeClient) {
       this.webChromeClient.onCreateWindow(this, event.isAlert, event.isUserTrigger, event.handler);
+    } else {
+      event.handler.setWebController(null);
     }
   }
 
   onWindowExit = (): void => {
-    if (this.dialogController) {
-      this.dialogController.close();
-      this.dialogController = null;
+    const dialog = this.dialogController;
+    this.dialogController = null;
+    if (dialog) {
+      dialog.close();
     }
   }
 
   onScroll = (event: ESObject): void => {
+    if (this.documentStartScripts.isDisposed()) {
+      return;
+    }
     const oldX = this.scrollX;
     const oldY = this.scrollY;
     this.scrollX = event.xOffset;
@@ -257,51 +286,66 @@ export class WebViewPlatformView extends PlatformView {
   }
 
   onControllerAttached = (): void => {
-    this.controllerAttached = true;
-    if (this.userAgentString.length > 0) {
-      this.setCustomUserAgent(this.userAgentString);
-      this.controller.refresh();
+    if (this.documentStartScripts.isDisposed()) {
+      return;
     }
-    this.reRegisterJavaScriptChannels();
+    try {
+      if (this.userAgentString.length > 0) {
+        this.setCustomUserAgent(this.userAgentString);
+      }
+      this.reRegisterJavaScriptChannels();
+      this.documentStartScripts.markControllerAttached();
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      this.documentStartScripts.failAttachment(failure);
+      Log.e(TAG, 'Failed to initialize attached WebView: ' + failure.message);
+    }
   }
 
   onJsAlert = (event: ESObject): boolean => {
-    if (this.webChromeClient && event) {
+    if (!this.documentStartScripts.isDisposed() && this.webChromeClient && event) {
       return this.webChromeClient.onJsAlert(this, event.url, event.message, event.result);
     }
-    return true;
+    return false;
   }
 
   onJsConfirm = (event: ESObject): boolean => {
-    if (this.webChromeClient && event) {
+    if (!this.documentStartScripts.isDisposed() && this.webChromeClient && event) {
       return this.webChromeClient.onJsConfirm(this, event.url, event.message, event.result);
     }
-    return true;
+    return false;
   }
 
   onJsPrompt = (event: ESObject): boolean => {
-    if (this.webChromeClient && event) {
+    if (!this.documentStartScripts.isDisposed() && this.webChromeClient && event) {
       return this.webChromeClient.onJsPrompt(this, event.url, event.message, event.value, event.result);
     }
-    return true;
+    return false;
   }
 
   onFullScreenEnter = (_event: ESObject): void => {
+    if (this.documentStartScripts.isDisposed()) {
+      return;
+    }
     const context = getContext(this) as common.UIAbilityContext;
     const windowClass = context.windowStage.getMainWindowSync();
     windowClass.setWindowSystemBarEnable([]);
     this.rotation = windowClass.getPreferredOrientation();
+    this.fullScreen = true;
     if (this.getWebSettings().getAllowFullScreenRotate()) {
       windowClass.setPreferredOrientation(window.Orientation.LANDSCAPE);
     }
   }
 
   onFullScreenExit = (): void => {
+    if (!this.fullScreen) {
+      return;
+    }
+    this.fullScreen = false;
     const context = getContext(this) as common.UIAbilityContext;
     const windowClass = context.windowStage.getMainWindowSync();
     windowClass.setWindowSystemBarEnable(['status', 'navigation']);
     windowClass.setPreferredOrientation(this.rotation);
-    this.reRegisterJavaScriptChannels();
   }
 
   aboutToAppear(): void {
@@ -310,6 +354,7 @@ export class WebViewPlatformView extends PlatformView {
 
   aboutToDisappear(): void {
     this.isWebviewBinding = false;
+    this.documentStartScripts.detach();
   }
 
   getType(): string {
@@ -321,17 +366,56 @@ export class WebViewPlatformView extends PlatformView {
   }
 
   dispose(): void {
-    this.controller.stopAllMedia();
-    if (this.onDisposeCallback) {
-      this.onDisposeCallback();
+    if (this.documentStartScripts.isDisposed()) {
+      return;
+    }
+    const attached = this.documentStartScripts.isControllerAttached();
+    this.documentStartScripts.dispose();
+    this.isWebviewBinding = false;
+    this.webSettings?.onSettingsChanged(undefined);
+    try {
+      this.onWindowExit();
+    } catch (error) {
+      Log.e(TAG, 'Failed to close popup while disposing WebView: ' + error);
+    }
+    try {
+      this.onFullScreenExit();
+    } catch (error) {
+      Log.e(TAG, 'Failed to restore fullscreen state: ' + error);
+    }
+    if (attached) {
+      try {
+        this.controller.stopAllMedia();
+      } catch (error) {
+        Log.e(TAG, 'Failed to stop media while disposing WebView: ' + error);
+      }
+    }
+    const disposeCallback = this.onDisposeCallback;
+    this.onDisposeCallback = undefined;
+    this.javaScriptChannels.clear();
+    this.webChromeClient = null;
+    this.webViewClient = null;
+    this.downloadListener = null;
+    if (disposeCallback) {
+      try {
+        disposeCallback();
+      } catch (error) {
+        Log.e(TAG, 'Failed to update disposed WebView component: ' + error);
+      }
     }
   }
 
   onInactive(): void {
+    if (!this.documentStartScripts.isControllerAttached() || this.documentStartScripts.isDisposed()) {
+      return;
+    }
     this.controller.onInactive();
   }
 
   onActive(): void {
+    if (!this.documentStartScripts.isControllerAttached() || this.documentStartScripts.isDisposed()) {
+      return;
+    }
     this.controller.onActive();
   }
 
@@ -362,11 +446,11 @@ export class WebViewPlatformView extends PlatformView {
   }
 
   setCustomUserAgent(userAgentString: string): void {
-    this.userAgentString = userAgentString;
     this.controller.setCustomUserAgent(userAgentString);
+    this.userAgentString = userAgentString;
   }
 
-  setOnDisposeCallback(callback: () => void): void {
+  setOnDisposeCallback(callback?: () => void): void {
     this.onDisposeCallback = callback;
   }
 
@@ -414,28 +498,39 @@ export class WebViewPlatformView extends PlatformView {
   }
 
   async waitControllerAttached(): Promise<void> {
-    if (this.controllerAttached) {
-      return;
+    await this.documentStartScripts.waitUntilReady();
+    await this.getWebSettings().waitUntilApplied();
+    this.ensureNotDisposed();
+  }
+
+  ensureNotDisposed(): void {
+    if (this.documentStartScripts.isDisposed()) {
+      throw new Error('The WebView has been disposed.');
     }
-    await new Promise<void>((resolve, reject) => {
-      try {
-        const intervalId = setInterval(() => {
-          if (this.controllerAttached) {
-            clearInterval(intervalId);
-            resolve();
-          }
-        }, 20);
-      } catch (err) {
-        reject(err);
-      }
-    });
+  }
+
+  getDocumentStartScriptState(): DocumentStartScriptState {
+    return this.documentStartScripts;
+  }
+
+  setDocumentStartScripts(scripts: Array<string>): Promise<void> {
+    return this.documentStartScripts.setScripts(scripts);
   }
 
   addJavaScriptChannel(channel: JavaScriptChannel): void {
+    this.ensureNotDisposed();
+    if (this.documentStartScripts.isControllerAttached()) {
+      this.controller.registerJavaScriptProxy(
+        channel.createJavaScriptProxy(this.controller), channel.getJavaScriptChannelName(), ['postMessage']);
+    }
     this.javaScriptChannels.set(channel.getJavaScriptChannelName(), channel);
   }
 
   removeJavaScriptChannel(channelName: string): void {
+    this.ensureNotDisposed();
+    if (this.documentStartScripts.isControllerAttached() && this.javaScriptChannels.has(channelName)) {
+      this.controller.deleteJavaScriptRegister(channelName);
+    }
     this.javaScriptChannels.delete(channelName);
   }
 
@@ -443,17 +538,12 @@ export class WebViewPlatformView extends PlatformView {
     if (this.javaScriptChannels.size === 0) {
       return;
     }
-    try {
-      this.javaScriptChannels.forEach((channel: JavaScriptChannel, channelName: string) => {
+    this.javaScriptChannels.forEach((channel: JavaScriptChannel, channelName: string) => {
         this.controller.registerJavaScriptProxy(
           channel.createJavaScriptProxy(this.controller),
           channelName,
           ['postMessage']
         );
-      });
-      this.controller.refresh();
-    } catch (err) {
-      Log.e(TAG, 'Failed to re-register JavaScript channels: ' + err);
-    }
+    });
   }
 }

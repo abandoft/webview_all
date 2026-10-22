@@ -1,6 +1,8 @@
 import web_webview from '@ohos.web.webview';
 import PlatformView from '@ohos/flutter_ohos/src/main/ets/plugin/platform/PlatformView';
 import { WebViewPlatformView } from './WebViewPlatformView';
+import { DocumentStartScriptSnapshot, DocumentStartScriptState } from './DocumentStartScriptState';
+import { WebViewSettingsSnapshot } from './WebViewSettingsSnapshot';
 
 @Observed
 export declare class Params {
@@ -14,18 +16,24 @@ export struct OhosWebView {
 
   webView: WebViewPlatformView = this.params.platformView as WebViewPlatformView;
   controller: web_webview.WebviewController = this.webView.getController();
+  scriptState: DocumentStartScriptState = this.webView.getDocumentStartScriptState();
 
-  @State textZoomRatio: number = this.webView.getWebSettings().getTextZoom();
-  @State mixedContentMode: MixedMode = this.webView.getWebSettings().getMixedContentMode();
+  @State settings: WebViewSettingsSnapshot = this.webView.getWebSettings().getSnapshot();
   @State disposed: boolean = false;
+  @State documentStartScripts: DocumentStartScriptSnapshot = this.scriptState.getSnapshot();
 
   aboutToAppear(): void {
-    this.mixedContentMode = this.webView.getWebSettings().getMixedContentMode();
-    this.webView.getWebSettings().onMixedContentModeChanged((mode: MixedMode) => {
-      this.mixedContentMode = mode;
+    this.disposed = this.scriptState.isDisposed();
+    if (this.disposed) {
+      return;
+    }
+    this.webView.aboutToAppear();
+    this.scriptState.subscribe((snapshot: DocumentStartScriptSnapshot) => {
+      this.documentStartScripts = snapshot;
     });
-    this.webView.getWebSettings().onTextZoomChanged((ratio: number) => {
-      this.textZoomRatio = ratio;
+    this.settings = this.webView.getWebSettings().getSnapshot();
+    this.webView.getWebSettings().onSettingsChanged((snapshot: WebViewSettingsSnapshot) => {
+      this.settings = snapshot;
     });
     this.webView.setOnDisposeCallback(() => {
       this.disposed = true;
@@ -33,27 +41,51 @@ export struct OhosWebView {
   }
 
   aboutToDisappear(): void {
+    this.webView.aboutToDisappear();
+    this.webView.getWebSettings().onSettingsChanged(undefined);
     this.webView.getWebSettings().onMixedContentModeChanged(undefined);
+    this.webView.getWebSettings().onTextZoomChanged(undefined);
+    this.webView.setOnDisposeCallback(undefined);
+  }
+
+  private documentStartScriptsForBuild(): Array<ScriptItem> {
+    const snapshot = this.documentStartScripts;
+    const generation = this.scriptState.getGeneration();
+    const settingsRevision = this.settings.revision;
+    // This argument is evaluated immediately before the synchronous native
+    // modifier below. The microtask runs after that modifier chain completes.
+    Promise.resolve().then(() => {
+      if (generation !== this.scriptState.getGeneration() || this.scriptState.isDisposed()) {
+        return;
+      }
+      this.scriptState.markApplied(snapshot.revision, generation);
+      this.webView.getWebSettings().markApplied(settingsRevision);
+    });
+    return snapshot.sources.map((source: string): ScriptItem => {
+      return { script: source, scriptRules: ['*'] };
+    });
   }
 
   build() {
     Column() {
       if (!this.disposed) {
         Web({ src: this.webView.getUrl(), controller: this.controller })
+          .runJavaScriptOnDocumentStart(this.documentStartScriptsForBuild())
           .keyboardAvoidMode(WebKeyboardAvoidMode.RESIZE_VISUAL)
-          .backgroundColor(this.webView.getWebSettings().getBackgroundColor())
-          .domStorageAccess(this.webView.getWebSettings().getDomStorageEnabled())
-          .allowWindowOpenMethod(this.webView.getWebSettings().getJavaScriptCanOpenWindowsAutomatically())
+          .backgroundColor(this.settings.backgroundColor)
+          .domStorageAccess(this.settings.domStorageEnabled)
+          .allowWindowOpenMethod(this.settings.javaScriptCanOpenWindowsAutomatically)
           .multiWindowAccess(false)
-          .javaScriptAccess(this.webView.getWebSettings().getJavaScriptEnabled())
-          .mediaPlayGestureAccess(this.webView.getWebSettings().getMediaPlaybackRequiresUserGesture())
-          .zoomAccess(this.webView.getWebSettings().getSupportZoom())
-          .overviewModeAccess(this.webView.getWebSettings().getLoadWithOverviewMode())
-          .wideViewModeAccess(this.webView.getWebSettings().getUseWideViewPort())
-          .metaViewport(this.webView.getWebSettings().getUseWideViewPort())
-          .fileAccess(this.webView.getWebSettings().getAllowFileAccess())
-          .textZoomRatio(this.textZoomRatio)
-          .mixedMode(this.mixedContentMode)
+          .javaScriptAccess(this.settings.javaScriptEnabled)
+          .mediaPlayGestureAccess(this.settings.mediaPlaybackRequiresUserGesture)
+          .zoomAccess(this.settings.supportZoom)
+          .zoomControlAccess(this.settings.supportZoom)
+          .overviewModeAccess(this.settings.loadWithOverviewMode)
+          .wideViewModeAccess(this.settings.useWideViewPort)
+          .metaViewport(this.settings.useWideViewPort)
+          .fileAccess(this.settings.allowFileAccess)
+          .textZoomRatio(this.settings.textZoom)
+          .mixedMode(this.settings.mixedContentMode)
           .onControllerAttached(this.webView.onControllerAttached)
           .onDownloadStart(this.webView.onDownloadStart)
           .onPageBegin(this.webView.onPageBegin)

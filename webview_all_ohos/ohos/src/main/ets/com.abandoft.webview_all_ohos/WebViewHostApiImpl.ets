@@ -60,8 +60,9 @@ export class WebViewHostApiImpl {
     this.instanceManager.addDartCreatedInstance(webView, instanceId);
   }
 
-  loadData(instanceId: number, data: string, mimeType: string, encoding: string): void {
+  async loadData(instanceId: number, data: string, mimeType: string, encoding: string): Promise<void> {
     const webView = this.webView(instanceId);
+    await webView.waitControllerAttached();
     webView.getController().loadData(data, mimeType, encoding, ' ', ' ');
   }
 
@@ -107,7 +108,10 @@ export class WebViewHostApiImpl {
     const webView = this.webView(instanceId);
     await webView.waitControllerAttached();
     try {
-      webView.getController().postUrl(url, data.buffer);
+      // A codec may return a view into a larger message buffer.
+      const body = new ArrayBuffer(data.byteLength);
+      new Uint8Array(body).set(data);
+      webView.getController().postUrl(url, body);
     } catch (err) {
       Log.e(TAG, 'postUrl failed: ' + err);
       throw new Error(String(err));
@@ -120,33 +124,43 @@ export class WebViewHostApiImpl {
     return webView.getController().getUrl();
   }
 
-  canGoBack(instanceId: number): boolean {
-    return this.webView(instanceId).getController().accessBackward();
+  async canGoBack(instanceId: number): Promise<boolean> {
+    const webView = this.webView(instanceId);
+    await webView.waitControllerAttached();
+    return webView.getController().accessBackward();
   }
 
-  canGoForward(instanceId: number): boolean {
-    return this.webView(instanceId).getController().accessForward();
+  async canGoForward(instanceId: number): Promise<boolean> {
+    const webView = this.webView(instanceId);
+    await webView.waitControllerAttached();
+    return webView.getController().accessForward();
   }
 
-  goBack(instanceId: number): void {
-    this.webView(instanceId).getController().backward();
+  async goBack(instanceId: number): Promise<void> {
+    const webView = this.webView(instanceId);
+    await webView.waitControllerAttached();
+    webView.getController().backward();
   }
 
-  goForward(instanceId: number): void {
-    this.webView(instanceId).getController().forward();
+  async goForward(instanceId: number): Promise<void> {
+    const webView = this.webView(instanceId);
+    await webView.waitControllerAttached();
+    webView.getController().forward();
   }
 
-  reload(instanceId: number): void {
-    this.webView(instanceId).getController().refresh();
+  async reload(instanceId: number): Promise<void> {
+    const webView = this.webView(instanceId);
+    await webView.waitControllerAttached();
+    webView.getController().refresh();
+  }
+
+  setDocumentStartScripts(instanceId: number, scripts: Array<string>): Promise<void> {
+    return this.webView(instanceId).setDocumentStartScripts(scripts);
   }
 
   clearCache(instanceId: number, includeDiskFiles: boolean): void {
-    const webView = this.webView(instanceId);
-    webView.waitControllerAttached().then(() => {
-      webView.getController().removeCache(includeDiskFiles);
-    }).catch((err: Error) => {
-      Log.e(TAG, 'clearCache failed: ' + err.message);
-    });
+    this.webView(instanceId).ensureNotDisposed();
+    this.clearAllCache(includeDiskFiles);
   }
 
   clearAllCache(includeDiskFiles: boolean): void {
@@ -156,48 +170,58 @@ export class WebViewHostApiImpl {
 
   evaluateJavascript(instanceId: number, javascriptString: string, result: Result<string>): void {
     const webView = this.webView(instanceId);
-    webView.getController().runJavaScript(javascriptString).then((scriptResult: string) => {
+    webView.waitControllerAttached().then(() =>
+      webView.getController().runJavaScript(javascriptString)
+    ).then((scriptResult: string) => {
       result.success(scriptResult);
     }).catch((error: Error) => {
       result.error(error);
     });
   }
 
-  getTitle(instanceId: number): string {
-    return this.webView(instanceId).getController().getTitle();
-  }
-
-  scrollTo(instanceId: number, x: number, y: number): void {
+  async getTitle(instanceId: number): Promise<string> {
     const webView = this.webView(instanceId);
-    webView.waitControllerAttached().then(() => {
-      webView.getController().scrollTo(x, y);
-      webView.setScrollPosition(x, y);
-    });
+    await webView.waitControllerAttached();
+    return webView.getController().getTitle();
   }
 
-  scrollBy(instanceId: number, x: number, y: number): void {
+  async scrollTo(instanceId: number, x: number, y: number): Promise<void> {
     const webView = this.webView(instanceId);
-    webView.waitControllerAttached().then(() => {
-      const nextX = webView.getScrollX() + x;
-      const nextY = webView.getScrollY() + y;
-      webView.getController().scrollBy(x, y);
-      webView.setScrollPosition(nextX, nextY);
-    });
+    await webView.waitControllerAttached();
+    webView.getController().scrollTo(x, y);
   }
 
-  getScrollX(instanceId: number): number {
-    return this.webView(instanceId).getScrollX();
-  }
-
-  getScrollY(instanceId: number): number {
-    return this.webView(instanceId).getScrollY();
-  }
-
-  getScrollPosition(instanceId: number): WebViewPoint {
+  async scrollBy(instanceId: number, x: number, y: number): Promise<void> {
     const webView = this.webView(instanceId);
+    await webView.waitControllerAttached();
+    webView.getController().scrollBy(x, y);
+  }
+
+  async getScrollX(instanceId: number): Promise<number> {
+    return (await this.getScrollPosition(instanceId)).getX();
+  }
+
+  async getScrollY(instanceId: number): Promise<number> {
+    return (await this.getScrollPosition(instanceId)).getY();
+  }
+
+  async getScrollPosition(instanceId: number): Promise<WebViewPoint> {
+    const webView = this.webView(instanceId);
+    await webView.waitControllerAttached();
+    const controller = webView.getController();
+    let offset: web_webview.ScrollOffset;
+    try {
+      offset = controller.getPageOffset();
+    } catch (error) {
+      if ((error as ESObject).code !== 801) {
+        throw error as Error;
+      }
+      // Some devices lack getPageOffset despite meeting the SDK baseline.
+      offset = controller.getScrollOffset();
+    }
     return WebViewPoint.Builder()
-      .setX(webView.getScrollX())
-      .setY(webView.getScrollY())
+      .setX(Math.trunc(offset.x))
+      .setY(Math.trunc(offset.y))
       .build();
   }
 
@@ -209,21 +233,10 @@ export class WebViewHostApiImpl {
     this.webView(instanceId).setWebViewClient(this.instanceManager.getInstance<WebViewClient>(webViewClientInstanceId));
   }
 
-  async addJavaScriptChannel(instanceId: number, javaScriptChannelInstanceId: number): Promise<void> {
+  addJavaScriptChannel(instanceId: number, javaScriptChannelInstanceId: number): void {
     const webView = this.webView(instanceId);
     const channel = this.instanceManager.getInstance<JavaScriptChannel>(javaScriptChannelInstanceId);
-    await webView.waitControllerAttached();
-    try {
-      webView.addJavaScriptChannel(channel);
-      webView.getController().registerJavaScriptProxy(
-        channel.createJavaScriptProxy(webView.getController()),
-        channel.getJavaScriptChannelName(),
-        ['postMessage']
-      );
-      webView.getController().refresh();
-    } catch (err) {
-      Log.e(TAG, 'addJavaScriptChannel failed: ' + err);
-    }
+    webView.addJavaScriptChannel(channel);
   }
 
   removeJavaScriptChannel(instanceId: number, javaScriptChannelInstanceId: number): void {
@@ -231,7 +244,6 @@ export class WebViewHostApiImpl {
     const channel = this.instanceManager.getInstance<JavaScriptChannel>(javaScriptChannelInstanceId);
     const channelName = channel.getJavaScriptChannelName();
     webView.removeJavaScriptChannel(channelName);
-    webView.getController().deleteJavaScriptRegister(channelName);
     this.instanceManager.release(javaScriptChannelInstanceId);
   }
 

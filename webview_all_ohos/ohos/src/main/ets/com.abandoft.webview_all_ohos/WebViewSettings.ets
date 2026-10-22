@@ -1,6 +1,13 @@
 import web_webview from '@ohos.web.webview';
 import { WebSettings } from './WebSettingsHostApiImpl';
 import { WebViewPlatformView } from './WebViewPlatformView';
+import { WebViewSettingsSnapshot } from './WebViewSettingsSnapshot';
+
+interface SettingsAppliedWaiter {
+  revision: number;
+  resolve: () => void;
+  reject: (error: Error) => void;
+}
 
 export class WebViewSettings implements WebSettings {
   private readonly webView: WebViewPlatformView;
@@ -17,16 +24,81 @@ export class WebViewSettings implements WebSettings {
   private fileAccessEnabled: boolean = true;
   private mixedContentMode: MixedMode = MixedMode.None;
   private mixedContentModeCallback?: (mode: MixedMode) => void;
-  private textZoomRatio: number = 0;
+  private textZoomRatio: number = 100;
   private textZoomCallback?: (ratio: number) => void;
   private fullScreenRotateEnabled: boolean = false;
+  private settingsChangedCallback?: (snapshot: WebViewSettingsSnapshot) => void;
+  private revision: number = 0;
+  private appliedRevision: number = -1;
+  private appliedWaiters: Array<SettingsAppliedWaiter> = [];
 
   constructor(webView: WebViewPlatformView) {
     this.webView = webView;
   }
 
+  getSnapshot(): WebViewSettingsSnapshot {
+    const snapshot = new WebViewSettingsSnapshot();
+    snapshot.revision = this.revision;
+    snapshot.backgroundColor = this.backgroundColor;
+    snapshot.domStorageEnabled = this.domStorageEnabled;
+    snapshot.javaScriptCanOpenWindowsAutomatically = this.javaScriptCanOpenWindows;
+    snapshot.supportMultipleWindows = this.multipleWindowsEnabled;
+    snapshot.javaScriptEnabled = this.javaScriptEnabled;
+    snapshot.mediaPlaybackRequiresUserGesture = this.mediaRequiresUserGesture;
+    snapshot.supportZoom = this.zoomEnabled;
+    snapshot.loadWithOverviewMode = this.overviewModeEnabled;
+    snapshot.useWideViewPort = this.wideViewportEnabled;
+    snapshot.allowFileAccess = this.fileAccessEnabled;
+    snapshot.mixedContentMode = this.mixedContentMode;
+    snapshot.textZoom = this.textZoomRatio;
+    return snapshot;
+  }
+
+  onSettingsChanged(callback?: (snapshot: WebViewSettingsSnapshot) => void): void {
+    this.settingsChangedCallback = callback;
+    if (callback == null) {
+      this.appliedRevision = -1;
+      const waiters = this.appliedWaiters;
+      this.appliedWaiters = [];
+      for (const waiter of waiters) {
+        waiter.reject(new Error('WebView settings detached before they were applied.'));
+      }
+    }
+  }
+
+  markApplied(revision: number): void {
+    if (this.settingsChangedCallback == null || revision > this.revision || revision < this.appliedRevision) {
+      return;
+    }
+    this.appliedRevision = revision;
+    const pending: Array<SettingsAppliedWaiter> = [];
+    for (const waiter of this.appliedWaiters) {
+      if (waiter.revision <= revision) {
+        waiter.resolve();
+      } else {
+        pending.push(waiter);
+      }
+    }
+    this.appliedWaiters = pending;
+  }
+
+  async waitUntilApplied(): Promise<void> {
+    if (this.settingsChangedCallback == null || this.appliedRevision >= this.revision) {
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      this.appliedWaiters.push({ revision: this.revision, resolve: resolve, reject: reject });
+    });
+  }
+
+  private notifySettingsChanged(): void {
+    this.revision++;
+    this.settingsChangedCallback?.(this.getSnapshot());
+  }
+
   setDomStorageEnabled(flag: boolean): void {
     this.domStorageEnabled = flag;
+    this.notifySettingsChanged();
   }
 
   getDomStorageEnabled(): boolean {
@@ -35,6 +107,7 @@ export class WebViewSettings implements WebSettings {
 
   setJavaScriptCanOpenWindowsAutomatically(flag: boolean): void {
     this.javaScriptCanOpenWindows = flag;
+    this.notifySettingsChanged();
   }
 
   getJavaScriptCanOpenWindowsAutomatically(): boolean {
@@ -43,6 +116,7 @@ export class WebViewSettings implements WebSettings {
 
   setSupportMultipleWindows(support: boolean): void {
     this.multipleWindowsEnabled = support;
+    this.notifySettingsChanged();
   }
 
   getSupportMultipleWindows(): boolean {
@@ -51,6 +125,7 @@ export class WebViewSettings implements WebSettings {
 
   setBackgroundColor(color: number): void {
     this.backgroundColor = '#' + color.toString(16).padStart(8, '0');
+    this.notifySettingsChanged();
   }
 
   getBackgroundColor(): string {
@@ -59,20 +134,28 @@ export class WebViewSettings implements WebSettings {
 
   setJavaScriptEnabled(flag: boolean): void {
     this.javaScriptEnabled = flag;
+    this.notifySettingsChanged();
   }
 
   getJavaScriptEnabled(): boolean {
     return this.javaScriptEnabled;
   }
 
-  async setUserAgentString(userAgentString: string): Promise<void> {
+  async setUserAgentString(userAgentString: string | null): Promise<void> {
+    this.webView.ensureNotDisposed();
+    const userAgent = userAgentString ?? '';
+    if (!this.webView.isWebviewBinding) {
+      // Settings can be configured before the platform view is mounted.
+      this.webView.userAgentString = userAgent;
+      return;
+    }
     await this.webView.waitControllerAttached();
-    this.webView.setCustomUserAgent(userAgentString);
-    this.webView.getController().loadUrl(this.webView.getUrl());
+    this.webView.setCustomUserAgent(userAgent);
   }
 
   setMediaPlaybackRequiresUserGesture(require: boolean): void {
     this.mediaRequiresUserGesture = require;
+    this.notifySettingsChanged();
   }
 
   getMediaPlaybackRequiresUserGesture(): boolean {
@@ -81,6 +164,7 @@ export class WebViewSettings implements WebSettings {
 
   setSupportZoom(support: boolean): void {
     this.zoomEnabled = support;
+    this.notifySettingsChanged();
   }
 
   getSupportZoom(): boolean {
@@ -89,6 +173,7 @@ export class WebViewSettings implements WebSettings {
 
   setLoadWithOverviewMode(overview: boolean): void {
     this.overviewModeEnabled = overview;
+    this.notifySettingsChanged();
   }
 
   getLoadWithOverviewMode(): boolean {
@@ -97,6 +182,7 @@ export class WebViewSettings implements WebSettings {
 
   setUseWideViewPort(use: boolean): void {
     this.wideViewportEnabled = use;
+    this.notifySettingsChanged();
   }
 
   getUseWideViewPort(): boolean {
@@ -111,6 +197,7 @@ export class WebViewSettings implements WebSettings {
 
   setAllowFileAccess(enabled: boolean): void {
     this.fileAccessEnabled = enabled;
+    this.notifySettingsChanged();
   }
 
   getAllowFileAccess(): boolean {
@@ -131,6 +218,7 @@ export class WebViewSettings implements WebSettings {
       default:
         throw new Error('Invalid mixed content mode.');
     }
+    this.notifySettingsChanged();
     this.mixedContentModeCallback?.(this.mixedContentMode);
   }
 
@@ -144,6 +232,7 @@ export class WebViewSettings implements WebSettings {
 
   setTextZoom(textZoom: number): void {
     this.textZoomRatio = textZoom;
+    this.notifySettingsChanged();
     if (this.textZoomCallback) {
       this.textZoomCallback(textZoom);
     }
@@ -154,12 +243,16 @@ export class WebViewSettings implements WebSettings {
   }
 
   async getUserAgentString(): Promise<string> {
+    this.webView.ensureNotDisposed();
     if (this.webView.userAgentString.length > 0) {
       return this.webView.userAgentString;
     }
     if (this.webView.isWebviewBinding) {
       await this.webView.waitControllerAttached();
-      return this.webView.getController().getCustomUserAgent();
+      const customUserAgent = this.webView.getController().getCustomUserAgent();
+      if (customUserAgent.length > 0) {
+        return customUserAgent;
+      }
     }
     if (this.defaultUserAgent.length > 0) {
       return this.defaultUserAgent;
@@ -169,7 +262,7 @@ export class WebViewSettings implements WebSettings {
     return this.defaultUserAgent;
   }
 
-  onTextZoomChanged(callback: (ratio: number) => void): void {
+  onTextZoomChanged(callback?: (ratio: number) => void): void {
     this.textZoomCallback = callback;
   }
 
