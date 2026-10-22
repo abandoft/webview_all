@@ -1104,6 +1104,11 @@ ${params.functionBody}
   }
 
   void _handleWindowMessage(web.MessageEvent event) {
+    // Only the browser can authenticate origin/source. A constructed event
+    // can supply both fields while never having crossed a window boundary.
+    if (!event.isTrusted) {
+      return;
+    }
     final web.Window? contentWindow = _webWebViewParams.iFrame.contentWindow;
     if (contentWindow == null ||
         !_isSameJavaScriptObject(event.source, contentWindow)) {
@@ -1181,7 +1186,12 @@ ${params.functionBody}
           return;
         }
         channel.onMessageReceived(
-          JavaScriptMessage(message: '${decoded['message'] ?? ''}'),
+          JavaScriptMessage(
+            message: '${decoded['message'] ?? ''}',
+            sourceOrigin: event.origin.isEmpty ? null : event.origin,
+            // Only the controller's iframe window passes the source check.
+            isMainFrame: true,
+          ),
         );
         return;
       case _consoleMessageType:

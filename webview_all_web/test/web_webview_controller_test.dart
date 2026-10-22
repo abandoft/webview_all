@@ -619,6 +619,7 @@ void main() {
           );
           final controller = WebWebViewController(params);
           final List<String> channelMessages = <String>[];
+          JavaScriptMessage? receivedChannelMessage;
           addTearDown(() {
             params.iFrame.remove();
           });
@@ -675,6 +676,7 @@ void main() {
               name: 'FetchedChannel',
               onMessageReceived: (JavaScriptMessage message) {
                 channelMessages.add(message.message);
+                receivedChannelMessage = message;
               },
             ),
           );
@@ -685,6 +687,9 @@ void main() {
             await Future<void>.delayed(const Duration(milliseconds: 25));
           }
           expect(channelMessages, <String>['isolated']);
+          expect(receivedChannelMessage!.sourceOrigin, 'null');
+          expect(receivedChannelMessage!.sourceUrl, isNull);
+          expect(receivedChannelMessage!.isMainFrame, isTrue);
 
           await controller.scrollTo(0, 120);
           expect((await controller.getScrollPosition()).dy, 120);
@@ -1381,7 +1386,7 @@ void main() {
       test('delivers JavaScript channel messages', () async {
         final params = WebWebViewControllerCreationParams();
         final controller = WebWebViewController(params);
-        final messages = <String>[];
+        final messages = <JavaScriptMessage>[];
         addTearDown(() {
           params.iFrame.remove();
         });
@@ -1391,7 +1396,7 @@ void main() {
           JavaScriptChannelParams(
             name: 'TestChannel',
             onMessageReceived: (JavaScriptMessage message) {
-              messages.add(message.message);
+              messages.add(message);
             },
           ),
         );
@@ -1401,7 +1406,10 @@ void main() {
           await Future<void>.delayed(const Duration(milliseconds: 25));
         }
 
-        expect(messages, <String>['hello']);
+        expect(messages.single.message, 'hello');
+        expect(messages.single.sourceUrl, isNull);
+        expect(messages.single.sourceOrigin, web.window.location.origin);
+        expect(messages.single.isMainFrame, isTrue);
 
         await controller.removeJavaScriptChannel('TestChannel');
         expect(
@@ -1409,6 +1417,68 @@ void main() {
           'undefined',
         );
       });
+
+      test(
+        'uses browser origin and rejects messages from other windows',
+        () async {
+          final params = WebWebViewControllerCreationParams();
+          final controller = WebWebViewController(params);
+          final messages = <JavaScriptMessage>[];
+          addTearDown(() => params.iFrame.remove());
+          await _attachAndLoadScrollableHtml(controller, params);
+          await controller.addJavaScriptChannel(
+            JavaScriptChannelParams(
+              name: 'Sender',
+              onMessageReceived: messages.add,
+            ),
+          );
+          final payload = <String, Object?>{
+            '__webview_all_type': 'javascriptChannel',
+            'webViewId': params.iFrame.id,
+            'channelName': 'Sender',
+            'message': 'forged metadata',
+            'sourceUrl': 'https://forged.example/allowed',
+            'sourceOrigin': 'https://forged.example',
+            'isMainFrame': false,
+          };
+          web.window.dispatchEvent(
+            web.MessageEvent(
+              'message',
+              web.MessageEventInit(
+                data: payload.jsify(),
+                source: web.window,
+                origin: 'https://forged.example',
+              ),
+            ),
+          );
+          expect(messages, isEmpty);
+          web.window.dispatchEvent(
+            web.MessageEvent(
+              'message',
+              web.MessageEventInit(
+                data: payload.jsify(),
+                source: params.iFrame.contentWindow,
+                origin: 'https://forged.example',
+              ),
+            ),
+          );
+          expect(messages, isEmpty);
+          final otherWindowMessage = web.window.onMessage.first;
+          web.window.postMessage(payload.jsify(), '*'.toJS);
+          await otherWindowMessage;
+          expect(messages, isEmpty);
+          // Use the real iframe's postMessage so the browser supplies the origin.
+          await controller.runJavaScript('''
+          window.parent.postMessage(${jsonEncode(payload)}, '*');
+        ''');
+          for (int i = 0; i < 20 && messages.isEmpty; i += 1) {
+            await Future<void>.delayed(const Duration(milliseconds: 25));
+          }
+          expect(messages.single.sourceOrigin, web.window.location.origin);
+          expect(messages.single.sourceUrl, isNull);
+          expect(messages.single.isMainFrame, isTrue);
+        },
+      );
 
       test('installs JavaScript channels added before content loads', () async {
         final params = WebWebViewControllerCreationParams();
