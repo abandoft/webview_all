@@ -117,6 +117,29 @@ Remove a channel when it is no longer needed:
 await controller.removeJavaScriptChannel('Checkout');
 ```
 
+`JavaScriptMessage.sourceUrl` is the full URL reported by the platform for the sending document, not an origin. `isMainFrame` identifies a main-frame message when the platform knows the frame. On Windows, the bridge receives only WebView2's top-level document events, reports `isMainFrame: true`, and includes `sourceUrl` when WebView2 provides one. It does not subscribe to iframe message events. Android, iOS, macOS, Linux, OHOS, and Web currently leave both fields null.
+
+For a channel that performs sensitive actions, reject messages whose sender is unknown. Never substitute `controller.currentUrl()` for a missing `sourceUrl`: the view may have navigated since the message was sent. For HTTP(S) URLs, validate the scheme and host before comparing `Uri.origin`, which includes the scheme, host, and port. URLs such as `about:blank`, `about:srcdoc`, and `blob:` have no HTTP(S) origin through this API. Windows can report the served URL of a sandboxed document even when that document has an opaque browser security origin, so a source URL does not establish its security origin.
+
+This example accepts main-document messages whose reported URL matches an allowed HTTPS origin; platforms without sender metadata reject them:
+
+```dart
+await controller.addJavaScriptChannel(
+  'Checkout',
+  onMessageReceived: (JavaScriptMessage message) {
+    final source = Uri.tryParse(message.sourceUrl ?? '');
+    if (message.isMainFrame != true ||
+        source == null ||
+        source.scheme != 'https' ||
+        source.host.isEmpty ||
+        source.origin != 'https://shop.example.com') {
+      return;
+    }
+    debugPrint('Accepted checkout event: ${message.message}');
+  },
+);
+```
+
 ## Console Messages
 
 ```dart
