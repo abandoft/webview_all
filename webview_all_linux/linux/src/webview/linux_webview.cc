@@ -726,6 +726,7 @@ void destroy_linux_webview(gpointer data) {
     return;
   }
 
+  unregister_message_metadata_handler(webview);
   if (webview->web_view != nullptr) {
     delete webview->download_policy;
     webview->download_policy = nullptr;
@@ -847,6 +848,7 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
                    "script-message-received::__webview_all_async_javascript",
                    G_CALLBACK(async_javascript_message_received_cb), webview);
 
+  register_message_metadata_handler(webview);
   rebuild_user_scripts(webview);
 
   g_signal_connect(webview->web_view, "decide-policy",

@@ -1,7 +1,9 @@
 #include "common/method_channel_utils.h"
 #include "webview/webview_internal.h"
+#include "webview/webview_message_bridge.h"
 
 #include <cstring>
+#include <initializer_list>
 
 static FlValue *serialize_js_result(JSCValue *value) {
   if (value == nullptr || jsc_value_is_null(value) ||
@@ -217,6 +219,70 @@ void javascript_channel_message_received_cb(WebKitUserContentManager *manager,
   g_free(text);
 }
 
+static gchar *message_string_property(JSCValue *value, const gchar *name) {
+  JSCValue *property = jsc_value_object_get_property(value, name);
+  gchar *text = jsc_value_is_string(property)
+                    ? jsc_value_to_string(property)
+                    : nullptr;
+  g_object_unref(property);
+  return text;
+}
+
+static void message_metadata_received_cb(WebKitUserContentManager *manager,
+                                         WebKitJavascriptResult *result,
+                                         gpointer user_data) {
+  LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
+  JSCValue *value = webkit_javascript_result_get_js_value(result);
+  if (!jsc_value_is_object(value)) return;
+  g_autofree gchar *name = message_string_property(value, "channelName");
+  if (name == nullptr || !g_hash_table_contains(webview->js_channels, name)) {
+    return;
+  }
+  g_autofree gchar *message = message_string_property(value, "message");
+  if (message == nullptr) return;
+  FlValue *event = make_event("javaScriptChannelMessage");
+  fl_value_set_string_take(event, "channelName", fl_value_new_string(name));
+  fl_value_set_string_take(event, "message", fl_value_new_string(message));
+  for (const gchar *key : {"sourceUrl", "sourceOrigin"}) {
+    g_autofree gchar *text = message_string_property(value, key);
+    if (text != nullptr && *text != '\0') {
+      fl_value_set_string_take(event, key, fl_value_new_string(text));
+    }
+  }
+  JSCValue *main_frame = jsc_value_object_get_property(value, "isMainFrame");
+  if (jsc_value_is_boolean(main_frame)) {
+    fl_value_set_string_take(event, "isMainFrame",
+                            fl_value_new_bool(jsc_value_to_boolean(main_frame)));
+  }
+  g_object_unref(main_frame);
+  send_event(webview, event);
+}
+
+void register_message_metadata_handler(LinuxWebView *webview) {
+  // Only the isolated world can reach this signal's handler. The public
+  // per-channel handlers above continue to treat all input as message text.
+  const gulong signal_id = g_signal_connect(
+      webview->content_manager,
+      "script-message-received::__webview_all.message_metadata",
+      G_CALLBACK(message_metadata_received_cb), webview);
+  webview->message_metadata_enabled =
+      webkit_user_content_manager_register_script_message_handler_in_world(
+          webview->content_manager, kMessageHandler, kMessageWorld);
+  if (!webview->message_metadata_enabled) {
+    g_signal_handler_disconnect(webview->content_manager, signal_id);
+  }
+}
+
+void unregister_message_metadata_handler(LinuxWebView *webview) {
+  if (!webview->message_metadata_enabled) return;
+  g_signal_handlers_disconnect_by_func(
+      webview->content_manager,
+      reinterpret_cast<gpointer>(message_metadata_received_cb), webview);
+  webkit_user_content_manager_unregister_script_message_handler_in_world(
+      webview->content_manager, kMessageHandler, kMessageWorld);
+  webview->message_metadata_enabled = FALSE;
+}
+
 void destroy_js_channel_handler_data(gpointer data, GClosure *closure) {
   JavaScriptChannelHandlerData *handler_data =
       static_cast<JavaScriptChannelHandlerData *>(data);
@@ -313,6 +379,15 @@ gchar *build_overscroll_style_script(LinuxWebView *webview) {
 void rebuild_user_scripts(LinuxWebView *webview) {
   webkit_user_content_manager_remove_all_scripts(webview->content_manager);
 
+  if (webview->message_metadata_enabled) {
+    WebKitUserScript *relay = webkit_user_script_new_for_world(
+        kMessageRelayScript, WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
+        WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, kMessageWorld, nullptr,
+        nullptr);
+    webkit_user_content_manager_add_script(webview->content_manager, relay);
+    webkit_user_script_unref(relay);
+  }
+
   gchar *scrollbar_script = build_scrollbar_style_script(webview);
   add_user_script(webview->content_manager, scrollbar_script);
   g_free(scrollbar_script);
@@ -364,18 +439,9 @@ void rebuild_user_scripts(LinuxWebView *webview) {
     })();
   )");
 
-  GHashTableIter iter;
-  gpointer key = nullptr;
-  g_hash_table_iter_init(&iter, webview->js_channels);
-  while (g_hash_table_iter_next(&iter, &key, nullptr)) {
-    const gchar *name = static_cast<const gchar *>(key);
-    gchar *source = g_strdup_printf(
-        "window.%s = { postMessage: function(message) { "
-        "window.webkit.messageHandlers.%s.postMessage(String(message)); } };",
-        name, name);
-    add_user_script(webview->content_manager, source);
-    g_free(source);
-  }
+  gchar *channel_source = build_javascript_channels_script(webview->js_channels);
+  add_user_script(webview->content_manager, channel_source);
+  g_free(channel_source);
 
   for (guint index = 0; index < webview->user_script_order->len; ++index) {
     const gchar *identifier = static_cast<const gchar *>(

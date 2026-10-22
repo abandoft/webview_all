@@ -15,6 +15,48 @@ void main() {
   setUp(_mockLinuxWebViewCreation);
   tearDown(_clearLinuxWebViewCreationMock);
 
+  test(
+    'channel events preserve metadata and keep legacy senders unknown',
+    () async {
+      final controller = LinuxWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final messages = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        JavaScriptChannelParams(
+          name: 'Sender',
+          onMessageReceived: messages.add,
+        ),
+      );
+      for (final metadata in <Map<String, Object?>>[
+        <String, Object?>{
+          'sourceUrl': 'https://sender.example/after-pushState',
+          'sourceOrigin': 'https://sender.example',
+          'isMainFrame': true,
+        },
+        <String, Object?>{
+          'sourceUrl': 'about:srcdoc',
+          'sourceOrigin': 'null',
+          'isMainFrame': false,
+        },
+        <String, Object?>{},
+      ]) {
+        await _emitLinuxWebViewEvent(<String, Object?>{
+          'type': 'javaScriptChannelMessage',
+          'channelName': 'Sender',
+          'message': '{"sourceUrl":"https://forged.example"}',
+          ...metadata,
+        });
+        await _flushAsyncEvents();
+        expect(messages.last.sourceUrl, metadata['sourceUrl']);
+        expect(messages.last.sourceOrigin, metadata['sourceOrigin']);
+        expect(messages.last.isMainFrame, metadata['isMainFrame']);
+      }
+      expect(messages, hasLength(3));
+      await controller.dispose();
+    },
+  );
+
   test('registerWith sets the Linux WebView platform implementation', () {
     final WebViewPlatform? previousInstance = WebViewPlatform.instance;
     addTearDown(() {

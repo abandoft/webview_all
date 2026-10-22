@@ -17,8 +17,13 @@ target_compile_options(download_policy_test PRIVATE -Wall -Wextra -Werror
 
 enable_testing()
 add_test(NAME download_policy COMMAND download_policy_test)
+add_executable(message_bridge_test message_bridge_test.cc)
+target_link_libraries(message_bridge_test PRIVATE PkgConfig::WEBKIT)
+target_compile_options(message_bridge_test PRIVATE -Wall -Wextra -Werror
+  -Wno-unused-parameter)
+add_test(NAME message_bridge COMMAND message_bridge_test)
 # Download policy tests do not use the desktop accessibility service.
-set_tests_properties(download_policy PROPERTIES
+set_tests_properties(download_policy message_bridge PROPERTIES
   TIMEOUT 60
   ENVIRONMENT "NO_AT_BRIDGE=1"
 )

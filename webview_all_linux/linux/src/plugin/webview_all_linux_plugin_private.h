@@ -42,6 +42,7 @@ typedef struct {
   GHashTable *pending_request_timeouts;
   GHashTable *js_channel_signal_ids;
   GHashTable *js_channels;
+  gboolean message_metadata_enabled;
   GHashTable *user_scripts;
   GPtrArray *user_script_order;
   gint next_request_id;
