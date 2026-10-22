@@ -630,7 +630,9 @@ class WindowsWebViewController extends PlatformWebViewController {
             JavaScriptMessage(
               message: '${message['message'] ?? ''}',
               sourceUrl: source,
-              isMainFrame: source == null ? null : true,
+              // This WebMessageReceived event only reports the top-level
+              // document, even if WebView2 could not provide its URL.
+              isMainFrame: true,
             ),
           );
         }

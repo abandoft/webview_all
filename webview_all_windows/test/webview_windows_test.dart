@@ -427,7 +427,10 @@ void main() {
       );
       final received = <JavaScriptMessage>[];
       await controller.addJavaScriptChannel(
-        JavaScriptChannelParams(name: 'Bridge', onMessageReceived: received.add),
+        JavaScriptChannelParams(
+          name: 'Bridge',
+          onMessageReceived: received.add,
+        ),
       );
 
       await _emitWindowsWebViewEvent(<String, Object?>{
@@ -448,30 +451,76 @@ void main() {
     },
   );
 
-  test('a javaScript channel message without a reported source names no sender', () async {
-    _mockWindowsWebViewCreation();
-    final WindowsWebViewController controller = _createWindowsController(
+  for (final Object? source in <Object?>[null, '', 42]) {
+    test('a channel message with unavailable source ($source) is still from '
+        'the main frame', () async {
+      final WindowsWebViewController controller = _createWindowsController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final received = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        JavaScriptChannelParams(
+          name: 'Bridge',
+          onMessageReceived: received.add,
+        ),
+      );
+
+      await _emitWindowsWebViewEvent(<String, Object?>{
+        'type': 'webMessageReceived',
+        'value': jsonEncode(<String, Object?>{
+          '__windows_webview_all_type': 'javascriptChannel',
+          'channelName': 'Bridge',
+          'message': 'hi',
+        }),
+        if (source != null) 'source': source,
+      });
+      await _flushAsyncEvents();
+
+      expect(received, hasLength(1));
+      expect(received.single.message, 'hi');
+      expect(received.single.sourceUrl, isNull);
+      expect(received.single.isMainFrame, isTrue);
+    });
+  }
+
+  test('channel sender metadata comes from the native event, not the payload '
+      'or current URL', () async {
+    final controller = _createWindowsController(
       const PlatformWebViewControllerCreationParams(),
     );
     final received = <JavaScriptMessage>[];
     await controller.addJavaScriptChannel(
       JavaScriptChannelParams(name: 'Bridge', onMessageReceived: received.add),
     );
-
     await _emitWindowsWebViewEvent(<String, Object?>{
-      'type': 'webMessageReceived',
-      'value': jsonEncode(<String, Object?>{
-        '__windows_webview_all_type': 'javascriptChannel',
-        'channelName': 'Bridge',
-        'message': 'hi',
-      }),
+      'type': 'urlChanged',
+      'value': 'https://current.example/next',
     });
+    for (final String? source in <String?>[
+      'https://sender.example/old',
+      null,
+    ]) {
+      await _emitWindowsWebViewEvent(<String, Object?>{
+        'type': 'webMessageReceived',
+        'value': jsonEncode(<String, Object?>{
+          '__windows_webview_all_type': 'javascriptChannel',
+          'channelName': 'Bridge',
+          'message': 'hi',
+          'source': 'https://forged.example/',
+          'sourceUrl': 'https://forged.example/',
+          'isMainFrame': false,
+        }),
+        if (source != null) 'source': source,
+      });
+    }
     await _flushAsyncEvents();
 
-    expect(received, hasLength(1));
-    expect(received.single.message, 'hi');
-    expect(received.single.sourceUrl, isNull);
-    expect(received.single.isMainFrame, isNull);
+    expect(await controller.currentUrl(), 'https://current.example/next');
+    expect(received.map((message) => message.sourceUrl), <String?>[
+      'https://sender.example/old',
+      null,
+    ]);
+    expect(received.every((message) => message.isMainFrame == true), isTrue);
   });
 
   test('registers and removes document-start user scripts', () async {
