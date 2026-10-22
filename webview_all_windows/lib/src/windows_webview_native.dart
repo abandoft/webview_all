@@ -308,6 +308,10 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   final StreamController<dynamic> _webMessageStreamController =
       StreamController<dynamic>();
 
+  /// Decoded web messages received while this stream has a listener.
+  ///
+  /// This is a single-subscription stream. Messages and decoding errors received
+  /// before listening or after cancellation are discarded rather than buffered.
   Stream<dynamic> get webMessage => _webMessageStreamController.stream;
 
   final StreamController<({dynamic value, String? source})>
@@ -316,6 +320,9 @@ class WebviewController extends ValueNotifier<WebviewValue> {
 
   /// The decoded web message alongside the sending document's URL, when the
   /// platform reports it.
+  ///
+  /// This is a single-subscription stream with the same live delivery behavior
+  /// as [webMessage]. Missing, empty or non-string sources are reported as null.
   Stream<({dynamic value, String? source})> get webMessageWithSource =>
       _webMessageWithSourceStreamController.stream;
 
@@ -418,24 +425,32 @@ class WebviewController extends ValueNotifier<WebviewValue> {
             );
             break;
           case 'webMessageReceived':
+            final Object? message;
             try {
-              final message = json.decode(map['value']);
-              // webMessage has no listener in this package any more
-              // (webMessageWithSource replaced it); add only while someone
-              // outside still listens, so a page that posts a long run of
-              // messages never buffers them forever in an unread stream.
+              message = json.decode(map['value'] as String);
+            } catch (error, stackTrace) {
               if (_webMessageStreamController.hasListener) {
-                _webMessageStreamController.add(message);
+                _webMessageStreamController.addError(error, stackTrace);
               }
+              if (_webMessageWithSourceStreamController.hasListener) {
+                _webMessageWithSourceStreamController.addError(
+                  error,
+                  stackTrace,
+                );
+              }
+              break;
+            }
+            // Each stream is optional. Do not retain messages in an unread
+            // single-subscription stream, regardless of which API is in use.
+            if (_webMessageStreamController.hasListener) {
+              _webMessageStreamController.add(message);
+            }
+            if (_webMessageWithSourceStreamController.hasListener) {
+              final Object? source = map['source'];
               _webMessageWithSourceStreamController.add((
                 value: message,
-                source: map['source'] as String?,
+                source: source is String && source.isNotEmpty ? source : null,
               ));
-            } catch (ex) {
-              if (_webMessageStreamController.hasListener) {
-                _webMessageStreamController.addError(ex);
-              }
-              _webMessageWithSourceStreamController.addError(ex);
             }
             break;
           case 'containsFullScreenElementChanged':

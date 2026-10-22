@@ -309,7 +309,7 @@ void WebviewBridge::RegisterEventHandlers() {
   });
 
   webview_->OnWebMessageReceived([this](const std::string &message,
-                                         const std::string &source) {
+                                      const std::string &source) {
     flutter::EncodableMap event_map{
         {flutter::EncodableValue(kEventType),
          flutter::EncodableValue("webMessageReceived")},

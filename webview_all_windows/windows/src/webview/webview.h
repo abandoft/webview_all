@@ -182,7 +182,7 @@ public:
   typedef std::function<void(bool supported, bool success)>
       WebsiteDataClearedCallback;
   typedef std::function<void(const std::string &message,
-                              const std::string &source)>
+                            const std::string &source)>
       WebMessageReceivedCallback;
   typedef std::function<void(WebviewPermissionState state)>
       WebviewPermissionRequestedCompleter;
