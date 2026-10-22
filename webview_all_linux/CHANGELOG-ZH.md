@@ -1,6 +1,9 @@
 ## 1.4.5
 
-* 支持获取 Windows JavaScript Channel 消息的来源 URL 和主框架信息。
+* 将 OHOS 的最低兼容版本提升到 API 22。
+* 为各平台的 JavaScript 消息补充可用的来源信息。
+* 修复 OHOS 返回旧 JavaScript 结果及移除视图时操作挂起的问题。
+* 完善 OHOS 的动态设置、滚动与网站数据清理，支持文档开始时注入用户脚本。
 
 ## 1.4.4
 

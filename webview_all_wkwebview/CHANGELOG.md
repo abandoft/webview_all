@@ -1,6 +1,9 @@
 ## 1.4.5
 
-* Add sender URL and main-frame information to JavaScript channel messages on Windows.
+* Raise the minimum supported OHOS version to API 22.
+* Add JavaScript message sender information across platforms, where supported.
+* Fix stale JavaScript results and operations hanging when a view is removed on OHOS.
+* Improve OHOS runtime settings, scrolling, and website data cleanup, and add document-start user scripts.
 
 ## 1.4.4
 
