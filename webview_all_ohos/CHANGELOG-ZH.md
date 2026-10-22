@@ -1,3 +1,7 @@
+## 1.4.5
+
+* 支持获取 Windows JavaScript Channel 消息的来源 URL 和主框架信息。
+
 ## 1.4.4
 
 * 修复 iOS、macOS 构建时的证书 API 弃用警告。

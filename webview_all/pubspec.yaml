@@ -1,5 +1,5 @@
 name: webview_all
-version: 1.4.4
+version: 1.4.5
 description: A WebView plugin supporting Android, iOS, macOS, Windows, Linux, Web, and OpenHarmony, with an API compatible with webview_flutter.
 repository: https://github.com/abandoft/webview_all
 homepage: https://github.com/abandoft/webview_all
@@ -40,8 +40,8 @@ dependencies:
     sdk: flutter
   webview_all_android: ^1.4.4
   webview_all_wkwebview: ^1.4.4
-  webview_platform_interface: ^1.4.4
-  webview_all_windows: ^1.4.4
+  webview_platform_interface: ^1.4.5
+  webview_all_windows: ^1.4.5
   webview_all_linux: ^1.4.4
   webview_all_ohos: ^1.4.4
   webview_all_web: ^1.4.4

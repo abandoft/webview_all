@@ -338,7 +338,7 @@ packages:
       path: "../../webview_all"
       relative: true
     source: path
-    version: "1.4.4"
+    version: "1.4.5"
   webview_all_android:
     dependency: "direct main"
     description:
@@ -373,7 +373,7 @@ packages:
       path: "../../webview_all_windows"
       relative: true
     source: path
-    version: "1.4.4"
+    version: "1.4.5"
   webview_all_wkwebview:
     dependency: "direct main"
     description:
@@ -387,7 +387,7 @@ packages:
       path: "../../webview_platform_interface"
       relative: true
     source: path
-    version: "1.4.4"
+    version: "1.4.5"
   xdg_directories:
     dependency: transitive
     description:
