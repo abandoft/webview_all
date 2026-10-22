@@ -2,6 +2,7 @@
 {
   "name": "webview_all_ohos",
   "version": "1.0.0",
+  "compatibleSdkVersion": "22",
   "description": "OpenHarmony implementation of the webview_all federated WebView plugin.",
   "main": "Index.ets",
   "author": "",
