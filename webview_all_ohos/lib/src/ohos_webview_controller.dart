@@ -576,6 +576,8 @@ class OhosWebViewController extends PlatformWebViewController {
   bool _horizontalScrollBarEnabled = true;
   WebViewOverScrollMode _overScrollMode = WebViewOverScrollMode.always;
   int _nextAsyncJavaScriptInvocationIdentifier = 0;
+  final Map<String, String> _documentStartScripts = <String, String>{};
+  Future<void> _userScriptUpdates = Future<void>.value();
   int _navigationGeneration = 0;
   final Set<Completer<void>> _pendingAsyncJavaScript = <Completer<void>>{};
 
@@ -1002,10 +1004,60 @@ ${params.functionBody}
   @override
   Future<bool> isUserScriptInjectionSupported(
     WebViewUserScriptInjectionTime injectionTime,
-  ) async {
-    // The current ArkWeb bridge does not expose deterministic document-start
-    // injection, so advertising it would create a race with page scripts.
-    return false;
+  ) async => injectionTime == WebViewUserScriptInjectionTime.documentStart;
+
+  Future<T> _updateUserScripts<T>(Future<T> Function() update) {
+    final Future<T> result = _userScriptUpdates.then((_) => update());
+    // A failed native update must not prevent subsequent changes.
+    _userScriptUpdates = result.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {},
+    );
+    return result;
+  }
+
+  @override
+  Future<String> addUserScript(WebViewUserScript userScript) {
+    final String identifier = _createOhosOpaqueIdentifier('webview_all_script');
+    final String source =
+        '// $identifier\n'
+        '${buildUserScriptSource(userScript, platformHandlesMainFrameOnly: false)}';
+    return _updateUserScripts(() async {
+      final Map<String, String> updated = <String, String>{
+        ..._documentStartScripts,
+        identifier: source,
+      };
+      await _webView.setDocumentStartScripts(updated.values.toList());
+      _documentStartScripts.addAll(updated);
+      return identifier;
+    });
+  }
+
+  @override
+  Future<void> removeUserScript(String identifier) {
+    return _updateUserScripts(() async {
+      if (!_documentStartScripts.containsKey(identifier)) {
+        return;
+      }
+      final Map<String, String> updated = Map<String, String>.of(
+        _documentStartScripts,
+      )..remove(identifier);
+      await _webView.setDocumentStartScripts(updated.values.toList());
+      _documentStartScripts
+        ..clear()
+        ..addAll(updated);
+    });
+  }
+
+  @override
+  Future<void> removeAllUserScripts() {
+    return _updateUserScripts(() async {
+      if (_documentStartScripts.isEmpty) {
+        return;
+      }
+      await _webView.setDocumentStartScripts(<String>[]);
+      _documentStartScripts.clear();
+    });
   }
 
   @override

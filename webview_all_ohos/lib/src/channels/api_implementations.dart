@@ -357,6 +357,18 @@ class WebViewHostApiImpl extends WebViewHostApi {
     return reload(instanceManager.getIdentifier(instance)!);
   }
 
+  /// Replaces the scripts installed in future documents of [instance].
+  Future<void> setDocumentStartScriptsFromInstance(
+    WebView instance,
+    List<String> scripts,
+  ) {
+    final int? identifier = instanceManager.getIdentifier(instance);
+    if (identifier == null) {
+      throw StateError('The WebView has been released.');
+    }
+    return setDocumentStartScripts(identifier, scripts);
+  }
+
   /// Helper method to convert instances ids to objects.
   Future<void> clearCacheFromInstance(WebView instance, bool includeDiskFiles) {
     return clearCache(

@@ -215,6 +215,13 @@ class WebViewHostApi {
     });
   }
 
+  Future<void> setDocumentStartScripts(int instanceId, List<String> scripts) {
+    return _host.invoke<void>(
+      'WebView.setDocumentStartScripts',
+      <String, Object?>{'instanceId': instanceId, 'scripts': scripts},
+    );
+  }
+
   Future<void> clearCache(int instanceId, bool includeDiskFiles) {
     return _host.invoke<void>('WebView.clearCache', <String, Object?>{
       'instanceId': instanceId,

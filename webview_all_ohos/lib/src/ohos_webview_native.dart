@@ -356,6 +356,14 @@ class WebView extends OhosObject {
     return api.evaluateJavascriptFromInstance(this, javascriptString);
   }
 
+  /// Replaces document-start scripts without executing them in the current page.
+  ///
+  /// Before attachment, the native view retains the snapshot for its first
+  /// document. Once attached, completion waits for the component to apply it.
+  Future<void> setDocumentStartScripts(List<String> scripts) {
+    return api.setDocumentStartScriptsFromInstance(this, scripts);
+  }
+
   /// Gets the title for the current page.
   ///
   /// Returns null if no page has been loaded.
