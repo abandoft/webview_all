@@ -82,7 +82,7 @@ if (await controller.isUserScriptInjectionSupported(
 | iOS/macOS | 通过 `WKUserScript` 支持。 |
 | Windows | 通过 WebView2 支持。 |
 | Linux | 通过 WebKitGTK 支持。 |
-| OHOS | 当前 ArkWeb bridge 未提供，能力检查返回 false。 |
+| OHOS | 通过 ArkWeb 支持；按注册顺序执行，可在组件挂载前注册。 |
 | Web | iframe API 无法保证早于页面脚本执行，能力检查返回 false。 |
 
 ## JavaScript Channel
@@ -108,22 +108,27 @@ Checkout.postMessage(JSON.stringify({ type: 'loaded' }));
 await controller.removeJavaScriptChannel('Checkout');
 ```
 
-`JavaScriptMessage.sourceUrl` 是平台报告的发送文档完整 URL，不是 origin。平台知道 frame 信息时，`isMainFrame` 表示消息是否来自主 frame。Windows bridge 仅接收 WebView2 的顶层文档事件，返回 `isMainFrame: true`，并在 WebView2 提供时返回 `sourceUrl`；不订阅 iframe 消息事件。Android、iOS、macOS、Linux、OHOS 和 Web 目前均将这两个字段设为 null。
+`JavaScriptMessage` 将发送文档 URL（`sourceUrl`）、浏览器安全 origin（`sourceOrigin`）与主框架标记（`isMainFrame`）分开提供。各字段独立可空，表示平台无法可靠确定；`sourceOrigin` 的字符串 `"null"` 表示不透明 origin，与 Dart `null` 不同。
 
-敏感操作的 channel 应拒绝发送方未知的消息。`sourceUrl` 缺失时，不要回退到 `controller.currentUrl()`：消息发送后，WebView 可能已经导航到了其他页面。对于 HTTP(S) URL，应先校验 scheme 和 host，再比较包含 scheme、host 和端口的 `Uri.origin`。`about:blank`、`about:srcdoc`、`blob:` 等 URL 无法通过此 API 提供 HTTP(S) origin。Windows 对 sandbox 文档也可能返回其加载 URL，即使该文档具有不透明的浏览器安全 origin，因此来源 URL 本身不能证明文档的安全 origin。
+| 平台 | sourceUrl | sourceOrigin | isMainFrame |
+| --- | --- | --- | --- |
+| Android | — | 支持时提供 | 支持时提供 |
+| iOS / macOS | 提供 | 提供 | 提供 |
+| Windows | 提供 | — | true（仅主文档） |
+| Linux | 提供 | 提供 | 提供 |
+| OHOS | 提供 | — | — |
+| Web | — | 提供 | true（仅 WebView 内的主文档） |
 
-以下示例只接受来源 URL 匹配指定 HTTPS origin、且标记为主文档的消息；没有发送方元数据的平台会拒绝这些消息：
+Android 根据 WebView 的消息监听和文档开始脚本能力选择实现；旧 WebView 保持消息可用，来源字段为空。Linux 使用隔离脚本读取发送文档的信息，`pushState` 后的消息会反映新 URL；隔离桥尚未就绪或直接调用底层消息处理器时，消息仍会送达，但来源字段为空。OHOS 在原生代理调用入口捕获文档 URL，无法可靠确定安全 origin 或框架归属。
+
+敏感操作应拒绝来源未知的消息。不要用 `controller.currentUrl()` 补齐缺失字段，也不要从 `sourceUrl` 推导安全 origin：sandbox 文档即使有 HTTPS URL，也可能具有不透明 origin。以下示例只接受指定安全 origin 的主文档消息；缺少可靠来源的平台会拒绝这些消息：
 
 ```dart
 await controller.addJavaScriptChannel(
   'Checkout',
   onMessageReceived: (JavaScriptMessage message) {
-    final source = Uri.tryParse(message.sourceUrl ?? '');
     if (message.isMainFrame != true ||
-        source == null ||
-        source.scheme != 'https' ||
-        source.host.isEmpty ||
-        source.origin != 'https://shop.example.com') {
+        message.sourceOrigin != 'https://shop.example.com') {
       return;
     }
     debugPrint('Accepted checkout event: ${message.message}');

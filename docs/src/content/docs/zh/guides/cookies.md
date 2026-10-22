@@ -59,7 +59,7 @@ Windows 会为该操作创建临时 controller，因此可能同时初始化共�
 | iOS/macOS | 清理 `WKWebsiteDataStore.default()` 中的对应数据类型。 |
 | Windows | 清理 WebView2 暴露的 Cookie、DOM storage 类型和磁盘缓存；session storage 与 service worker 注册标记为不支持，旧 Runtime 没有 profile 清理接口时全部标记为不支持。 |
 | Linux | 清理默认 WebKitGTK context 的全部网站数据。 |
-| OHOS | 清理 Cookie，以及 ArkWeb 暴露的 local/session storage 和 WebSQL；其余类型标记为不支持。 |
+| OHOS | 无需创建 WebView 即可清理 Cookie、共享资源缓存、local storage 和 WebSQL；session storage、IndexedDB、Cache Storage 和 service worker 注册标记为不支持。 |
 | Web | 全部标记为不支持，因为宿主页无权清理任意 iframe origin 或 `HttpOnly` Cookie。 |
 
 ## 平台差异

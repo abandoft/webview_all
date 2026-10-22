@@ -91,7 +91,7 @@ if (await controller.isUserScriptInjectionSupported(
 | iOS/macOS | Supported by `WKUserScript`. |
 | Windows | Supported by WebView2. |
 | Linux | Supported by WebKitGTK. |
-| OHOS | Not exposed by the current ArkWeb bridge; capability returns false. |
+| OHOS | Supported by ArkWeb; scripts run in registration order and can be registered before the widget is attached. |
 | Web | Browser iframe APIs cannot guarantee execution before page scripts; capability returns false. |
 
 ## JavaScript Channels
@@ -117,22 +117,27 @@ Remove a channel when it is no longer needed:
 await controller.removeJavaScriptChannel('Checkout');
 ```
 
-`JavaScriptMessage.sourceUrl` is the full URL reported by the platform for the sending document, not an origin. `isMainFrame` identifies a main-frame message when the platform knows the frame. On Windows, the bridge receives only WebView2's top-level document events, reports `isMainFrame: true`, and includes `sourceUrl` when WebView2 provides one. It does not subscribe to iframe message events. Android, iOS, macOS, Linux, OHOS, and Web currently leave both fields null.
+`JavaScriptMessage` reports the sending document URL (`sourceUrl`), browser security origin (`sourceOrigin`), and main-frame flag (`isMainFrame`) separately. Each field is nullable when the platform cannot reliably determine it. The string `"null"` in `sourceOrigin` means an opaque origin; Dart `null` means unknown.
 
-For a channel that performs sensitive actions, reject messages whose sender is unknown. Never substitute `controller.currentUrl()` for a missing `sourceUrl`: the view may have navigated since the message was sent. For HTTP(S) URLs, validate the scheme and host before comparing `Uri.origin`, which includes the scheme, host, and port. URLs such as `about:blank`, `about:srcdoc`, and `blob:` have no HTTP(S) origin through this API. Windows can report the served URL of a sandboxed document even when that document has an opaque browser security origin, so a source URL does not establish its security origin.
+| Platform | sourceUrl | sourceOrigin | isMainFrame |
+| --- | --- | --- | --- |
+| Android | — | When supported | When supported |
+| iOS / macOS | Available | Available | Available |
+| Windows | Available | — | true (main document only) |
+| Linux | Available | Available | Available |
+| OHOS | Available | — | — |
+| Web | — | Available | true (WebView main document only) |
 
-This example accepts main-document messages whose reported URL matches an allowed HTTPS origin; platforms without sender metadata reject them:
+Android selects the implementation using the WebView's message-listener and document-start script capabilities; older WebViews still deliver messages with unknown sender fields. Linux reads metadata in an isolated script world, so messages after `pushState` reflect the new URL. If the isolated relay is not ready, or the page calls a low-level message handler directly, delivery continues with unknown metadata. OHOS captures the document URL at the native proxy entry, but cannot reliably determine the security origin or frame identity.
+
+Reject unknown senders for sensitive operations. Never substitute `controller.currentUrl()` for missing metadata or derive a security origin from `sourceUrl`: a sandboxed document can have an HTTPS URL and an opaque origin. This example accepts main-document messages from an allowed security origin; platforms without reliable origin information reject them:
 
 ```dart
 await controller.addJavaScriptChannel(
   'Checkout',
   onMessageReceived: (JavaScriptMessage message) {
-    final source = Uri.tryParse(message.sourceUrl ?? '');
     if (message.isMainFrame != true ||
-        source == null ||
-        source.scheme != 'https' ||
-        source.host.isEmpty ||
-        source.origin != 'https://shop.example.com') {
+        message.sourceOrigin != 'https://shop.example.com') {
       return;
     }
     debugPrint('Accepted checkout event: ${message.message}');

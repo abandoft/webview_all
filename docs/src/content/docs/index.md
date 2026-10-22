@@ -18,5 +18,5 @@ This unversioned route documents the latest stable release.
 | macOS | 10.15+ | `WKWebView` |
 | Windows | Windows 10 1809+ | `WebView2` |
 | Linux | `webkit2gtk-4.1` | `WebKitGTK` |
-| OHOS | API 12+ | `ArkWeb` |
+| OHOS | API 22+ | `ArkWeb` |
 | Web | None | `JS interop` |

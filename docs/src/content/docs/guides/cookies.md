@@ -57,7 +57,7 @@ reuse an existing environment and conflicting options fail explicitly.
 | iOS/macOS | Clears the corresponding types from `WKWebsiteDataStore.default()`. |
 | Windows | Clears the cookies, DOM storage types, and disk cache exposed by WebView2. Session storage and service worker registrations are reported as unsupported; runtimes without the profile clearing API report every category as unsupported. |
 | Linux | Clears all website data from the default WebKitGTK context. |
-| OHOS | Clears cookies and ArkWeb-exposed local/session storage and WebSQL; other categories are reported as unsupported. |
+| OHOS | Clears cookies, shared resource cache, local storage, and WebSQL without creating a WebView. Session storage, IndexedDB, Cache Storage, and service worker registrations are reported as unsupported. |
 | Web | Reports all categories as unsupported because a host page cannot clear arbitrary iframe origins or `HttpOnly` cookies. |
 
 ## Platform Behavior

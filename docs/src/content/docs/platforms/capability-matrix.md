@@ -16,7 +16,7 @@ Legend:
 | Feature | Android | iOS | macOS | Windows | Linux | OHOS | Web |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `WebViewWidget` | Full | Full | Full | Full | Full | Full | Full |
-| Controller use without `WebViewWidget` | Full | Full | Full | Full | Full | No, ArkWeb must attach to `Web` | No, iframe must be attached |
+| Controller use without `WebViewWidget` | Full | Full | Full | Full | Full | Page operations require an attached WebView; user scripts can be registered earlier | No, iframe must be attached |
 | `loadRequest` GET | Full | Full | Full | Full | Full | Full | Full |
 | `loadRequest` GET headers | Full | Full | Full | Full | Full | Full | Limited, CORS/fetch |
 | `loadRequest` POST body | Full | Full | Full | Full | Full | Full | Limited, CORS/fetch |
@@ -52,7 +52,7 @@ Legend:
 | `runJavaScript` | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
 | `runJavaScriptReturningResult` | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML; JSON-serializable |
 | `callAsyncJavaScript` with named arguments | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML; cross-origin iframe unavailable |
-| Document-start user scripts | Runtime capability | Full | Full | Full | Full | No, capability returns false | No, capability returns false |
+| Document-start user scripts | Runtime capability | Full | Full | Full | Full | Full | No, capability returns false |
 | JavaScript channels | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
 | Console message callback | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
 | `alert` callback | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |

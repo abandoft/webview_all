@@ -3,7 +3,7 @@ title: OHOS
 description: ArkWeb 实现、API 和 HarmonyOS/OpenHarmony 限制。
 ---
 
-OHOS 由 `webview_all_ohos 1.4.0` 提供，底层使用 ArkWeb。
+OHOS 由 `webview_all_ohos` 提供，底层使用 ArkWeb。从 1.4.5 起，宿主应用的最低兼容版本必须设置为 API 22 或更新版本，详见[平台配置](/zh/getting-started/platform-setup/#ohos)。
 
 | 项 | 值 |
 | --- | --- |
@@ -12,7 +12,7 @@ OHOS 由 `webview_all_ohos 1.4.0` 提供，底层使用 ArkWeb。
 | Delegate | `OhosNavigationDelegate` |
 | Cookie manager | `OhosWebViewCookieManager` |
 | 引擎 | ArkWeb |
-| 最低目标 | OHOS API 12+ |
+| 最低目标 | OHOS API 22+ |
 
 ## 创建参数
 
@@ -39,14 +39,40 @@ final params = OhosWebViewControllerCreationParams(
 | `webViewIdentifier` | 原生 WebView 实例 ID。 |
 | `setAllowFullScreenRotate` | 控制全屏旋转。 |
 | `setDomStorageEnabled` | 控制 DOM storage。 |
-| `setSupportMultipleWindows` | 控制多窗口。 |
+| `setJavaScriptCanOpenWindowsAutomatically` | 控制 JavaScript 自动开窗。 |
+| `setSupportMultipleWindows` | 保留兼容；页面请求的新窗口继续在当前 WebView 打开。 |
 | `setLoadWithOverviewMode` / `setUseWideViewPort` | 视口相关设置。 |
-| `setDisplayZoomControls` / `setBuiltInZoomControls` | 缩放控件。 |
+| `setDisplayZoomControls` / `setBuiltInZoomControls` | 保留兼容，不保证提供原生缩放控件；页面缩放由 `setSupportZoom` 控制。 |
 | `setAllowFileAccess` | file access。 |
 | `setMixedContentMode` | 控制 HTTP/HTTPS 混合内容。 |
+| `setSupportZoom` | 控制页面缩放，包括 Ctrl 配合加减键或鼠标滚轮缩放。 |
+| `setMediaPlaybackRequiresUserGesture` | 控制媒体播放是否需要用户手势。 |
+| `setTextZoom` | 设置文字缩放比例。 |
 | `setOnShowFileSelector` | 文件选择。 |
 | `setGeolocationPermissionsPromptCallbacks` | 定位提示。 |
 | `setCustomWidgetCallbacks` | 全屏 custom view。 |
+
+## 动态设置与滚动
+
+JavaScript、DOM storage、file access、媒体手势策略、缩放、视口、背景色、文字大小和混合内容等设置，可在创建组件前配置，也可在 WebView 显示期间调整。
+
+修改 User-Agent 或增删 JavaScript channel 不会强制刷新当前页面。User-Agent 修改影响后续请求；新增 channel 通常在下一个文档生效，当前页面需要使用时可显式刷新。
+
+支持 `scrollTo` 和 `scrollBy`；滚动位置读取与回调以实际页面位置为准，包括页面边缘限制后的结果。
+
+页面请求的新窗口沿用当前 WebView 打开。`supportMultipleWindows` 保留兼容，不创建独立窗口或标签页。`displayZoomControls` 和 `builtInZoomControls` 不保证提供原生缩放控件。通过 `supportZoom` 控制页面缩放，也包括 API 22+ 上按住 `Ctrl` 配合加减键或鼠标滚轮的缩放操作。
+
+## 文档开始脚本
+
+ArkWeb 会在页面 JavaScript 之前，按注册顺序执行用户脚本。可在 `WebViewWidget` 挂载前注册；开始导航前必须等待 `addUserScript` 完成，确保首个页面也能收到脚本。
+
+注册和移除只影响后续文档及刷新，不会在当前文档补执行，也不会撤销已经运行的脚本效果。详见 [JavaScript 指南](/zh/guides/javascript/#document-start-用户脚本)。
+
+导航会取消尚未完成的 `callAsyncJavaScript` 调用并返回 `JavaScriptExecutionException`，避免返回旧文档的结果。等待视图就绪的操作会在视图被移除时失败。
+
+## 网站数据
+
+`WebViewDataManager.clearAllWebsiteData()` 无需创建 WebView，即可清理 Cookie、所有 WebView 共享的资源缓存、local storage 和 WebSQL。session storage、IndexedDB、Cache Storage 和 service worker 注册返回不支持。应检查返回的清理结果，详见[网站数据清理](/zh/guides/cookies/#清理全部网站数据)。
 
 ## 混合内容
 

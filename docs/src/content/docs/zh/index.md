@@ -18,5 +18,5 @@ Linux、OpenHarmony 和 Web 等平台，并提供与
 | macOS | 10.15+ | `WKWebView` |
 | Windows | Windows 10 1809+ | `WebView2` |
 | Linux | `webkit2gtk-4.1` | `WebKitGTK` |
-| OHOS | API 12+ | `ArkWeb` |
+| OHOS | API 22+ | `ArkWeb` |
 | Web | 无 | `JS interop` |

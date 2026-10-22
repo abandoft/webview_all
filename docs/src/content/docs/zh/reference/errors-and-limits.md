@@ -29,7 +29,7 @@ description: 异常、不可用能力和平台边界。
 | Web | 查询其他 origin 的 Cookie | 返回空列表并打印一次说明；浏览器 JavaScript 无法检查对应 cookie jar。 |
 | Web | document-start 用户脚本 | iframe 无法保证早于页面脚本执行，能力检查返回 false。 |
 | Web | `WebViewDataManager.clearAllWebsiteData` | 所有类型均返回不支持，宿主页无权清理任意 iframe storage 或 `HttpOnly` Cookie。 |
-| OHOS | document-start 用户脚本 | 当前 ArkWeb bridge 没有确定性的 document-start 接口，能力检查返回 false。 |
+| OHOS | 网站数据清理 | session storage、IndexedDB、Cache Storage 和 service worker 注册返回不支持。 |
 | Android | 较旧系统 WebView 的 document-start 用户脚本 | 能力检查返回 false，应用可跳过注册并继续运行。 |
 | Windows | 网站数据清理 | WebView2 profile API 不支持 session storage 和 service worker 注册；旧 Runtime 没有该接口时，所有类型均返回不支持。 |
 | macOS | 滚动位置、滚动回调、滚动条和 overscroll | fork 会打印缺少公开 WKWebView API 的说明并安全忽略；位置读取返回 `Offset.zero`。 |
@@ -117,6 +117,6 @@ Windows 原生异常详情包含 `stage`、十六进制 `hresult`、有符号
 | --- | --- |
 | Windows | 必须安装 WebView2 Runtime。 |
 | Linux | 必须安装 WebKitGTK 4.1；标准 Flutter runner 的 `GtkOverlay` 由插件自动安装。 |
-| OHOS | 需要 OHOS Flutter SDK，ArkWeb 行为会随 API 版本变化。 |
+| OHOS | 需要 OHOS Flutter SDK 和 API 22 或更新版本，ArkWeb 行为会随系统版本和设备变化。 |
 | Android | 能力取决于系统 WebView/Chrome 版本。 |
 | iOS/macOS | 能力取决于 OS 版本和应用 entitlement。 |

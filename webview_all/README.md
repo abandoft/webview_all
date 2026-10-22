@@ -12,7 +12,7 @@ A WebView component for all Flutter platforms, compatible with the
 |macOS|10.15+|[WKWebView](https://developer.apple.com/documentation/webkit/wkwebview)|
 |Windows|Win10 1809+|[WebView2](https://developer.microsoft.com/microsoft-edge/webview2)|
 |Linux|webkit2gtk-4.1|[WebKitGTK](https://webkitgtk.org)|
-|OHOS|API 12+|[ArkWeb](https://developer.huawei.com/consumer/en/doc/harmonyos-references-V5/ts-basic-components-web-V5)|
+|OHOS|API 22+|[ArkWeb](https://developer.huawei.com/consumer/en/doc/harmonyos-references-V5/ts-basic-components-web-V5)|
 |Web|Any|[js-interop](https://dart.dev/interop/js-interop)|
 
 ## Features

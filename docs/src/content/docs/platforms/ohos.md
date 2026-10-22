@@ -3,7 +3,7 @@ title: OHOS
 description: ArkWeb implementation, APIs, and HarmonyOS/OpenHarmony limits.
 ---
 
-OHOS is provided by `webview_all_ohos 1.4.0` and uses ArkWeb through the OHOS Flutter SDK.
+OHOS is provided by `webview_all_ohos` and uses ArkWeb through the OHOS Flutter SDK. Starting with 1.4.5, the host application's minimum compatible SDK must be API 22 or newer; see [platform setup](/getting-started/platform-setup/#ohos).
 
 ## Engine
 
@@ -16,7 +16,7 @@ OHOS is provided by `webview_all_ohos 1.4.0` and uses ArkWeb through the OHOS Fl
 | Navigation delegate | `OhosNavigationDelegate` |
 | Cookie manager | `OhosWebViewCookieManager` |
 | Engine | ArkWeb |
-| Minimum target | OHOS API 12+ |
+| Minimum target | OHOS API 22+ |
 
 ## Creation Params
 
@@ -47,19 +47,41 @@ final params = OhosWebViewControllerCreationParams(
 | `setAllowFullScreenRotate(bool enabled)` | Controls fullscreen rotation behavior. |
 | `setDomStorageEnabled(bool enabled)` | Enables DOM storage. |
 | `setJavaScriptCanOpenWindowsAutomatically(bool enabled)` | Controls JavaScript popups. |
-| `setSupportMultipleWindows(bool support)` | Enables multiple window support. |
+| `setSupportMultipleWindows(bool support)` | Retained for compatibility; requested windows continue in the current WebView. |
 | `setLoadWithOverviewMode(bool overview)` | Controls overview mode. |
 | `setUseWideViewPort(bool use)` | Enables wide viewport behavior. |
-| `setDisplayZoomControls(bool enabled)` | Shows or hides zoom controls. |
-| `setBuiltInZoomControls(bool enabled)` | Enables built-in zoom controls. |
+| `setDisplayZoomControls(bool enabled)` | Compatibility flag; does not provide native zoom buttons. |
+| `setBuiltInZoomControls(bool enabled)` | Compatibility flag; use `setSupportZoom` to control page zoom. |
 | `setAllowFileAccess(bool enabled)` | Controls file access. |
 | `setMixedContentMode(OhosMixedContentMode mode)` | Controls mixed HTTP/HTTPS content. |
-| `setSupportZoom(bool support)` | Enables zoom support. |
+| `setSupportZoom(bool support)` | Controls page zoom, including Ctrl shortcuts and Ctrl with the mouse wheel. |
 | `setMediaPlaybackRequiresUserGesture(bool require)` | Controls media autoplay policy. |
 | `setTextZoom(int textZoom)` | Sets text zoom percentage. |
 | `setOnShowFileSelector(callback)` | Handles file chooser requests. |
 | `setGeolocationPermissionsPromptCallbacks(...)` | Handles geolocation permission prompts. |
 | `setCustomWidgetCallbacks(...)` | Handles fullscreen custom views. |
+
+## Runtime Settings and Scrolling
+
+Settings such as JavaScript access, DOM storage, file access, media gesture policy, zoom, viewport, background color, text size, and mixed content can be configured before widget creation and updated while the WebView is displayed.
+
+Changing the user agent or adding/removing JavaScript channels does not force a page reload. User-agent changes affect subsequent requests; newly registered channels normally become available in the next document. Reload explicitly when the current page needs the new channel.
+
+`scrollTo` and `scrollBy` are supported. Position reads and scroll callbacks reflect the page's actual scroll offset, including clamping at the page edges.
+
+The plugin keeps page-requested windows in the current WebView. `supportMultipleWindows` is retained for compatibility and does not create separate windows or tabs. `displayZoomControls` and `builtInZoomControls` do not guarantee native zoom controls. Use `supportZoom` to control page zoom, including `Ctrl` + `+`/`-` and `Ctrl` with the mouse wheel on API 22+.
+
+## Document-Start Scripts
+
+ArkWeb runs user scripts before page JavaScript, in registration order. Scripts can be registered before `WebViewWidget` is attached. Await `addUserScript` before starting navigation so the first page receives them.
+
+Registration and removal apply to future documents and reloads. They neither execute scripts in the current document nor undo effects from scripts that already ran. See the [JavaScript guide](/guides/javascript/#document-start-user-scripts).
+
+Navigation cancels pending `callAsyncJavaScript` invocations with `JavaScriptExecutionException` instead of returning a result from the previous document. Operations waiting for the view to become ready fail if the view is removed.
+
+## Website Data
+
+`WebViewDataManager.clearAllWebsiteData()` works without creating a WebView. It clears cookies, the resource cache shared by all WebViews, local storage, and WebSQL. Session storage, IndexedDB, Cache Storage, and service worker registrations are reported as unsupported. Inspect the returned clearing result; see [website data cleanup](/guides/cookies/#clear-all-website-data).
 
 ## Mixed Content
 

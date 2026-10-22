@@ -31,7 +31,7 @@ This page lists important failures and platform limits that production code shou
 | Web | cookie request for another origin | Returns an empty list and logs once; browser JavaScript cannot inspect that cookie jar. |
 | Web | document-start user scripts | Capability returns false because iframe APIs cannot guarantee execution before page scripts. |
 | Web | `WebViewDataManager.clearAllWebsiteData` | Returns every category as unsupported; a page cannot clear arbitrary iframe storage or `HttpOnly` cookies. |
-| OHOS | document-start user scripts | Capability returns false because the current ArkWeb bridge has no deterministic document-start API. |
+| OHOS | website-data clearing | Session storage, IndexedDB, Cache Storage, and service worker registrations are reported as unsupported. |
 | Android | document-start user scripts on an older System WebView | Capability returns false; the app can continue without registering the script. |
 | Windows | website-data clearing | Session storage and service worker registrations are unsupported by the WebView2 profile API. Older runtimes without that API report every category as unsupported. |
 | macOS | scroll position, scroll callbacks, scrollbar visibility, and overscroll | The fork logs the missing public WKWebView API and safely no-ops; position reads return `Offset.zero`. |
@@ -149,6 +149,6 @@ state.
 | --- | --- |
 | Windows | WebView2 Runtime must be installed. |
 | Linux | WebKitGTK 4.1 must be installed. The plugin installs its `GtkOverlay` automatically for the standard Flutter runner. |
-| OHOS | Requires OHOS Flutter SDK and ArkWeb behavior can vary by API level. |
+| OHOS | Requires OHOS Flutter SDK and API 22 or newer; ArkWeb behavior can vary by OS version and device. |
 | Android | WebView features depend on the installed Android System WebView/Chrome version. |
 | iOS/macOS | WebKit feature availability depends on OS version and app entitlements. |

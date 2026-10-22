@@ -78,7 +78,15 @@ Linux 实现会在标准 Flutter runner realize `FlView` 之前自动安装所�
 
 ## OHOS
 
-使用 [OHOS Flutter SDK](https://atomgit.com/CPF-Flutter/flutter_flutter)，目标 OHOS API 12+。Web 内容权限由 `onPermissionRequest` 回调处理，但宿主应用仍然需要声明并获取对应系统权限。
+使用 [OHOS Flutter SDK](https://atomgit.com/CPF-Flutter/flutter_flutter) 和 API 22+。在宿主应用的 `ohos/build-profile.json5` 中，为 product 设置最低、编译和目标版本：
+
+```json5
+"compatibleSdkVersion": "6.0.2(22)",
+"compileSdkVersion": "6.0.2(22)",
+"targetSdkVersion": "6.0.2(22)"
+```
+
+应用的安装下限由宿主 product 决定，插件的包兼容性声明不能代替该配置。Web 内容权限由 `onPermissionRequest` 回调处理，但宿主应用仍然需要声明并获取对应系统权限。
 
 ## Web
 

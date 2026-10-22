@@ -84,7 +84,15 @@ runner realizes its `FlView`; applications do not need to modify
 
 ## OHOS
 
-Use the OHOS Flutter SDK and target OHOS API 12 or newer. ArkWeb permission prompts are delivered through `onPermissionRequest` for camera and microphone, plus OHOS-specific resource types for MIDI sysex and protected media IDs.
+Use the OHOS Flutter SDK and API 22 or newer. In the host application's `ohos/build-profile.json5`, set the product's minimum, compile, and target versions:
+
+```json5
+"compatibleSdkVersion": "6.0.2(22)",
+"compileSdkVersion": "6.0.2(22)",
+"targetSdkVersion": "6.0.2(22)"
+```
+
+The host product controls the application's installation minimum; the plugin's package declaration does not replace it. ArkWeb permission prompts are delivered through `onPermissionRequest` for camera and microphone, plus OHOS-specific resource types for MIDI sysex and protected media IDs.
 
 Add the host application permissions required by your target HarmonyOS/OpenHarmony version. Web content permission approval only grants the WebView side; the app itself still needs the corresponding system permission.
 
