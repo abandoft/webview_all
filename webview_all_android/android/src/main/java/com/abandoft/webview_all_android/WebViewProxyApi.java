@@ -19,13 +19,16 @@ import android.webkit.WebViewClient;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.webkit.ScriptHandler;
+import androidx.webkit.WebMessageCompat;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 import io.flutter.embedding.android.FlutterView;
 import io.flutter.plugin.platform.PlatformView;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.WeakHashMap;
 import kotlin.Result;
 import kotlin.Unit;
@@ -37,8 +40,42 @@ import kotlin.jvm.functions.Function1;
  * <p>Handles creating {@link WebView}s that intercommunicate with a paired Dart object.
  */
 public class WebViewProxyApi extends PigeonApiWebView {
-  private final Map<WebView, Map<String, ScriptHandler>> documentStartScripts =
+  private final Map<WebView, Map<String, DocumentStartScript>> documentStartScripts =
       new WeakHashMap<>();
+  private final Map<WebView, Map<String, JavaScriptChannelRegistration>> javaScriptChannels =
+      new WeakHashMap<>();
+
+  private static final class DocumentStartScript {
+    final String source;
+    ScriptHandler handler;
+
+    DocumentStartScript(String source, ScriptHandler handler) {
+      this.source = source;
+      this.handler = handler;
+    }
+  }
+
+  private static final class JavaScriptChannelRegistration {
+    @Nullable final String listenerName;
+    @Nullable final ScriptHandler wrapperScript;
+
+    JavaScriptChannelRegistration(
+        @Nullable String listenerName, @Nullable ScriptHandler wrapperScript) {
+      this.listenerName = listenerName;
+      this.wrapperScript = wrapperScript;
+    }
+
+    void remove(WebView webView, String publicName) {
+      if (wrapperScript != null) {
+        wrapperScript.remove();
+      }
+      if (listenerName != null) {
+        WebViewCompat.removeWebMessageListener(webView, listenerName);
+      } else {
+        webView.removeJavascriptInterface(publicName);
+      }
+    }
+  }
 
   /** Implementation of {@link WebView} that can be used as a Flutter {@link PlatformView}s. */
   @SuppressLint("ViewConstructor")
@@ -87,6 +124,7 @@ public class WebViewProxyApi extends PigeonApiWebView {
       }
       destroyed = true;
       api.removeAllDocumentStartJavaScripts(this);
+      api.removeAllJavaScriptChannels(this);
       super.destroy();
     }
 
@@ -265,36 +303,34 @@ public class WebViewProxyApi extends PigeonApiWebView {
 
   @Override
   public void addDocumentStartJavaScript(
-      @NonNull WebView pigeon_instance,
-      @NonNull String identifier,
-      @NonNull String source) {
+      @NonNull WebView pigeon_instance, @NonNull String identifier, @NonNull String source) {
     if (!isDocumentStartJavaScriptSupported(pigeon_instance)) {
       throw new UnsupportedOperationException(
           "The installed Android System WebView does not support document-start scripts.");
     }
 
-    final Map<String, ScriptHandler> scripts =
-        documentStartScripts.computeIfAbsent(pigeon_instance, ignored -> new HashMap<>());
-    final ScriptHandler previous = scripts.remove(identifier);
-    if (previous != null) {
-      previous.remove();
-    }
-    scripts.put(
-        identifier,
+    final ScriptHandler handler =
         WebViewCompat.addDocumentStartJavaScript(
-            pigeon_instance, source, Collections.singleton("*")));
+            pigeon_instance, source, Collections.singleton("*"));
+    final Map<String, DocumentStartScript> scripts =
+        documentStartScripts.computeIfAbsent(pigeon_instance, ignored -> new LinkedHashMap<>());
+    final DocumentStartScript previous = scripts.remove(identifier);
+    if (previous != null) {
+      previous.handler.remove();
+    }
+    scripts.put(identifier, new DocumentStartScript(source, handler));
   }
 
   @Override
   public void removeDocumentStartJavaScript(
       @NonNull WebView pigeon_instance, @NonNull String identifier) {
-    final Map<String, ScriptHandler> scripts = documentStartScripts.get(pigeon_instance);
+    final Map<String, DocumentStartScript> scripts = documentStartScripts.get(pigeon_instance);
     if (scripts == null) {
       return;
     }
-    final ScriptHandler handler = scripts.remove(identifier);
-    if (handler != null) {
-      handler.remove();
+    final DocumentStartScript script = scripts.remove(identifier);
+    if (script != null) {
+      script.handler.remove();
     }
     if (scripts.isEmpty()) {
       documentStartScripts.remove(pigeon_instance);
@@ -303,12 +339,39 @@ public class WebViewProxyApi extends PigeonApiWebView {
 
   @Override
   public void removeAllDocumentStartJavaScripts(@NonNull WebView pigeon_instance) {
-    final Map<String, ScriptHandler> scripts = documentStartScripts.remove(pigeon_instance);
+    final Map<String, DocumentStartScript> scripts = documentStartScripts.remove(pigeon_instance);
     if (scripts == null) {
       return;
     }
-    for (ScriptHandler handler : scripts.values()) {
-      handler.remove();
+    for (DocumentStartScript script : scripts.values()) {
+      script.handler.remove();
+    }
+  }
+
+  // AndroidX runs document-start scripts in registration order. Move user scripts after a newly
+  // installed channel wrapper so they can post messages even when registered before the channel.
+  private void moveDocumentStartScriptsAfterChannelWrappers(@NonNull WebView webView) {
+    final Map<String, DocumentStartScript> scripts = documentStartScripts.get(webView);
+    if (scripts == null) {
+      return;
+    }
+    final Map<DocumentStartScript, ScriptHandler> replacements = new LinkedHashMap<>();
+    try {
+      for (DocumentStartScript script : scripts.values()) {
+        replacements.put(
+            script,
+            WebViewCompat.addDocumentStartJavaScript(
+                webView, script.source, Collections.singleton("*")));
+      }
+    } catch (RuntimeException exception) {
+      for (ScriptHandler handler : replacements.values()) {
+        handler.remove();
+      }
+      throw exception;
+    }
+    for (Map.Entry<DocumentStartScript, ScriptHandler> replacement : replacements.entrySet()) {
+      replacement.getKey().handler.remove();
+      replacement.getKey().handler = replacement.getValue();
     }
   }
 
@@ -332,12 +395,136 @@ public class WebViewProxyApi extends PigeonApiWebView {
   @Override
   public void addJavaScriptChannel(
       @NonNull WebView pigeon_instance, @NonNull JavaScriptChannel channel) {
-    pigeon_instance.addJavascriptInterface(channel, channel.javaScriptChannelName);
+    final String name = channel.javaScriptChannelName;
+    final Map<String, JavaScriptChannelRegistration> channels =
+        javaScriptChannels.computeIfAbsent(pigeon_instance, ignored -> new HashMap<>());
+    for (JavaScriptChannelRegistration registration : channels.values()) {
+      if (name.equals(registration.listenerName)) {
+        throw new IllegalArgumentException(
+            "The JavaScript channel name is already in use internally.");
+      }
+    }
+    final boolean hasSenderMetadata =
+        WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+            && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT);
+    final JavaScriptChannelRegistration previous = channels.remove(name);
+    if (previous != null) {
+      previous.remove(pigeon_instance, name);
+    }
+    if (hasSenderMetadata) {
+      // A literal window property (accessed using brackets), rather than an app channel identifier.
+      // Keep this name unique even for apps that use non-identifier channel names themselves.
+      String listenerName;
+      do {
+        listenerName = "webview_all.internal." + UUID.randomUUID();
+      } while (name.equals(listenerName) || isJavaScriptChannelNameInUse(channels, listenerName));
+      final String privateName = listenerName;
+      WebViewCompat.addWebMessageListener(
+          pigeon_instance,
+          privateName,
+          Collections.singleton("*"),
+          (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
+            // Public calls have already been converted to strings by the wrapper. Also handle
+            // direct calls to the internal object without letting an ArrayBuffer throw in getData.
+            final String text =
+                message.getType() == WebMessageCompat.TYPE_ARRAY_BUFFER
+                    ? "[object ArrayBuffer]"
+                    : message.getData();
+            channel.postMessageWithSenderMetadata(
+                text == null ? "null" : text, sourceOrigin.toString(), isMainFrame);
+          });
+      ScriptHandler wrapper = null;
+      try {
+        // AndroidX guarantees listener objects are injected before document-start scripts.
+        wrapper =
+            WebViewCompat.addDocumentStartJavaScript(
+                pigeon_instance,
+                javaScriptChannelWrapper(name, privateName),
+                Collections.singleton("*"));
+        moveDocumentStartScriptsAfterChannelWrappers(pigeon_instance);
+        channels.put(name, new JavaScriptChannelRegistration(privateName, wrapper));
+      } catch (RuntimeException exception) {
+        if (wrapper != null) {
+          wrapper.remove();
+        }
+        WebViewCompat.removeWebMessageListener(pigeon_instance, privateName);
+        throw exception;
+      }
+    } else {
+      pigeon_instance.addJavascriptInterface(channel, name);
+      channels.put(name, new JavaScriptChannelRegistration(null, null));
+    }
+  }
+
+  private static boolean isJavaScriptChannelNameInUse(
+      Map<String, JavaScriptChannelRegistration> channels, String name) {
+    if (channels.containsKey(name)) {
+      return true;
+    }
+    for (JavaScriptChannelRegistration registration : channels.values()) {
+      if (name.equals(registration.listenerName)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static String javaScriptChannelWrapper(String publicName, String privateName) {
+    // Channel names can shadow window.String or window.Object. Resolve intrinsics through literals
+    // so installing another channel never depends on those mutable global bindings.
+    return "(function(){var bridge=window["
+        + quoteJavaScriptString(privateName)
+        + "],string=''.constructor;({}).constructor.defineProperty(window,"
+        + quoteJavaScriptString(publicName)
+        + ",{configurable:true,enumerable:true,writable:true,value:{postMessage:function(value){"
+        + "bridge.postMessage(string(value));}}});})();";
+  }
+
+  private static String quoteJavaScriptString(String value) {
+    final StringBuilder result = new StringBuilder("\"");
+    final String hex = "0123456789abcdef";
+    for (int index = 0; index < value.length(); index++) {
+      final char character = value.charAt(index);
+      if (character == '"' || character == '\\') {
+        result.append('\\').append(character);
+      } else if (character < 0x20 || character == 0x2028 || character == 0x2029) {
+        result
+            .append("\\u")
+            .append(hex.charAt((character >> 12) & 0xf))
+            .append(hex.charAt((character >> 8) & 0xf))
+            .append(hex.charAt((character >> 4) & 0xf))
+            .append(hex.charAt(character & 0xf));
+      } else {
+        result.append(character);
+      }
+    }
+    return result.append('"').toString();
   }
 
   @Override
   public void removeJavaScriptChannel(@NonNull WebView pigeon_instance, @NonNull String channel) {
-    pigeon_instance.removeJavascriptInterface(channel);
+    final Map<String, JavaScriptChannelRegistration> channels =
+        javaScriptChannels.get(pigeon_instance);
+    final JavaScriptChannelRegistration registration =
+        channels == null ? null : channels.remove(channel);
+    if (registration != null) {
+      registration.remove(pigeon_instance, channel);
+    } else {
+      pigeon_instance.removeJavascriptInterface(channel);
+    }
+    if (channels != null && channels.isEmpty()) {
+      javaScriptChannels.remove(pigeon_instance);
+    }
+  }
+
+  void removeAllJavaScriptChannels(@NonNull WebView webView) {
+    final Map<String, JavaScriptChannelRegistration> channels = javaScriptChannels.remove(webView);
+    if (channels == null) {
+      return;
+    }
+    for (Map.Entry<String, JavaScriptChannelRegistration> channel : channels.entrySet()) {
+      channel.getValue().remove(webView, channel.getKey());
+    }
   }
 
   @Override

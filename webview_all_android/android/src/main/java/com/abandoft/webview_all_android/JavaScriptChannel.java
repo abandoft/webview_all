@@ -6,6 +6,7 @@ package com.abandoft.webview_all_android;
 
 import android.webkit.JavascriptInterface;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 /**
  * Added as a JavaScript interface to the WebView for any JavaScript channel that the Dart code sets
@@ -28,10 +29,20 @@ public class JavaScriptChannel {
   @SuppressWarnings("unused")
   @JavascriptInterface
   public void postMessage(@NonNull final String message) {
+    // This interface is visible in every frame and cannot authenticate its caller.
+    postMessageWithSenderMetadata(message, null, null);
+  }
+
+  // Deliberately not a JavaScript interface: sender metadata must come from AndroidX.
+  void postMessageWithSenderMetadata(
+      @NonNull final String message,
+      @Nullable final String sourceOrigin,
+      @Nullable final Boolean isMainFrame) {
     api.getPigeonRegistrar()
         .runOnMainThread(
             () -> {
-              api.postMessage(JavaScriptChannel.this, message, reply -> null);
+              api.postMessage(
+                  JavaScriptChannel.this, message, sourceOrigin, isMainFrame, reply -> null);
             });
   }
 }

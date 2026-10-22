@@ -495,8 +495,12 @@ abstract class JavaScriptChannel {
 
   late final String channelName;
 
-  /// Handles callbacks messages from JavaScript.
-  late void Function(String message) postMessage;
+  /// Handles messages and sender information reported by the native bridge.
+  ///
+  /// The legacy JavaScript interface cannot identify the sender and reports
+  /// null metadata. AndroidX reports an origin, not a complete document URL.
+  late void Function(String message, String? sourceOrigin, bool? isMainFrame)
+  postMessage;
 }
 
 /// Receives various notifications and requests from a `WebView`.

@@ -1297,15 +1297,26 @@ class MockJavaScriptChannel extends _i1.Mock implements _i2.JavaScriptChannel {
           as String);
 
   @override
-  void Function(_i2.JavaScriptChannel, String) get postMessage =>
+  void Function(_i2.JavaScriptChannel, String, String?, bool?)
+  get postMessage =>
       (super.noSuchMethod(
             Invocation.getter(#postMessage),
             returnValue:
-                (_i2.JavaScriptChannel pigeon_instance, String message) {},
+                (
+                  _i2.JavaScriptChannel pigeon_instance,
+                  String message,
+                  String? sourceOrigin,
+                  bool? isMainFrame,
+                ) {},
             returnValueForMissingStub:
-                (_i2.JavaScriptChannel pigeon_instance, String message) {},
+                (
+                  _i2.JavaScriptChannel pigeon_instance,
+                  String message,
+                  String? sourceOrigin,
+                  bool? isMainFrame,
+                ) {},
           )
-          as void Function(_i2.JavaScriptChannel, String));
+          as void Function(_i2.JavaScriptChannel, String, String?, bool?));
 
   @override
   _i2.PigeonInstanceManager get pigeon_instanceManager =>

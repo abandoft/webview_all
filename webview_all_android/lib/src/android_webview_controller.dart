@@ -213,9 +213,10 @@ class AndroidWebViewController extends PlatformWebViewController {
     _asyncJavaScriptBridgeReady = _webView.addJavaScriptChannel(
       android_webview.JavaScriptChannel(
         channelName: _asyncJavaScriptChannelName,
-        postMessage: (_, String message) {
-          weakThis.target?._handleAsyncJavaScriptMessage(message);
-        },
+        postMessage:
+            (_, String message, String? sourceOrigin, bool? isMainFrame) {
+              weakThis.target?._handleAsyncJavaScriptMessage(message);
+            },
       ),
     );
   }
@@ -847,10 +848,16 @@ class AndroidWebViewController extends PlatformWebViewController {
             javaScriptChannelParams,
           );
 
+    return _addJavaScriptChannel(androidJavaScriptParams);
+  }
+
+  Future<void> _addJavaScriptChannel(
+    AndroidJavaScriptChannelParams androidJavaScriptParams,
+  ) async {
     // When JavaScript channel with the same name exists make sure to remove it
     // before registering the new channel.
     if (_javaScriptChannelParams.containsKey(androidJavaScriptParams.name)) {
-      _webView.removeJavaScriptChannel(androidJavaScriptParams.name);
+      await _webView.removeJavaScriptChannel(androidJavaScriptParams.name);
     }
 
     _javaScriptChannelParams[androidJavaScriptParams.name] =
@@ -1520,9 +1527,15 @@ class AndroidJavaScriptChannelParams extends JavaScriptChannelParams {
          postMessage: withWeakReferenceTo(onMessageReceived, (
            WeakReference<void Function(JavaScriptMessage)> weakReference,
          ) {
-           return (_, String message) {
+           return (_, String message, String? sourceOrigin, bool? isMainFrame) {
              if (weakReference.target != null) {
-               weakReference.target!(JavaScriptMessage(message: message));
+               weakReference.target!(
+                 JavaScriptMessage(
+                   message: message,
+                   sourceOrigin: sourceOrigin,
+                   isMainFrame: isMainFrame,
+                 ),
+               );
              }
            };
          }),

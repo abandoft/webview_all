@@ -78,7 +78,12 @@ class PigeonOverrides {
   /// Overrides [JavaScriptChannel.new].
   static JavaScriptChannel Function({
     required String channelName,
-    required void Function(JavaScriptChannel pigeon_instance, String message)
+    required void Function(
+      JavaScriptChannel pigeon_instance,
+      String message,
+      String? sourceOrigin,
+      bool? isMainFrame,
+    )
     postMessage,
   })?
   javaScriptChannel_new;
@@ -3093,7 +3098,12 @@ class JavaScriptChannel extends PigeonInternalProxyApiBaseClass {
     BinaryMessenger? pigeon_binaryMessenger,
     PigeonInstanceManager? pigeon_instanceManager,
     required String channelName,
-    required void Function(JavaScriptChannel pigeon_instance, String message)
+    required void Function(
+      JavaScriptChannel pigeon_instance,
+      String message,
+      String? sourceOrigin,
+      bool? isMainFrame,
+    )
     postMessage,
   }) {
     if (PigeonOverrides.javaScriptChannel_new != null) {
@@ -3162,7 +3172,10 @@ class JavaScriptChannel extends PigeonInternalProxyApiBaseClass {
 
   final String channelName;
 
-  /// Handles callbacks messages from JavaScript.
+  /// Handles messages and sender information reported by the native bridge.
+  ///
+  /// The legacy JavaScript interface cannot identify the sender and reports
+  /// null metadata. AndroidX reports an origin, not a complete document URL.
   ///
   /// For the associated Native object to be automatically garbage collected,
   /// it is required that the implementation of this `Function` doesn't have a
@@ -3181,14 +3194,24 @@ class JavaScriptChannel extends PigeonInternalProxyApiBaseClass {
   ///
   /// Alternatively, [PigeonInstanceManager.removeWeakReference] can be used to
   /// release the associated Native object manually.
-  final void Function(JavaScriptChannel pigeon_instance, String message)
+  final void Function(
+    JavaScriptChannel pigeon_instance,
+    String message,
+    String? sourceOrigin,
+    bool? isMainFrame,
+  )
   postMessage;
 
   static void pigeon_setUpMessageHandlers({
     bool pigeon_clearHandlers = false,
     BinaryMessenger? pigeon_binaryMessenger,
     PigeonInstanceManager? pigeon_instanceManager,
-    void Function(JavaScriptChannel pigeon_instance, String message)?
+    void Function(
+      JavaScriptChannel pigeon_instance,
+      String message,
+      String? sourceOrigin,
+      bool? isMainFrame,
+    )?
     postMessage,
   }) {
     final _PigeonInternalProxyApiBaseCodec pigeonChannelCodec =
@@ -3210,10 +3233,14 @@ class JavaScriptChannel extends PigeonInternalProxyApiBaseClass {
           final JavaScriptChannel arg_pigeon_instance =
               args[0]! as JavaScriptChannel;
           final String arg_message = args[1]! as String;
+          final String? arg_sourceOrigin = args[2] as String?;
+          final bool? arg_isMainFrame = args[3] as bool?;
           try {
             (postMessage ?? arg_pigeon_instance.postMessage).call(
               arg_pigeon_instance,
               arg_message,
+              arg_sourceOrigin,
+              arg_isMainFrame,
             );
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {

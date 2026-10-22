@@ -3224,10 +3224,17 @@ abstract class PigeonApiJavaScriptChannel(
     }
   }
 
-  /** Handles callbacks messages from JavaScript. */
+  /**
+   * Handles messages and sender information reported by the native bridge.
+   *
+   * The legacy JavaScript interface cannot identify the sender and reports null metadata.
+   * AndroidX reports an origin, not a complete document URL.
+   */
   fun postMessage(
       pigeon_instanceArg: JavaScriptChannel,
       messageArg: String,
+      sourceOriginArg: String?,
+      isMainFrameArg: Boolean?,
       callback: (Result<Unit>) -> Unit
   ) {
     if (pigeonRegistrar.ignoreCallsToDart) {
@@ -3248,7 +3255,7 @@ abstract class PigeonApiJavaScriptChannel(
     val codec = pigeonRegistrar.codec
     val channelName = "com.abandoft.pigeon.webview_all_android.JavaScriptChannel.postMessage"
     val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
-    channel.send(listOf(pigeon_instanceArg, messageArg)) {
+    channel.send(listOf(pigeon_instanceArg, messageArg, sourceOriginArg, isMainFrameArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
           callback(

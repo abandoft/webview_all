@@ -22,11 +22,13 @@ import android.webkit.DownloadListener;
 import android.webkit.ValueCallback;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import androidx.webkit.WebViewFeature;
 import io.flutter.embedding.android.FlutterView;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
 
 public class WebViewTest {
   @Test
@@ -283,7 +285,11 @@ public class WebViewTest {
 
     final WebView instance = mock(WebView.class);
     final JavaScriptChannel channel = mock(JavaScriptChannel.class);
-    api.addJavaScriptChannel(instance, channel);
+    try (MockedStatic<WebViewFeature> features =
+        org.mockito.Mockito.mockStatic(WebViewFeature.class)) {
+      api.addJavaScriptChannel(instance, channel);
+      features.verify(() -> WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER));
+    }
 
     verify(instance).addJavascriptInterface(channel, channel.javaScriptChannelName);
   }
@@ -384,6 +390,7 @@ public class WebViewTest {
     webView.destroy();
 
     verify(mockApi, times(1)).removeAllDocumentStartJavaScripts(webView);
+    verify(mockApi, times(1)).removeAllJavaScriptChannels(webView);
   }
 
   @Test

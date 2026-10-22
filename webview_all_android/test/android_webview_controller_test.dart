@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -115,7 +116,8 @@ void main() {
     setWebAuthenticationSupport,
     void Function(
       String channelName,
-      void Function(android_webview.JavaScriptChannel, String) postMessage,
+      void Function(android_webview.JavaScriptChannel, String, String?, bool?)
+      postMessage,
     )?
     onJavaScriptChannelCreated,
   }) {
@@ -319,7 +321,12 @@ void main() {
     android_webview.PigeonOverrides.javaScriptChannel_new =
         ({
           required String channelName,
-          required void Function(android_webview.JavaScriptChannel, String)
+          required void Function(
+            android_webview.JavaScriptChannel,
+            String,
+            String?,
+            bool?,
+          )
           postMessage,
         }) {
           onJavaScriptChannelCreated?.call(channelName, postMessage);
@@ -358,7 +365,12 @@ void main() {
       android_webview.PigeonOverrides.javaScriptChannel_new =
           ({
             required String channelName,
-            required void Function(android_webview.JavaScriptChannel, String)
+            required void Function(
+              android_webview.JavaScriptChannel,
+              String,
+              String?,
+              bool?,
+            )
             postMessage,
           }) => mockJavaScriptChannel ?? MockJavaScriptChannel();
       return AndroidJavaScriptChannelParams(
@@ -1723,14 +1735,21 @@ void main() {
 
     test('callAsyncJavaScript correlates a serialized result', () async {
       final MockWebView mockWebView = MockWebView();
-      void Function(android_webview.JavaScriptChannel, String)? postMessage;
+      void Function(android_webview.JavaScriptChannel, String, String?, bool?)?
+      postMessage;
       String? invocationScript;
       final AndroidWebViewController controller = createControllerWithMocks(
         mockWebView: mockWebView,
         onJavaScriptChannelCreated:
             (
               String channelName,
-              void Function(android_webview.JavaScriptChannel, String) callback,
+              void Function(
+                android_webview.JavaScriptChannel,
+                String,
+                String?,
+                bool?,
+              )
+              callback,
             ) {
               if (channelName == '__webview_all_async_javascript') {
                 postMessage = callback;
@@ -1760,6 +1779,8 @@ void main() {
           'success': true,
           'value': 'ignored',
         }),
+        null,
+        null,
       );
       postMessage!(
         MockJavaScriptChannel(),
@@ -1768,6 +1789,8 @@ void main() {
           'success': true,
           'value': 7,
         }),
+        'https://sender.example',
+        true,
       );
 
       await expectLater(result, completion(7));
@@ -1826,6 +1849,83 @@ void main() {
       await controller.addJavaScriptChannel(paramsWithMock);
       verify(mockWebView.addJavaScriptChannel(any)).called(2);
     });
+
+    test('channel sender information comes from the native callback', () async {
+      late void Function(
+        android_webview.JavaScriptChannel,
+        String,
+        String?,
+        bool?,
+      )
+      postMessage;
+      final controller = createControllerWithMocks(
+        onJavaScriptChannelCreated: (String name, callback) {
+          if (name == 'Bridge') {
+            postMessage = callback;
+          }
+        },
+      );
+      final received = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        JavaScriptChannelParams(
+          name: 'Bridge',
+          onMessageReceived: received.add,
+        ),
+      );
+      const payload =
+          '{"sourceOrigin":"https://forged.example",'
+          '"sourceUrl":"https://forged.example/page","isMainFrame":true}';
+      for (final metadata in <(String?, bool?)>[
+        ('https://sender.example', false),
+        ('null', true),
+        (null, null),
+      ]) {
+        postMessage(MockJavaScriptChannel(), payload, metadata.$1, metadata.$2);
+      }
+
+      expect(received.map((message) => message.message), <String>[
+        payload,
+        payload,
+        payload,
+      ]);
+      expect(received.map((message) => message.sourceOrigin), <String?>[
+        'https://sender.example',
+        'null',
+        null,
+      ]);
+      expect(received.map((message) => message.isMainFrame), <bool?>[
+        false,
+        true,
+        null,
+      ]);
+      expect(received.every((message) => message.sourceUrl == null), isTrue);
+    });
+
+    test(
+      'replacing a channel waits for native removal before adding it',
+      () async {
+        final webView = MockWebView();
+        final controller = createControllerWithMocks(mockWebView: webView);
+        final params = createAndroidJavaScriptChannelParamsWithMocks(
+          name: 'test',
+        );
+        await controller.addJavaScriptChannel(params);
+        clearInteractions(webView);
+        final removal = Completer<void>();
+        when(
+          webView.removeJavaScriptChannel('test'),
+        ).thenAnswer((_) => removal.future);
+
+        final replacement = controller.addJavaScriptChannel(params);
+        await Future<void>.delayed(Duration.zero);
+        verify(webView.removeJavaScriptChannel('test')).called(1);
+        verifyNever(webView.addJavaScriptChannel(any));
+
+        removal.complete();
+        await replacement;
+        verify(webView.addJavaScriptChannel(any)).called(1);
+      },
+    );
 
     test('addJavaScriptChannel rejects an empty name', () async {
       final AndroidWebViewController controller = createControllerWithMocks();
