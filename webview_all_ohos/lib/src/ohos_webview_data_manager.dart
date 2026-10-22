@@ -1,6 +1,7 @@
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'ohos_webview_native.dart';
+import 'ohos_website_data_store.dart';
 
 class OhosWebViewDataManagerCreationParams
     extends PlatformWebViewDataManagerCreationParams {
@@ -17,8 +18,10 @@ class OhosWebViewDataManager extends PlatformWebViewDataManager {
     PlatformWebViewDataManagerCreationParams params, {
     CookieManager? cookieManager,
     WebStorage? webStorage,
+    OhosWebsiteDataStore? websiteDataStore,
   }) : _cookieManager = cookieManager ?? CookieManager.instance,
        _webStorage = webStorage ?? WebStorage.instance,
+       _websiteDataStore = websiteDataStore ?? OhosWebsiteDataStore(),
        super.implementation(
          params is OhosWebViewDataManagerCreationParams
              ? params
@@ -29,6 +32,7 @@ class OhosWebViewDataManager extends PlatformWebViewDataManager {
 
   final CookieManager _cookieManager;
   final WebStorage _webStorage;
+  final OhosWebsiteDataStore _websiteDataStore;
 
   @override
   Future<WebViewDataClearingResult> clearAllWebsiteData() async {
@@ -42,9 +46,15 @@ class OhosWebViewDataManager extends PlatformWebViewDataManager {
       failures[WebViewDataType.cookies] = _diagnostic(error);
     }
 
+    try {
+      await _websiteDataStore.clearAllCache(includeDiskFiles: true);
+      cleared.add(WebViewDataType.cache);
+    } catch (error) {
+      failures[WebViewDataType.cache] = _diagnostic(error);
+    }
+
     const Set<WebViewDataType> storageTypes = <WebViewDataType>{
       WebViewDataType.localStorage,
-      WebViewDataType.sessionStorage,
       WebViewDataType.webSql,
     };
     try {

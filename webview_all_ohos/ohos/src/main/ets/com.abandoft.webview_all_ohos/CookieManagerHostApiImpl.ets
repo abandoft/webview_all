@@ -8,7 +8,7 @@ export class CookieManagerHostApiImpl {
 
   setCookie(_identifier: number, url: string, value: string): void {
     this.assertUrl(url);
-    web_webview.WebCookieManager.setCookie(url, value);
+    web_webview.WebCookieManager.configCookieSync(url, value);
   }
 
   getCookies(_identifier: number, url: string, result: Result<string>): void {
@@ -21,8 +21,9 @@ export class CookieManagerHostApiImpl {
   }
 
   removeAllCookies(_identifier: number, result: Result<boolean>): void {
+    const hadCookies = web_webview.WebCookieManager.existCookie();
     web_webview.WebCookieManager.clearAllCookiesSync();
-    result.success(true);
+    result.success(hadCookies);
   }
 
   private assertUrl(url: string): void {

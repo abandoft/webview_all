@@ -4,6 +4,7 @@ export class WebStorageHostApiImpl {
   create(_instanceId: number): void {}
 
   deleteAllData(_instanceId: number): void {
+    web_webview.WebviewController.initializeWebEngine();
     web_webview.WebStorage.deleteAllData();
   }
 }

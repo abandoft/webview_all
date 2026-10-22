@@ -198,6 +198,10 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
           this.webViewApi.reload(call.argument('instanceId'));
           result.success(null);
           return;
+        case 'WebView.clearAllCache':
+          this.webViewApi.clearAllCache(call.argument('includeDiskFiles'));
+          result.success(null);
+          return;
         case 'WebView.clearCache':
           this.webViewApi.clearCache(call.argument('instanceId'), call.argument('includeDiskFiles'));
           result.success(null);

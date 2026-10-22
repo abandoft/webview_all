@@ -149,6 +149,11 @@ export class WebViewHostApiImpl {
     });
   }
 
+  clearAllCache(includeDiskFiles: boolean): void {
+    web_webview.WebviewController.initializeWebEngine();
+    web_webview.WebviewController.removeAllCache(includeDiskFiles);
+  }
+
   evaluateJavascript(instanceId: number, javascriptString: string, result: Result<string>): void {
     const webView = this.webView(instanceId);
     webView.getController().runJavaScript(javascriptString).then((scriptResult: string) => {
