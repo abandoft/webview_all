@@ -1748,6 +1748,7 @@ window.chrome.webview.postMessage({
       await _waitForCondition(() async {
         try {
           return await controller.runJavaScriptReturningResult(
+                'document.body !== null && '
                 'document.body.innerText.includes("Authorized")',
               ) ==
               true;
