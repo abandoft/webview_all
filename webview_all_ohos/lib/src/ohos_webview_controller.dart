@@ -577,6 +577,17 @@ class OhosWebViewController extends PlatformWebViewController {
   WebViewOverScrollMode _overScrollMode = WebViewOverScrollMode.always;
   int _nextAsyncJavaScriptInvocationIdentifier = 0;
   int _navigationGeneration = 0;
+  final Set<Completer<void>> _pendingAsyncJavaScript = <Completer<void>>{};
+
+  void _beginNavigation() {
+    _navigationGeneration += 1;
+    final List<Completer<void>> pending = _pendingAsyncJavaScript.toList();
+    _pendingAsyncJavaScript.clear();
+    for (final Completer<void> invocation in pending) {
+      invocation.complete();
+    }
+  }
+
   late final PageEventCallback _controllerPageStartedCallback =
       withWeakReferenceTo(this, (
         WeakReference<OhosWebViewController> weakReference,
@@ -584,7 +595,7 @@ class OhosWebViewController extends PlatformWebViewController {
         return (_) {
           final OhosWebViewController? controller = weakReference.target;
           if (controller != null) {
-            controller._navigationGeneration += 1;
+            controller._beginNavigation();
           }
         };
       });
@@ -634,7 +645,7 @@ class OhosWebViewController extends PlatformWebViewController {
     // channel calls ordered also ensures that a settings failure is surfaced
     // instead of racing an apparently successful load.
     await _webView.settings.setAllowFileAccess(true);
-    _navigationGeneration += 1;
+    _beginNavigation();
     await _webView.loadUrl(url, <String, String>{});
   }
 
@@ -658,13 +669,13 @@ class OhosWebViewController extends PlatformWebViewController {
     }
     await _webView.settings.setAllowFileAccess(true);
     final String url = 'resources/rawfile/$assetFilePath';
-    _navigationGeneration += 1;
+    _beginNavigation();
     return _webView.loadUrl(url, <String, String>{});
   }
 
   @override
   Future<void> loadHtmlString(String html, {String? baseUrl}) {
-    _navigationGeneration += 1;
+    _beginNavigation();
     return _webView.loadDataWithBaseUrl(
       baseUrl: baseUrl,
       data: html,
@@ -681,7 +692,7 @@ class OhosWebViewController extends PlatformWebViewController {
 
     switch (params.method) {
       case LoadRequestMethod.get:
-        _navigationGeneration += 1;
+        _beginNavigation();
         return _webView.loadUrl(params.uri.toString(), params.headers);
       case LoadRequestMethod.post:
         if (params.headers.isNotEmpty) {
@@ -690,7 +701,7 @@ class OhosWebViewController extends PlatformWebViewController {
             'the OHOS ArkWeb postUrl API.',
           );
         }
-        _navigationGeneration += 1;
+        _beginNavigation();
         return _webView.postUrl(
           params.uri.toString(),
           params.body ?? Uint8List(0),
@@ -709,19 +720,19 @@ class OhosWebViewController extends PlatformWebViewController {
 
   @override
   Future<void> goBack() {
-    _navigationGeneration += 1;
+    _beginNavigation();
     return _webView.goBack();
   }
 
   @override
   Future<void> goForward() {
-    _navigationGeneration += 1;
+    _beginNavigation();
     return _webView.goForward();
   }
 
   @override
   Future<void> reload() {
-    _navigationGeneration += 1;
+    _beginNavigation();
     return _webView.reload();
   }
 
@@ -789,6 +800,20 @@ class OhosWebViewController extends PlatformWebViewController {
   @override
   Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
     final int generation = _navigationGeneration;
+    final Completer<void> navigation = Completer<void>();
+    _pendingAsyncJavaScript.add(navigation);
+    final Future<void> navigationChanged = navigation.future;
+    const JavaScriptExecutionException navigationError =
+        JavaScriptExecutionException(
+          name: 'NavigationError',
+          message: 'The page navigated before JavaScript completed.',
+        );
+    void checkNavigation() {
+      if (generation != _navigationGeneration) {
+        throw navigationError;
+      }
+    }
+
     final Stopwatch stopwatch = Stopwatch()..start();
     final String identifier = _createOhosOpaqueIdentifier(
       'webview_all_${++_nextAsyncJavaScriptInvocationIdentifier}',
@@ -800,6 +825,7 @@ class OhosWebViewController extends PlatformWebViewController {
         .join(',');
     Duration remainingTime() => params.timeout - stopwatch.elapsed;
     Future<String?> evaluateWithinDeadline(String javaScript) {
+      checkNavigation();
       final Duration remaining = remainingTime();
       if (remaining <= Duration.zero) {
         return Future<String?>.error(
@@ -809,15 +835,16 @@ class OhosWebViewController extends PlatformWebViewController {
           ),
         );
       }
-      return _webView
-          .evaluateJavascript(javaScript)
-          .timeout(
-            remaining,
-            onTimeout: () => throw TimeoutException(
-              'The asynchronous JavaScript invocation timed out.',
-              params.timeout,
-            ),
-          );
+      return Future.any<String?>(<Future<String?>>[
+        _webView.evaluateJavascript(javaScript),
+        navigationChanged.then<String?>((_) => throw navigationError),
+      ]).timeout(
+        remaining,
+        onTimeout: () => throw TimeoutException(
+          'The asynchronous JavaScript invocation timed out.',
+          params.timeout,
+        ),
+      );
     }
 
     try {
@@ -873,14 +900,10 @@ ${params.functionBody}
         }, postError);
       })();
     ''');
+      checkNavigation();
 
       while (stopwatch.elapsed < params.timeout) {
-        if (generation != _navigationGeneration) {
-          throw const JavaScriptExecutionException(
-            name: 'NavigationError',
-            message: 'The page navigated before JavaScript completed.',
-          );
-        }
+        checkNavigation();
         final String? rawResult = await evaluateWithinDeadline('''
           (()=>{
             const values = window.__webviewAllAsyncResults;
@@ -889,6 +912,7 @@ ${params.functionBody}
             return value ? JSON.stringify(value) : null;
           })();
         ''');
+        checkNavigation();
         final Map<String, dynamic>? result = _decodeAsyncJavaScriptPollResult(
           rawResult,
         );
@@ -910,25 +934,49 @@ ${params.functionBody}
           break;
         }
         const Duration pollingInterval = Duration(milliseconds: 20);
-        await Future<void>.delayed(
-          delayRemaining.compareTo(pollingInterval) < 0
-              ? delayRemaining
-              : pollingInterval,
-        );
+        await Future.any<void>(<Future<void>>[
+          Future<void>.delayed(
+            delayRemaining.compareTo(pollingInterval) < 0
+                ? delayRemaining
+                : pollingInterval,
+          ),
+          navigationChanged,
+        ]);
       }
       throw TimeoutException(
         'The asynchronous JavaScript invocation timed out.',
         params.timeout,
       );
     } finally {
+      _pendingAsyncJavaScript.remove(navigation);
+      if (!navigation.isCompleted) {
+        // Release cancellation listeners retained by completed poll races.
+        navigation.complete();
+      }
       if (generation == _navigationGeneration &&
           remainingTime() > Duration.zero) {
         try {
-          await evaluateWithinDeadline('''
+          final Duration remaining = remainingTime();
+          const Duration maximumCleanupTime = Duration(milliseconds: 100);
+          // Page-side expiry also releases the slot. Cleanup must never hold
+          // an already available result behind an unresponsive native call.
+          unawaited(
+            _webView
+                .evaluateJavascript('''
             if (window.__webviewAllAsyncResults) {
               delete window.__webviewAllAsyncResults[$encodedIdentifier];
             }
-          ''');
+          ''')
+                .timeout(
+                  remaining < maximumCleanupTime
+                      ? remaining
+                      : maximumCleanupTime,
+                )
+                .then<void>(
+                  (_) {},
+                  onError: (Object error, StackTrace stackTrace) {},
+                ),
+          );
         } catch (_) {
           // Navigation can replace the document before cleanup completes.
         }
