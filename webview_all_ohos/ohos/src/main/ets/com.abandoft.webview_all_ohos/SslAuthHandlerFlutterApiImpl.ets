@@ -12,7 +12,9 @@ export class SslAuthHandlerFlutterApiImpl {
   }
 
   create(instance: ESObject, callback?: Reply<void>): void {
-    if (!this.instanceManager.containsInstance(instance)) {
+    if (this.instanceManager.containsInstance(instance)) {
+      callback?.reply();
+    } else {
       this.callbackApi.createSslAuthHandler(
         this.instanceManager.addHostCreatedInstance(instance),
         callback

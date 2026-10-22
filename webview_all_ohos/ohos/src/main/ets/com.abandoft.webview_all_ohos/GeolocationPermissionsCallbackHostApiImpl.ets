@@ -1,4 +1,5 @@
 import { InstanceManager } from './InstanceManager';
+import { completeNativeCallback } from './NativeCallback';
 
 export class GeolocationPermissionsCallbackHostApiImpl {
   private readonly instanceManager: InstanceManager;
@@ -8,10 +9,8 @@ export class GeolocationPermissionsCallbackHostApiImpl {
   }
 
   invoke(instanceId: number, origin: string, allow: boolean, retain: boolean): void {
-    this.callback(instanceId).invoke(origin, allow, retain);
-  }
-
-  private callback(instanceId: number): JsGeolocation {
-    return this.instanceManager.getInstance<JsGeolocation>(instanceId);
+    completeNativeCallback<JsGeolocation>(this.instanceManager, instanceId, (callback: JsGeolocation) => {
+      callback.invoke(origin, allow, retain);
+    });
   }
 }

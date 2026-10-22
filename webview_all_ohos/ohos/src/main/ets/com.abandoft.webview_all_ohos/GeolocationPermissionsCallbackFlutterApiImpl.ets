@@ -12,7 +12,9 @@ export class GeolocationPermissionsCallbackFlutterApiImpl {
   }
 
   create(instance: JsGeolocation, callback?: Reply<void>): void {
-    if (!this.instanceManager.containsInstance(instance)) {
+    if (this.instanceManager.containsInstance(instance)) {
+      callback?.reply();
+    } else {
       this.callbackApi.createGeolocationPermissionsCallback(
         this.instanceManager.addHostCreatedInstance(instance),
         callback

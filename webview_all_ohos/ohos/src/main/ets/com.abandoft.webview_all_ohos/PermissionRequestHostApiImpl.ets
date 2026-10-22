@@ -1,4 +1,5 @@
 import { InstanceManager } from './InstanceManager';
+import { completeNativeCallback } from './NativeCallback';
 
 export class PermissionRequestHostApiImpl {
   private readonly instanceManager: InstanceManager;
@@ -8,14 +9,14 @@ export class PermissionRequestHostApiImpl {
   }
 
   grant(instanceId: number, resources: string[]): void {
-    this.request(instanceId).grant(resources);
+    completeNativeCallback<PermissionRequest>(this.instanceManager, instanceId, (request: PermissionRequest) => {
+      request.grant(resources);
+    });
   }
 
   deny(instanceId: number): void {
-    this.request(instanceId).deny();
-  }
-
-  private request(instanceId: number): PermissionRequest {
-    return this.instanceManager.getInstance<PermissionRequest>(instanceId);
+    completeNativeCallback<PermissionRequest>(this.instanceManager, instanceId, (request: PermissionRequest) => {
+      request.deny();
+    });
   }
 }

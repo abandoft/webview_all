@@ -144,15 +144,20 @@ class OhosWebChromeClient implements WebChromeClient {
     filePathCallback: FileSelectorResult,
     fileChooserParams: FileSelectorParam
   ): boolean {
-    const shouldHandleResult = this.returnValueForOnShowFileChooser;
+    if (!this.returnValueForOnShowFileChooser) {
+      return false;
+    }
+    let completed = false;
+    const complete = (paths: Array<string> | null): void => {
+      if (completed) return;
+      completed = true;
+      filePathCallback.handleFileList(paths ?? []);
+    };
     this.flutterApi.onShowFileChooserImpl(this, webView, fileChooserParams, {
-      reply: (paths: Array<string>): void => {
-        if (shouldHandleResult && paths != null) {
-          filePathCallback.handleFileList(paths);
-        }
-      }
+      reply: (paths: Array<string> | null): void => complete(paths),
+      error: (_error: Error): void => complete(null)
     });
-    return shouldHandleResult;
+    return true;
   }
 
   onPermissionRequest(request: PermissionRequest): void {
@@ -186,10 +191,18 @@ class OhosWebChromeClient implements WebChromeClient {
     if (!this.returnValueForOnJsAlert) {
       return false;
     }
+    let completed = false;
+    const complete = (confirm: boolean): void => {
+      if (completed) return;
+      completed = true;
+      if (confirm) result.handleConfirm();
+      else result.handleCancel();
+    };
     this.flutterApi.onJsAlertImpl(this, url, message, {
       reply: (): void => {
-        result.handleConfirm();
-      }
+        complete(true);
+      },
+      error: (_error: Error): void => complete(false)
     });
     return true;
   }
@@ -198,14 +211,18 @@ class OhosWebChromeClient implements WebChromeClient {
     if (!this.returnValueForOnJsConfirm) {
       return false;
     }
+    let completed = false;
+    const complete = (confirm: boolean): void => {
+      if (completed) return;
+      completed = true;
+      if (confirm) result.handleConfirm();
+      else result.handleCancel();
+    };
     this.flutterApi.onJsConfirmImpl(this, url, message, {
       reply: (confirmed: boolean | null): void => {
-        if (confirmed) {
-          result.handleConfirm();
-        } else {
-          result.handleCancel();
-        }
-      }
+        complete(confirmed === true);
+      },
+      error: (_error: Error): void => complete(false)
     });
     return true;
   }
@@ -220,14 +237,18 @@ class OhosWebChromeClient implements WebChromeClient {
     if (!this.returnValueForOnJsPrompt) {
       return false;
     }
+    let completed = false;
+    const complete = (value: string | null): void => {
+      if (completed) return;
+      completed = true;
+      if (typeof value === 'string') result.handlePromptConfirm(value);
+      else result.handleCancel();
+    };
     this.flutterApi.onJsPromptImpl(this, url, message, defaultValue, {
       reply: (value: string | null): void => {
-        if (value != null) {
-          result.handlePromptConfirm(value);
-        } else {
-          result.handleCancel();
-        }
-      }
+        complete(value);
+      },
+      error: (_error: Error): void => complete(null)
     });
     return true;
   }

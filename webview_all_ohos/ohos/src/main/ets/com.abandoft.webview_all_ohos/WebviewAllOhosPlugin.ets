@@ -76,7 +76,7 @@ export class WebviewAllOhosPlugin implements FlutterPlugin {
     const callbackApi = new OhosWebViewCallbackApiChannel(messenger);
     const instanceManager = new InstanceManager({
       onFinalize: (identifier: number) => {
-        callbackApi.invoke('OhosObject.dispose', new Map<string, ESObject>().set('identifier', identifier));
+        callbackApi.invoke<void>('OhosObject.dispose', new Map<string, ESObject>().set('identifier', identifier));
       }
     });
 

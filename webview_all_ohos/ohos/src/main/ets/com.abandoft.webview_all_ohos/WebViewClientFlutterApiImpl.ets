@@ -1,6 +1,7 @@
 import { BinaryMessenger } from '@ohos/flutter_ohos/src/main/ets/plugin/common/BinaryMessenger';
 import { HttpAuthHandlerFlutterApiImpl } from './HttpAuthHandlerFlutterApiImpl';
 import { InstanceManager } from './InstanceManager';
+import { PendingNativeCallback } from './NativeCallback';
 import { HttpAuthHandler, OhosWebViewCallbackApiChannel, Reply, SslAuthHandler, emptyReply } from './OhosWebViewCallbackApiChannel';
 import { SslAuthHandlerFlutterApiImpl } from './SslAuthHandlerFlutterApiImpl';
 import { WebViewClient } from './WebViewClientHostApiImpl';
@@ -100,13 +101,25 @@ export class WebViewClientFlutterApiImpl {
     realm: string,
     callback?: Reply<void>
   ): void {
-    new HttpAuthHandlerFlutterApiImpl(this.binaryMessenger, this.instanceManager)
-      .create(httpAuthHandler, emptyReply<void>());
-
-    this.callbackApi.invoke('WebViewClient.onReceivedHttpAuthRequest', this.baseArgs(webViewClient, webView)
-      .set('httpAuthHandlerInstanceId', this.instanceManager.getIdentifier(httpAuthHandler))
-      .set('host', host)
-      .set('realm', realm), callback);
+    const pending = new PendingNativeCallback<HttpAuthHandler>(this.instanceManager, httpAuthHandler);
+    const fail = (error: Error): void => {
+      pending.fail(error, (handler: HttpAuthHandler) => handler.cancel(), callback);
+    };
+    try {
+      new HttpAuthHandlerFlutterApiImpl(this.binaryMessenger, this.instanceManager)
+        .create(httpAuthHandler, {
+          reply: (): void => {
+            pending.markRegistered();
+            this.callbackApi.invoke<void>('WebViewClient.onReceivedHttpAuthRequest', this.baseArgs(webViewClient, webView)
+              .set('httpAuthHandlerInstanceId', this.instanceManager.getIdentifier(httpAuthHandler))
+              .set('host', host)
+              .set('realm', realm), { reply: (): void => callback?.reply(), error: fail });
+          },
+          error: fail
+        });
+    } catch (error) {
+      fail(new Error(String(error)));
+    }
   }
 
   onReceivedSslAuthErrorImpl(
@@ -118,14 +131,26 @@ export class WebViewClientFlutterApiImpl {
     description: string,
     callback?: Reply<void>
   ): void {
-    new SslAuthHandlerFlutterApiImpl(this.binaryMessenger, this.instanceManager)
-      .create(sslAuthHandler, emptyReply<void>());
-
-    this.callbackApi.invoke('WebViewClient.onReceivedSslAuthError', this.baseArgs(webViewClient, webView)
-      .set('sslAuthHandlerInstanceId', this.instanceManager.getIdentifier(sslAuthHandler))
-      .set('url', url)
-      .set('errorCode', errorCode)
-      .set('description', description), callback);
+    const pending = new PendingNativeCallback<SslAuthHandler>(this.instanceManager, sslAuthHandler);
+    const fail = (error: Error): void => {
+      pending.fail(error, (handler: SslAuthHandler) => handler.cancel(), callback);
+    };
+    try {
+      new SslAuthHandlerFlutterApiImpl(this.binaryMessenger, this.instanceManager)
+        .create(sslAuthHandler, {
+          reply: (): void => {
+            pending.markRegistered();
+            this.callbackApi.invoke<void>('WebViewClient.onReceivedSslAuthError', this.baseArgs(webViewClient, webView)
+              .set('sslAuthHandlerInstanceId', this.instanceManager.getIdentifier(sslAuthHandler))
+              .set('url', url)
+              .set('errorCode', errorCode)
+              .set('description', description), { reply: (): void => callback?.reply(), error: fail });
+          },
+          error: fail
+        });
+    } catch (error) {
+      fail(new Error(String(error)));
+    }
   }
 
   private baseArgs(webViewClient: WebViewClient, webView: WebViewPlatformView): Map<string, ESObject> {

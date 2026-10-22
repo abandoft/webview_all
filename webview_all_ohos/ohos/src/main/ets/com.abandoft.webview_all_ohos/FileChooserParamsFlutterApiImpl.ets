@@ -25,7 +25,9 @@ export class FileChooserParamsFlutterApiImpl {
   }
 
   create(instance: FileSelectorParam, callback?: Reply<void>): void {
-    if (!this.instanceManager.containsInstance(instance)) {
+    if (this.instanceManager.containsInstance(instance)) {
+      callback?.reply();
+    } else {
       this.callbackApi.createFileChooserParams(
         this.instanceManager.addHostCreatedInstance(instance),
         instance.isCapture(),

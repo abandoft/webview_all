@@ -12,7 +12,9 @@ export class HttpAuthHandlerFlutterApiImpl {
   }
 
   create(instance: ESObject, callback?: Reply<void>): void {
-    if (!this.instanceManager.containsInstance(instance)) {
+    if (this.instanceManager.containsInstance(instance)) {
+      callback?.reply();
+    } else {
       this.callbackApi.createHttpAuthHandler(
         this.instanceManager.addHostCreatedInstance(instance),
         callback

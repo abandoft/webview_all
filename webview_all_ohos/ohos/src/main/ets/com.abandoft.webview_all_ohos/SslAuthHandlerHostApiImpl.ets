@@ -1,5 +1,6 @@
 import { SslAuthHandler } from './OhosWebViewCallbackApiChannel';
 import { InstanceManager } from './InstanceManager';
+import { completeNativeCallback } from './NativeCallback';
 
 export class SslAuthHandlerHostApiImpl {
   private readonly instanceManager: InstanceManager;
@@ -9,14 +10,14 @@ export class SslAuthHandlerHostApiImpl {
   }
 
   cancel(instanceId: number): void {
-    this.handler(instanceId).cancel();
+    completeNativeCallback<SslAuthHandler>(this.instanceManager, instanceId, (handler: SslAuthHandler) => {
+      handler.cancel();
+    });
   }
 
   proceed(instanceId: number): void {
-    this.handler(instanceId).proceed();
-  }
-
-  private handler(instanceId: number): SslAuthHandler {
-    return this.instanceManager.getInstance<SslAuthHandler>(instanceId);
+    completeNativeCallback<SslAuthHandler>(this.instanceManager, instanceId, (handler: SslAuthHandler) => {
+      handler.proceed();
+    });
   }
 }

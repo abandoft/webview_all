@@ -1,9 +1,11 @@
 import { BinaryMessenger } from '@ohos/flutter_ohos/src/main/ets/plugin/common/BinaryMessenger';
+import Log from '@ohos/flutter_ohos/src/main/ets/util/Log';
 import { DVModel } from '@ohos/flutter_ohos/src/main/ets/view/DynamicView/dynamicView';
 import { CustomViewCallbackFlutterApiImpl } from './CustomViewCallbackFlutterApiImpl';
 import { FileChooserParamsFlutterApiImpl } from './FileChooserParamsFlutterApiImpl';
 import { GeolocationPermissionsCallbackFlutterApiImpl } from './GeolocationPermissionsCallbackFlutterApiImpl';
 import { InstanceManager } from './InstanceManager';
+import { PendingNativeCallback } from './NativeCallback';
 import {
   ConsoleMessageLevel,
   CustomViewCallback,
@@ -46,15 +48,39 @@ export class WebChromeClientFlutterApiImpl {
     webChromeClient: WebChromeClient,
     webView: WebViewPlatformView,
     fileChooserParams: FileSelectorParam,
-    callback: Reply<Array<string>>
+    callback: Reply<Array<string> | null>
   ): void {
-    this.webViewFlutterApi.create(webView, emptyReply<void>());
-    new FileChooserParamsFlutterApiImpl(this.binaryMessenger, this.instanceManager)
-      .create(fileChooserParams, emptyReply<void>());
-
-    this.callbackApi.invoke('WebChromeClient.onShowFileChooser', this.baseArgs(webChromeClient)
-      .set('webViewInstanceId', this.instanceManager.getIdentifier(webView))
-      .set('paramsInstanceId', this.instanceManager.getIdentifier(fileChooserParams)), callback);
+    const release = (): void => {
+      this.instanceManager.release(this.instanceManager.getIdentifier(fileChooserParams));
+    };
+    const fail = (error: Error): void => {
+      release();
+      try {
+        callback.error?.(error);
+      } catch (cancelError) {
+        Log.e('WebChromeClientFlutterApiImpl', 'File selection cancellation failed: ' + String(cancelError));
+      }
+    };
+    try {
+      this.webViewFlutterApi.create(webView, emptyReply<void>());
+      new FileChooserParamsFlutterApiImpl(this.binaryMessenger, this.instanceManager)
+        .create(fileChooserParams, {
+          reply: (): void => {
+            this.callbackApi.invoke('WebChromeClient.onShowFileChooser', this.baseArgs(webChromeClient)
+              .set('webViewInstanceId', this.instanceManager.getIdentifier(webView))
+              .set('paramsInstanceId', this.instanceManager.getIdentifier(fileChooserParams)), {
+                reply: (paths: Array<string> | null): void => {
+                  release();
+                  callback.reply(paths);
+                },
+                error: fail
+              });
+          },
+          error: fail
+        });
+    } catch (error) {
+      fail(new Error(String(error)));
+    }
   }
 
   onGeolocationPermissionsShowPromptImpl(
@@ -63,12 +89,24 @@ export class WebChromeClientFlutterApiImpl {
     callback: JsGeolocation,
     replyCallback?: Reply<void>
   ): void {
-    new GeolocationPermissionsCallbackFlutterApiImpl(this.binaryMessenger, this.instanceManager)
-      .create(callback, emptyReply<void>());
-
-    this.callbackApi.invoke('WebChromeClient.onGeolocationPermissionsShowPrompt', this.baseArgs(webChromeClient)
-      .set('paramsInstanceId', this.instanceManager.getIdentifier(callback))
-      .set('origin', origin), replyCallback);
+    const pending = new PendingNativeCallback<JsGeolocation>(this.instanceManager, callback);
+    const fail = (error: Error): void => {
+      pending.fail(error, (value: JsGeolocation) => value.invoke(origin, false, false), replyCallback);
+    };
+    try {
+      new GeolocationPermissionsCallbackFlutterApiImpl(this.binaryMessenger, this.instanceManager)
+        .create(callback, {
+          reply: (): void => {
+            pending.markRegistered();
+            this.callbackApi.invoke<void>('WebChromeClient.onGeolocationPermissionsShowPrompt', this.baseArgs(webChromeClient)
+              .set('paramsInstanceId', this.instanceManager.getIdentifier(callback))
+              .set('origin', origin), { reply: (): void => replyCallback?.reply(), error: fail });
+          },
+          error: fail
+        });
+    } catch (error) {
+      fail(new Error(String(error)));
+    }
   }
 
   onGeolocationPermissionsHidePromptImpl(instance: WebChromeClient, callback?: Reply<void>): void {
@@ -81,11 +119,25 @@ export class WebChromeClientFlutterApiImpl {
     request: PermissionRequest,
     callback?: Reply<void>
   ): void {
-    new PermissionRequestFlutterApiImpl(this.binaryMessenger, this.instanceManager)
-      .create(request, request.getAccessibleResource(), emptyReply<void>());
-
-    this.callbackApi.invoke('WebChromeClient.onPermissionRequest', this.baseArgs(instance)
-      .set('requestInstanceId', this.instanceManager.getIdentifier(request)), callback);
+    const pending = new PendingNativeCallback<PermissionRequest>(this.instanceManager, request);
+    const fail = (error: Error): void => {
+      pending.fail(error, (value: PermissionRequest) => value.deny(), callback);
+    };
+    try {
+      new PermissionRequestFlutterApiImpl(this.binaryMessenger, this.instanceManager)
+        .create(request, request.getAccessibleResource(), {
+          reply: (): void => {
+            pending.markRegistered();
+            this.callbackApi.invoke<void>('WebChromeClient.onPermissionRequest', this.baseArgs(instance)
+              .set('requestInstanceId', this.instanceManager.getIdentifier(request)), {
+                reply: (): void => callback?.reply(), error: fail
+              });
+          },
+          error: fail
+        });
+    } catch (error) {
+      fail(new Error(String(error)));
+    }
   }
 
   onShowCustomViewImpl(
@@ -94,13 +146,32 @@ export class WebChromeClientFlutterApiImpl {
     customViewCallback: CustomViewCallback,
     callback?: Reply<void>
   ): void {
-    new ViewFlutterApiImpl(this.binaryMessenger, this.instanceManager).create(view, emptyReply<void>());
-    new CustomViewCallbackFlutterApiImpl(this.binaryMessenger, this.instanceManager)
-      .create(customViewCallback, emptyReply<void>());
-
-    this.callbackApi.invoke('WebChromeClient.onShowCustomView', this.baseArgs(instance)
-      .set('viewIdentifier', this.instanceManager.getIdentifier(view))
-      .set('callbackIdentifier', this.instanceManager.getIdentifier(customViewCallback)), callback);
+    const pending = new PendingNativeCallback<CustomViewCallback>(this.instanceManager, customViewCallback);
+    const fail = (error: Error): void => {
+      pending.fail(error, (value: CustomViewCallback) => value.onCustomViewHidden(), callback);
+      this.instanceManager.release(this.instanceManager.getIdentifier(view));
+    };
+    try {
+      new ViewFlutterApiImpl(this.binaryMessenger, this.instanceManager).create(view, {
+        reply: (): void => {
+          new CustomViewCallbackFlutterApiImpl(this.binaryMessenger, this.instanceManager)
+            .create(customViewCallback, {
+              reply: (): void => {
+                pending.markRegistered();
+                this.callbackApi.invoke<void>('WebChromeClient.onShowCustomView', this.baseArgs(instance)
+                  .set('viewIdentifier', this.instanceManager.getIdentifier(view))
+                  .set('callbackIdentifier', this.instanceManager.getIdentifier(customViewCallback)), {
+                    reply: (): void => callback?.reply(), error: fail
+                  });
+              },
+              error: fail
+            });
+        },
+        error: fail
+      });
+    } catch (error) {
+      fail(new Error(String(error)));
+    }
   }
 
   onHideCustomViewImpl(instance: WebChromeClient, callback?: Reply<void>): void {

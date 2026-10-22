@@ -1,10 +1,13 @@
 import { BinaryMessenger } from '@ohos/flutter_ohos/src/main/ets/plugin/common/BinaryMessenger';
 import MethodChannel, { MethodResult } from '@ohos/flutter_ohos/src/main/ets/plugin/common/MethodChannel';
+import Log from '@ohos/flutter_ohos/src/main/ets/util/Log';
 
 const CHANNEL_NAME = 'com.abandoft.webview_all_ohos/callback_api';
+const TAG = 'OhosWebViewCallbackApiChannel';
 
 export interface Reply<T> {
   reply: (value: T) => void;
+  error?: (error: Error) => void;
 }
 
 export enum FileChooserMode {
@@ -44,8 +47,13 @@ export class OhosWebViewCallbackApiChannel {
     this.channel = new MethodChannel(binaryMessenger, CHANNEL_NAME);
   }
 
-  invoke(method: string, args: ESObject, callback?: Reply<ESObject>): void {
-    this.channel.invokeMethod(method, args, callback == null ? undefined : this.resultFor(callback));
+  invoke<T>(method: string, args: ESObject, callback?: Reply<T>): void {
+    const result = this.resultFor(method, callback);
+    try {
+      this.channel.invokeMethod(method, args, result);
+    } catch (error) {
+      result.error('CallbackSendFailed', String(error), null);
+    }
   }
 
   createWebView(identifier: number, callback?: Reply<void>): void {
@@ -111,16 +119,37 @@ export class OhosWebViewCallbackApiChannel {
     this.invoke('SslAuthHandler.create', new Map<string, ESObject>().set('instanceId', instanceId), callback);
   }
 
-  private resultFor<T>(callback: Reply<T>): MethodResult {
+  private resultFor<T>(method: string, callback?: Reply<T>): MethodResult {
+    let completed = false;
+    const fail = (error: Error): void => {
+      // Do not log callback arguments or error details, which can contain page
+      // data. Native event handlers must never throw a Dart-channel error.
+      Log.e(TAG, method + ' failed: ' + error.message);
+      try {
+        callback?.error?.(error);
+      } catch (fallbackError) {
+        Log.e(TAG, method + ' cancellation failed: ' + String(fallbackError));
+      }
+    };
     return {
       success: (result: ESObject): void => {
-        callback.reply(result as T);
+        if (completed) return;
+        completed = true;
+        try {
+          callback?.reply(result as T);
+        } catch (error) {
+          fail(new Error(String(error)));
+        }
       },
-      error: (errorCode: string, errorMessage: string, errorDetails: ESObject): void => {
-        throw new Error(errorCode + ': ' + errorMessage + ', details=' + errorDetails);
+      error: (errorCode: string, errorMessage: string, _errorDetails: ESObject): void => {
+        if (completed) return;
+        completed = true;
+        fail(new Error(errorCode + ': ' + errorMessage));
       },
       notImplemented: (): void => {
-        throw new Error('Dart callback method is not implemented.');
+        if (completed) return;
+        completed = true;
+        fail(new Error('Dart callback method is not implemented.'));
       }
     };
   }

@@ -16,7 +16,9 @@ export class CustomViewCallbackFlutterApiImpl {
   }
 
   create(instance: CustomViewCallback, callback?: Reply<void>): void {
-    if (!this.instanceManager.containsInstance(instance)) {
+    if (this.instanceManager.containsInstance(instance)) {
+      callback?.reply();
+    } else {
       this.callbackApi.createCustomViewCallback(
         this.instanceManager.addHostCreatedInstance(instance),
         callback

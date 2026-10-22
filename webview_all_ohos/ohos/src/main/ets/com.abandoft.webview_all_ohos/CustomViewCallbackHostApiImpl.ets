@@ -1,5 +1,6 @@
 import { CustomViewCallback } from './OhosWebViewCallbackApiChannel';
 import { InstanceManager } from './InstanceManager';
+import { completeNativeCallback } from './NativeCallback';
 
 export class CustomViewCallbackHostApiImpl {
   private readonly instanceManager: InstanceManager;
@@ -9,10 +10,8 @@ export class CustomViewCallbackHostApiImpl {
   }
 
   onCustomViewHidden(identifier: number): void {
-    this.callback(identifier).onCustomViewHidden();
-  }
-
-  private callback(identifier: number): CustomViewCallback {
-    return this.instanceManager.getInstance<CustomViewCallback>(identifier);
+    completeNativeCallback<CustomViewCallback>(this.instanceManager, identifier, (callback: CustomViewCallback) => {
+      callback.onCustomViewHidden();
+    });
   }
 }

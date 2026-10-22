@@ -12,7 +12,9 @@ export class PermissionRequestFlutterApiImpl {
   }
 
   create(instance: PermissionRequest, resources: string[], callback?: Reply<void>): void {
-    if (!this.instanceManager.containsInstance(instance)) {
+    if (this.instanceManager.containsInstance(instance)) {
+      callback?.reply();
+    } else {
       this.callbackApi.createPermissionRequest(
         this.instanceManager.addHostCreatedInstance(instance),
         resources,

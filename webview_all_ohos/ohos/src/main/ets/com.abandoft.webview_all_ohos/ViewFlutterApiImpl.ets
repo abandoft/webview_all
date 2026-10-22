@@ -12,7 +12,9 @@ export class ViewFlutterApiImpl {
   }
 
   create(instance: ESObject, callback?: Reply<void>): void {
-    if (!this.instanceManager.containsInstance(instance)) {
+    if (this.instanceManager.containsInstance(instance)) {
+      callback?.reply();
+    } else {
       this.callbackApi.createView(
         this.instanceManager.addHostCreatedInstance(instance),
         callback
