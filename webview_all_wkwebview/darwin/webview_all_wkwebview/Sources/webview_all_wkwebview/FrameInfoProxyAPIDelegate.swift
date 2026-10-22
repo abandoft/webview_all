@@ -34,4 +34,14 @@ class FrameInfoProxyAPIDelegate: PigeonApiDelegateWKFrameInfo {
     }
     return nil
   }
+
+  func requestUrl(pigeonApi: PigeonApiWKFrameInfo, pigeonInstance: WKFrameInfo) throws -> String? {
+    return pigeonInstance.maybeRequest?.url?.absoluteString
+  }
+
+  func securityOrigin(pigeonApi: PigeonApiWKFrameInfo, pigeonInstance: WKFrameInfo) throws
+    -> WKSecurityOrigin
+  {
+    return pigeonInstance.securityOrigin
+  }
 }

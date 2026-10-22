@@ -43,12 +43,37 @@ class FrameInfoProxyAPITests: XCTestCase {
       XCTAssertNil(value)
     }
   }
+
+  @MainActor func testRequestUrl() {
+    let registrar = TestProxyApiRegistrar()
+    let api = registrar.apiDelegate.pigeonApiWKFrameInfo(registrar)
+    let value = try? api.pigeonDelegate.requestUrl(
+      pigeonApi: api, pigeonInstance: TestFrameInfo.instance)
+    XCTAssertEqual(value, TestFrameInfo.instance.request.url?.absoluteString)
+  }
+
+  @MainActor func testNilRequestUrl() {
+    let registrar = TestProxyApiRegistrar()
+    let api = registrar.apiDelegate.pigeonApiWKFrameInfo(registrar)
+    let instance = TestFrameInfoWithNilRequest.instance
+    let value = try? api.pigeonDelegate.requestUrl(pigeonApi: api, pigeonInstance: instance)
+    XCTAssertEqual(value, instance.maybeRequest?.url?.absoluteString)
+  }
+
+  @MainActor func testSecurityOrigin() {
+    let registrar = TestProxyApiRegistrar()
+    let api = registrar.apiDelegate.pigeonApiWKFrameInfo(registrar)
+    let value = try? api.pigeonDelegate.securityOrigin(
+      pigeonApi: api, pigeonInstance: TestFrameInfo.instance)
+    XCTAssertIdentical(value, TestFrameInfo.instance.securityOrigin)
+  }
 }
 
 class TestFrameInfo: WKFrameInfo {
   // Global test instance of `WKFrameInfo`. Using a static instance prevents a crash when
   // a `WKFrameInfo` is deallocated during a test on iOS 26+.
   static let instance = TestFrameInfo()
+  static let testSecurityOrigin = TestSecurityOrigin.customInit()
 
   private override init() {
 
@@ -60,6 +85,10 @@ class TestFrameInfo: WKFrameInfo {
 
   override var request: URLRequest {
     return URLRequest(url: URL(string: "https://google.com")!)
+  }
+
+  override var securityOrigin: WKSecurityOrigin {
+    return TestFrameInfo.testSecurityOrigin
   }
 }
 

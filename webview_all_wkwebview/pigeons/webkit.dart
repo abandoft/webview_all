@@ -488,6 +488,12 @@ abstract class WKFrameInfo extends NSObject {
 
   /// The frame’s current request.
   late URLRequest? request;
+
+  /// A snapshot of the frame request's URL, when WebKit provides one.
+  late String? requestUrl;
+
+  /// The frame document's native security origin.
+  late WKSecurityOrigin securityOrigin;
 }
 
 /// Information about an error condition including a domain, a domain-specific
@@ -517,6 +523,9 @@ abstract class WKScriptMessage extends NSObject {
 
   /// The body of the message.
   late Object? body;
+
+  /// The frame that sent the message.
+  late WKFrameInfo frameInfo;
 }
 
 /// An object that identifies the origin of a particular resource.

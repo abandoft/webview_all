@@ -2320,6 +2320,8 @@ class WKFrameInfo extends NSObject {
     super.pigeon_instanceManager,
     required this.isMainFrame,
     this.request,
+    this.requestUrl,
+    required this.securityOrigin,
     super.observeValue,
   }) : super.pigeon_detached();
 
@@ -2330,11 +2332,22 @@ class WKFrameInfo extends NSObject {
   /// The frame’s current request.
   final URLRequest? request;
 
+  /// A snapshot of the frame request's URL, when WebKit provides one.
+  final String? requestUrl;
+
+  /// The frame document's native security origin.
+  final WKSecurityOrigin securityOrigin;
+
   static void pigeon_setUpMessageHandlers({
     bool pigeon_clearHandlers = false,
     BinaryMessenger? pigeon_binaryMessenger,
     PigeonInstanceManager? pigeon_instanceManager,
-    WKFrameInfo Function(bool isMainFrame, URLRequest? request)?
+    WKFrameInfo Function(
+      bool isMainFrame,
+      URLRequest? request,
+      String? requestUrl,
+      WKSecurityOrigin securityOrigin,
+    )?
     pigeon_newInstance,
   }) {
     final _PigeonInternalProxyApiBaseCodec pigeonChannelCodec =
@@ -2368,15 +2381,29 @@ class WKFrameInfo extends NSObject {
             'Argument for com.abandoft.pigeon.webview_all_wkwebview.WKFrameInfo.pigeon_newInstance was null, expected non-null bool.',
           );
           final URLRequest? arg_request = (args[2] as URLRequest?);
+          final String? arg_requestUrl = (args[3] as String?);
+          final WKSecurityOrigin? arg_securityOrigin =
+              (args[4] as WKSecurityOrigin?);
+          assert(
+            arg_securityOrigin != null,
+            'Argument for com.abandoft.pigeon.webview_all_wkwebview.WKFrameInfo.pigeon_newInstance was null, expected non-null WKSecurityOrigin.',
+          );
           try {
             (pigeon_instanceManager ?? PigeonInstanceManager.instance)
                 .addHostCreatedInstance(
-                  pigeon_newInstance?.call(arg_isMainFrame!, arg_request) ??
+                  pigeon_newInstance?.call(
+                        arg_isMainFrame!,
+                        arg_request,
+                        arg_requestUrl,
+                        arg_securityOrigin!,
+                      ) ??
                       WKFrameInfo.pigeon_detached(
                         pigeon_binaryMessenger: pigeon_binaryMessenger,
                         pigeon_instanceManager: pigeon_instanceManager,
                         isMainFrame: arg_isMainFrame!,
                         request: arg_request,
+                        requestUrl: arg_requestUrl,
+                        securityOrigin: arg_securityOrigin!,
                       ),
                   arg_pigeon_instanceIdentifier!,
                 );
@@ -2400,6 +2427,8 @@ class WKFrameInfo extends NSObject {
       pigeon_instanceManager: pigeon_instanceManager,
       isMainFrame: isMainFrame,
       request: request,
+      requestUrl: requestUrl,
+      securityOrigin: securityOrigin,
       observeValue: observeValue,
     );
   }
@@ -2539,6 +2568,7 @@ class WKScriptMessage extends NSObject {
     super.pigeon_instanceManager,
     required this.name,
     this.body,
+    required this.frameInfo,
     super.observeValue,
   }) : super.pigeon_detached();
 
@@ -2548,11 +2578,15 @@ class WKScriptMessage extends NSObject {
   /// The body of the message.
   final Object? body;
 
+  /// The frame that sent the message.
+  final WKFrameInfo frameInfo;
+
   static void pigeon_setUpMessageHandlers({
     bool pigeon_clearHandlers = false,
     BinaryMessenger? pigeon_binaryMessenger,
     PigeonInstanceManager? pigeon_instanceManager,
-    WKScriptMessage Function(String name, Object? body)? pigeon_newInstance,
+    WKScriptMessage Function(String name, Object? body, WKFrameInfo frameInfo)?
+    pigeon_newInstance,
   }) {
     final _PigeonInternalProxyApiBaseCodec pigeonChannelCodec =
         _PigeonInternalProxyApiBaseCodec(
@@ -2585,15 +2619,25 @@ class WKScriptMessage extends NSObject {
             'Argument for com.abandoft.pigeon.webview_all_wkwebview.WKScriptMessage.pigeon_newInstance was null, expected non-null String.',
           );
           final Object? arg_body = (args[2] as Object?);
+          final WKFrameInfo? arg_frameInfo = (args[3] as WKFrameInfo?);
+          assert(
+            arg_frameInfo != null,
+            'Argument for com.abandoft.pigeon.webview_all_wkwebview.WKScriptMessage.pigeon_newInstance was null, expected non-null WKFrameInfo.',
+          );
           try {
             (pigeon_instanceManager ?? PigeonInstanceManager.instance)
                 .addHostCreatedInstance(
-                  pigeon_newInstance?.call(arg_name!, arg_body) ??
+                  pigeon_newInstance?.call(
+                        arg_name!,
+                        arg_body,
+                        arg_frameInfo!,
+                      ) ??
                       WKScriptMessage.pigeon_detached(
                         pigeon_binaryMessenger: pigeon_binaryMessenger,
                         pigeon_instanceManager: pigeon_instanceManager,
                         name: arg_name!,
                         body: arg_body,
+                        frameInfo: arg_frameInfo!,
                       ),
                   arg_pigeon_instanceIdentifier!,
                 );
@@ -2617,6 +2661,7 @@ class WKScriptMessage extends NSObject {
       pigeon_instanceManager: pigeon_instanceManager,
       name: name,
       body: body,
+      frameInfo: frameInfo,
       observeValue: observeValue,
     );
   }

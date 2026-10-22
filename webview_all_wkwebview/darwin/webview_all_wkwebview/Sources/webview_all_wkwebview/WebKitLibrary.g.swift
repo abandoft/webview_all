@@ -2248,6 +2248,11 @@ protocol PigeonApiDelegateWKFrameInfo {
   /// The frame’s current request.
   func request(pigeonApi: PigeonApiWKFrameInfo, pigeonInstance: WKFrameInfo) throws
     -> URLRequestWrapper?
+  /// A snapshot of the frame request's URL, when WebKit provides one.
+  func requestUrl(pigeonApi: PigeonApiWKFrameInfo, pigeonInstance: WKFrameInfo) throws -> String?
+  /// The frame document's native security origin.
+  func securityOrigin(pigeonApi: PigeonApiWKFrameInfo, pigeonInstance: WKFrameInfo) throws
+    -> WKSecurityOrigin
 }
 
 protocol PigeonApiProtocolWKFrameInfo {
@@ -2285,13 +2290,20 @@ final class PigeonApiWKFrameInfo: PigeonApiProtocolWKFrameInfo {
       let isMainFrameArg = try! pigeonDelegate.isMainFrame(
         pigeonApi: self, pigeonInstance: pigeonInstance)
       let requestArg = try! pigeonDelegate.request(pigeonApi: self, pigeonInstance: pigeonInstance)
+      let requestUrlArg = try! pigeonDelegate.requestUrl(
+        pigeonApi: self, pigeonInstance: pigeonInstance)
+      let securityOriginArg = try! pigeonDelegate.securityOrigin(
+        pigeonApi: self, pigeonInstance: pigeonInstance)
       let binaryMessenger = pigeonRegistrar.binaryMessenger
       let codec = pigeonRegistrar.codec
       let channelName: String =
         "com.abandoft.pigeon.webview_all_wkwebview.WKFrameInfo.pigeon_newInstance"
       let channel = FlutterBasicMessageChannel(
         name: channelName, binaryMessenger: binaryMessenger, codec: codec)
-      channel.sendMessage([pigeonIdentifierArg, isMainFrameArg, requestArg] as [Any?]) { response in
+      channel.sendMessage(
+        [pigeonIdentifierArg, isMainFrameArg, requestArg, requestUrlArg, securityOriginArg]
+          as [Any?]
+      ) { response in
         guard let listResponse = response as? [Any?] else {
           completion(.failure(createConnectionError(withChannelName: channelName)))
           return
@@ -2380,6 +2392,9 @@ protocol PigeonApiDelegateWKScriptMessage {
   func name(pigeonApi: PigeonApiWKScriptMessage, pigeonInstance: WKScriptMessage) throws -> String
   /// The body of the message.
   func body(pigeonApi: PigeonApiWKScriptMessage, pigeonInstance: WKScriptMessage) throws -> Any?
+  /// The frame that sent the message.
+  func frameInfo(pigeonApi: PigeonApiWKScriptMessage, pigeonInstance: WKScriptMessage) throws
+    -> WKFrameInfo
 }
 
 protocol PigeonApiProtocolWKScriptMessage {
@@ -2417,13 +2432,16 @@ final class PigeonApiWKScriptMessage: PigeonApiProtocolWKScriptMessage {
         pigeonInstance as AnyObject)
       let nameArg = try! pigeonDelegate.name(pigeonApi: self, pigeonInstance: pigeonInstance)
       let bodyArg = try! pigeonDelegate.body(pigeonApi: self, pigeonInstance: pigeonInstance)
+      let frameInfoArg = try! pigeonDelegate.frameInfo(
+        pigeonApi: self, pigeonInstance: pigeonInstance)
       let binaryMessenger = pigeonRegistrar.binaryMessenger
       let codec = pigeonRegistrar.codec
       let channelName: String =
         "com.abandoft.pigeon.webview_all_wkwebview.WKScriptMessage.pigeon_newInstance"
       let channel = FlutterBasicMessageChannel(
         name: channelName, binaryMessenger: binaryMessenger, codec: codec)
-      channel.sendMessage([pigeonIdentifierArg, nameArg, bodyArg] as [Any?]) { response in
+      channel.sendMessage([pigeonIdentifierArg, nameArg, bodyArg, frameInfoArg] as [Any?]) {
+        response in
         guard let listResponse = response as? [Any?] else {
           completion(.failure(createConnectionError(withChannelName: channelName)))
           return
@@ -3874,7 +3892,8 @@ final class PigeonApiWKUserContentController: PigeonApiProtocolWKUserContentCont
       addUserScriptChannel.setMessageHandler(nil)
     }
     let removeAllUserScriptsChannel = FlutterBasicMessageChannel(
-      name: "com.abandoft.pigeon.webview_all_wkwebview.WKUserContentController.removeAllUserScripts",
+      name:
+        "com.abandoft.pigeon.webview_all_wkwebview.WKUserContentController.removeAllUserScripts",
       binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       removeAllUserScriptsChannel.setMessageHandler { message, reply in

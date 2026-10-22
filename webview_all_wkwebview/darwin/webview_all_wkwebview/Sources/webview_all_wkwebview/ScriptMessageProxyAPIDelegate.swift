@@ -16,4 +16,10 @@ class ScriptMessageProxyAPIDelegate: PigeonApiDelegateWKScriptMessage {
   func body(pigeonApi: PigeonApiWKScriptMessage, pigeonInstance: WKScriptMessage) throws -> Any? {
     return pigeonInstance.body
   }
+
+  func frameInfo(pigeonApi: PigeonApiWKScriptMessage, pigeonInstance: WKScriptMessage) throws
+    -> WKFrameInfo
+  {
+    return pigeonInstance.frameInfo
+  }
 }

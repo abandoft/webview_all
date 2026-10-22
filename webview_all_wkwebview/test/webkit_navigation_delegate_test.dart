@@ -429,6 +429,11 @@ void main() {
               WKNavigationAction.pigeon_detached(
                 request: mockRequest,
                 targetFrame: WKFrameInfo.pigeon_detached(
+                  securityOrigin: WKSecurityOrigin.pigeon_detached(
+                    host: '',
+                    port: 0,
+                    securityProtocol: '',
+                  ),
                   isMainFrame: false,
                   request: URLRequest.pigeon_detached(),
                 ),

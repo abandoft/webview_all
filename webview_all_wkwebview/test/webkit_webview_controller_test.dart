@@ -1886,7 +1886,7 @@ void main() {
         MockWKWebViewConfiguration(),
         WKNavigationAction.pigeon_detached(
           request: mockRequest,
-          targetFrame: WKFrameInfo.pigeon_detached(
+          targetFrame: _frameInfo(
             isMainFrame: false,
             request: MockURLRequest(),
           ),
@@ -2140,10 +2140,7 @@ void main() {
           port: 0,
           securityProtocol: '',
         ),
-        WKFrameInfo.pigeon_detached(
-          isMainFrame: false,
-          request: MockURLRequest(),
-        ),
+        _frameInfo(isMainFrame: false, request: MockURLRequest()),
         MediaCaptureType.microphone,
       );
 
@@ -2183,7 +2180,7 @@ void main() {
           CapturingUIDelegate.lastCreatedDelegate,
           MockWKWebView(),
           callbackMessage,
-          WKFrameInfo.pigeon_detached(isMainFrame: false, request: mockRequest),
+          _frameInfo(isMainFrame: false, request: mockRequest),
         );
 
         expect(message, callbackMessage);
@@ -2219,7 +2216,7 @@ void main() {
           CapturingUIDelegate.lastCreatedDelegate,
           MockWKWebView(),
           callbackMessage,
-          WKFrameInfo.pigeon_detached(isMainFrame: false, request: mockRequest),
+          _frameInfo(isMainFrame: false, request: mockRequest),
         );
 
         expect(message, callbackMessage);
@@ -2262,7 +2259,7 @@ void main() {
           MockWKWebView(),
           callbackMessage,
           callbackDefaultText,
-          WKFrameInfo.pigeon_detached(isMainFrame: false, request: mockRequest),
+          _frameInfo(isMainFrame: false, request: mockRequest),
         );
 
         expect(message, callbackMessage);
@@ -2428,6 +2425,7 @@ window.addEventListener("error", function(e) {
           scriptMessageHandler,
           mockUserContentController,
           WKScriptMessage.pigeon_detached(
+            frameInfo: _frameInfo(isMainFrame: true),
             name: 'test',
             body: '{"level": "debug", "message": "Debug message"}',
           ),
@@ -2436,6 +2434,7 @@ window.addEventListener("error", function(e) {
           scriptMessageHandler,
           mockUserContentController,
           WKScriptMessage.pigeon_detached(
+            frameInfo: _frameInfo(isMainFrame: true),
             name: 'test',
             body: '{"level": "error", "message": "Error message"}',
           ),
@@ -2444,6 +2443,7 @@ window.addEventListener("error", function(e) {
           scriptMessageHandler,
           mockUserContentController,
           WKScriptMessage.pigeon_detached(
+            frameInfo: _frameInfo(isMainFrame: true),
             name: 'test',
             body: '{"level": "info", "message": "Info message"}',
           ),
@@ -2452,6 +2452,7 @@ window.addEventListener("error", function(e) {
           scriptMessageHandler,
           mockUserContentController,
           WKScriptMessage.pigeon_detached(
+            frameInfo: _frameInfo(isMainFrame: true),
             name: 'test',
             body: '{"level": "log", "message": "Log message"}',
           ),
@@ -2460,6 +2461,7 @@ window.addEventListener("error", function(e) {
           scriptMessageHandler,
           mockUserContentController,
           WKScriptMessage.pigeon_detached(
+            frameInfo: _frameInfo(isMainFrame: true),
             name: 'test',
             body: '{"level": "warning", "message": "Warning message"}',
           ),
@@ -2581,6 +2583,201 @@ window.addEventListener("error", function(e) {
   });
 
   group('WebKitJavaScriptChannelParams', () {
+    JavaScriptMessage receiveMessage(WKFrameInfo frame, {Object? body = 'hi'}) {
+      late WKScriptMessageHandler handler;
+      PigeonOverrides.wKScriptMessageHandler_new =
+          ({required didReceiveScriptMessage, dynamic observeValue}) {
+            handler = WKScriptMessageHandler.pigeon_detached(
+              didReceiveScriptMessage: didReceiveScriptMessage,
+            );
+            return handler;
+          };
+      late JavaScriptMessage received;
+      WebKitJavaScriptChannelParams(
+        name: 'Bridge',
+        onMessageReceived: (JavaScriptMessage message) => received = message,
+      );
+      handler.didReceiveScriptMessage(
+        handler,
+        MockWKUserContentController(),
+        WKScriptMessage.pigeon_detached(
+          name: 'Bridge',
+          body: body,
+          frameInfo: frame,
+        ),
+      );
+      return received;
+    }
+
+    test(
+      'uses the sending frame metadata instead of message payload fields',
+      () {
+        final JavaScriptMessage message = receiveMessage(
+          _frameInfo(
+            isMainFrame: false,
+            requestUrl: 'https://frame.example:8443/document',
+            securityOrigin: WKSecurityOrigin.pigeon_detached(
+              host: 'frame.example',
+              port: 8443,
+              securityProtocol: 'https',
+            ),
+          ),
+          body: <String, Object>{
+            'sourceUrl': 'https://forged.example/',
+            'sourceOrigin': 'https://forged.example',
+            'isMainFrame': true,
+          },
+        );
+        expect(message.sourceUrl, 'https://frame.example:8443/document');
+        expect(message.sourceOrigin, 'https://frame.example:8443');
+        expect(message.isMainFrame, isFalse);
+      },
+    );
+
+    for (final (label, scheme, host, port, url, expected)
+        in <(String, String, String, int, String?, String?)>[
+          (
+            'default HTTPS',
+            'https',
+            'example.com',
+            0,
+            'https://example.com/path',
+            'https://example.com',
+          ),
+          (
+            'explicit HTTPS default port',
+            'https',
+            'example.com',
+            443,
+            null,
+            'https://example.com',
+          ),
+          (
+            'explicit HTTP default port',
+            'http',
+            'example.com',
+            80,
+            null,
+            'http://example.com',
+          ),
+          (
+            'IPv6',
+            'http',
+            '[::1]',
+            8080,
+            'http://[::1]:8080/path',
+            'http://[::1]:8080',
+          ),
+          (
+            'IPv6 default port',
+            'http',
+            '[::1]',
+            0,
+            'http://[::1]/path',
+            'http://[::1]',
+          ),
+          (
+            'case and default port normalization',
+            'HTTPS',
+            'EXAMPLE.COM',
+            0,
+            'https://example.com:443/path',
+            'https://example.com',
+          ),
+          (
+            'opaque sandbox with a served URL',
+            '',
+            '',
+            0,
+            'https://trusted.example/frame',
+            'null',
+          ),
+          (
+            'inherited origin',
+            'https',
+            'parent.example',
+            8443,
+            'about:srcdoc',
+            'https://parent.example:8443',
+          ),
+          (
+            'ambiguous inherited default port',
+            'https',
+            'parent.example',
+            0,
+            'about:srcdoc',
+            null,
+          ),
+          (
+            'nil request',
+            'https',
+            'example.com',
+            8443,
+            null,
+            'https://example.com:8443',
+          ),
+          (
+            'explicit zero port',
+            'https',
+            'example.com',
+            0,
+            'https://example.com:0/path',
+            'https://example.com:0',
+          ),
+          (
+            'mismatched native URL',
+            'https',
+            'example.com',
+            0,
+            'https://other.example/path',
+            null,
+          ),
+          (
+            'unavailable scheme serialization',
+            'file',
+            '',
+            0,
+            'file:///tmp/document.html',
+            null,
+          ),
+          (
+            'invalid port',
+            'https',
+            'example.com',
+            65536,
+            'https://example.com/path',
+            null,
+          ),
+        ]) {
+      test('serializes $label from WKSecurityOrigin', () {
+        final JavaScriptMessage message = receiveMessage(
+          _frameInfo(
+            isMainFrame: true,
+            requestUrl: url,
+            securityOrigin: WKSecurityOrigin.pigeon_detached(
+              host: host,
+              port: port,
+              securityProtocol: scheme,
+            ),
+          ),
+        );
+        expect(message.sourceUrl, url);
+        expect(message.sourceOrigin, expected);
+        expect(message.isMainFrame, isTrue);
+      });
+    }
+
+    test('preserves a null body with unavailable request metadata', () {
+      final JavaScriptMessage message = receiveMessage(
+        _frameInfo(isMainFrame: false),
+        body: null,
+      );
+      expect(message.message, '(null)');
+      expect(message.sourceUrl, isNull);
+      expect(message.sourceOrigin, 'null');
+      expect(message.isMainFrame, isFalse);
+    });
+
     test('onMessageReceived', () async {
       late final WKScriptMessageHandler messageHandler;
 
@@ -2611,13 +2808,31 @@ window.addEventListener("error", function(e) {
       messageHandler.didReceiveScriptMessage(
         messageHandler,
         MockWKUserContentController(),
-        WKScriptMessage.pigeon_detached(name: 'name', body: 'myMessage'),
+        WKScriptMessage.pigeon_detached(
+          name: 'name',
+          body: 'myMessage',
+          frameInfo: _frameInfo(isMainFrame: true),
+        ),
       );
 
       expect(callbackMessage, 'myMessage');
     });
   });
 }
+
+WKFrameInfo _frameInfo({
+  required bool isMainFrame,
+  URLRequest? request,
+  String? requestUrl,
+  WKSecurityOrigin? securityOrigin,
+}) => WKFrameInfo.pigeon_detached(
+  isMainFrame: isMainFrame,
+  request: request,
+  requestUrl: requestUrl,
+  securityOrigin:
+      securityOrigin ??
+      WKSecurityOrigin.pigeon_detached(host: '', port: 0, securityProtocol: ''),
+);
 
 // Records the last created instance of itself.
 class CapturingNavigationDelegate extends WKNavigationDelegate {

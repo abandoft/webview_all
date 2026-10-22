@@ -1604,6 +1604,9 @@ class WebKitJavaScriptChannelParams extends JavaScriptChannelParams {
                    message: message.body == null
                        ? '(null)'
                        : message.body.toString(),
+                   sourceUrl: message.frameInfo.requestUrl,
+                   sourceOrigin: _serializeSourceOrigin(message.frameInfo),
+                   isMainFrame: message.frameInfo.isMainFrame,
                  ),
                );
              }
@@ -1618,6 +1621,46 @@ class WebKitJavaScriptChannelParams extends JavaScriptChannelParams {
   ) : this(name: params.name, onMessageReceived: params.onMessageReceived);
 
   final WKScriptMessageHandler _messageHandler;
+
+  static String? _serializeSourceOrigin(WKFrameInfo frame) {
+    final WKSecurityOrigin origin = frame.securityOrigin;
+    final String scheme = origin.securityProtocol.toLowerCase();
+    final String nativeHost = origin.host.toLowerCase();
+    final String host = nativeHost.startsWith('[') && nativeHost.endsWith(']')
+        ? nativeHost.substring(1, nativeHost.length - 1)
+        : nativeHost;
+    if (scheme.isEmpty && host.isEmpty && origin.port == 0) {
+      return 'null';
+    }
+    // WebKit's public origin tuple does not describe every scheme reliably.
+    if ((scheme != 'http' && scheme != 'https') ||
+        host.isEmpty ||
+        origin.port < 0 ||
+        origin.port > 65535) {
+      return null;
+    }
+
+    int? port = origin.port;
+    if (port == 0) {
+      // WKSecurityOrigin uses 0 for both an absent port and explicit :0.
+      // Only use the native URL to disambiguate an already matching tuple.
+      final Uri? request = Uri.tryParse(frame.requestUrl ?? '');
+      if (request == null ||
+          request.scheme.toLowerCase() != scheme ||
+          request.host.toLowerCase() != host) {
+        return null;
+      }
+      if (request.hasPort && request.port != 0) {
+        return null;
+      }
+      port = request.hasPort ? 0 : null;
+    }
+    try {
+      return Uri(scheme: scheme, host: host, port: port).origin;
+    } on FormatException {
+      return null;
+    }
+  }
 }
 
 /// Object specifying creation parameters for a [WebKitWebViewWidget].
