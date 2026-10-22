@@ -25,6 +25,7 @@ import 'package:flutter/foundation.dart';
 ///   ) : super(
 ///         message: javaScriptMessage.message,
 ///         sourceUrl: javaScriptMessage.sourceUrl,
+///         sourceOrigin: javaScriptMessage.sourceOrigin,
 ///         isMainFrame: javaScriptMessage.isMainFrame,
 ///       );
 ///
@@ -47,6 +48,7 @@ class JavaScriptMessage {
   const JavaScriptMessage({
     required this.message,
     this.sourceUrl,
+    this.sourceOrigin,
     this.isMainFrame,
   });
 
@@ -55,8 +57,7 @@ class JavaScriptMessage {
 
   /// The URL of the document that sent the message, or `null` when unavailable.
   ///
-  /// Currently reported on Windows using WebView2's message source; other
-  /// platforms leave it null. This can differ from the web view's current URL
+  /// This can differ from the web view's current URL
   /// if navigation has started since the message was sent. Never substitute
   /// the current URL when this field is null.
   ///
@@ -65,11 +66,20 @@ class JavaScriptMessage {
   /// such as `about:blank` also cannot be treated as HTTP(S) origins.
   final String? sourceUrl;
 
+  /// The browser security origin of the sending document, when available.
+  ///
+  /// A serialized origin includes the scheme, host, and non-default port.
+  /// The string `"null"` represents an opaque origin; Dart `null` means the
+  /// platform could not determine the origin. Neither grants a trusted origin.
+  /// This field is never derived solely from [sourceUrl], since a document's
+  /// URL does not establish its security origin.
+  final String? sourceOrigin;
+
   /// Whether the main frame's document sent the message, when the platform
   /// reports it; `null` otherwise.
   ///
-  /// Windows reports true because its message event only covers the top-level
-  /// document, including when [sourceUrl] is unavailable. Other platforms
-  /// currently leave this null.
+  /// Windows and Web receive main-document messages only. Android, iOS, macOS,
+  /// and Linux can distinguish messages sent by child frames. A document's URL
+  /// alone cannot establish whether it belongs to the main frame.
   final bool? isMainFrame;
 }
