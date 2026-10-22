@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:webview_all/webview_all.dart';
 import 'package:webview_all_android/webview_all_android.dart';
+import 'package:webview_all_android/src/android_webkit.g.dart' as android_types;
 import 'package:webview_all_linux/webview_all_linux.dart';
 import 'package:webview_all_wkwebview/webview_all_wkwebview.dart';
 import 'package:webview_all_windows/webview_all_windows.dart';
@@ -49,6 +50,13 @@ Future<void> main() async {
           request.uri.path == '/channel-sender/second.html') {
         request.response.headers.contentType = ContentType.html;
         request.response.write('<!DOCTYPE html><html><body></body></html>');
+      } else if (request.uri.path == '/channel-sender/metadata.html') {
+        request.response.headers.contentType = ContentType.html;
+        request.response.write('''
+<!DOCTYPE html><html><body><script>
+Bridge.postMessage('inline');
+</script></body></html>
+''');
       } else if (request.uri.path == '/channel-sender/frame-host.html') {
         request.response.headers.contentType = ContentType.html;
         request.response.write('''
@@ -836,6 +844,156 @@ return {
     await controller.runJavaScript('Echo.postMessage("hello");');
     await expectLater(channelCompleter.future, completion('hello'));
   });
+
+  testWidgets(
+    'JavaScript message metadata follows document and frame',
+    (WidgetTester tester) async {
+      const timeout = Duration(seconds: 15);
+      final firstUrl = '$prefixUrl/channel-sender/metadata.html';
+      final changedUrl = '$prefixUrl/channel-sender/changed?query=1#fragment';
+      final received = <String, Completer<JavaScriptMessage>>{
+        for (final text in <String>[
+          'document-start',
+          'inline',
+          'history',
+          'child',
+          'opaque',
+          if (Platform.isAndroid) ...<String>[
+            '42',
+            'custom string',
+            'null',
+            'undefined',
+            '[object ArrayBuffer]',
+          ],
+        ])
+          text: Completer<JavaScriptMessage>(),
+      };
+      final controller = WebViewController();
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        if (controller.platform is LinuxWebViewController) {
+          await (controller.platform as LinuxWebViewController).dispose();
+        }
+      });
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      final loaded = Completer<void>();
+      await controller.setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (_) {
+            if (!loaded.isCompleted) loaded.complete();
+          },
+        ),
+      );
+      await controller.addJavaScriptChannel(
+        'Bridge',
+        onMessageReceived: (JavaScriptMessage message) {
+          final pending = received[message.message];
+          if (pending != null && !pending.isCompleted) {
+            pending.complete(message);
+          }
+        },
+      );
+      final supportsStart = await controller.isUserScriptInjectionSupported(
+        WebViewUserScriptInjectionTime.documentStart,
+      );
+      if (supportsStart) {
+        await controller.addUserScript(
+          const WebViewUserScript(
+            source: "Bridge.postMessage('document-start');",
+          ),
+        );
+      }
+      await controller.loadRequest(Uri.parse(firstUrl));
+      await tester.pumpWidget(WebViewWidget(controller: controller));
+      await loaded.future.timeout(timeout);
+      final inline = await received['inline']!.future.timeout(timeout);
+      // Android retains its legacy bridge on WebViews without the required
+      // native listener/script features. That bridge must not invent a sender.
+      final legacyAndroid =
+          Platform.isAndroid &&
+          !(await android_types.WebViewFeature.isFeatureSupported(
+                'WEB_MESSAGE_LISTENER',
+              ) &&
+              await android_types.WebViewFeature.isFeatureSupported(
+                'DOCUMENT_START_SCRIPT',
+              ));
+      if (!legacyAndroid) {
+        expect(inline.sourceOrigin, prefixUrl);
+        expect(inline.isMainFrame, isTrue);
+      } else {
+        expect(inline.sourceUrl, isNull);
+        expect(inline.isMainFrame, isNull);
+      }
+      if (!Platform.isAndroid) expect(inline.sourceUrl, firstUrl);
+      if (supportsStart) {
+        final early = await received['document-start']!.future.timeout(timeout);
+        // Linux can safely fall back before its isolated world is initialized.
+        if (!Platform.isLinux || early.sourceOrigin != null) {
+          expect(early.sourceOrigin, legacyAndroid ? null : prefixUrl);
+          expect(early.isMainFrame, legacyAndroid ? null : true);
+        } else {
+          expect(early.sourceUrl, isNull);
+          expect(early.isMainFrame, isNull);
+        }
+      }
+      await controller.runJavaScript('''
+history.pushState(null, '', '/channel-sender/changed?query=1#fragment');
+Bridge.postMessage('history');
+for (const type of ['child', 'opaque']) {
+  const frame = document.createElement('iframe');
+  if (type === 'opaque') frame.setAttribute('sandbox', 'allow-scripts');
+  frame.srcdoc = '<script>Bridge.postMessage("' + type + '")<\\/script>';
+  document.body.appendChild(frame);
+}
+null;
+''');
+      final history = await received['history']!.future.timeout(timeout);
+      final child = await received['child']!.future.timeout(timeout);
+      final opaque = await received['opaque']!.future.timeout(timeout);
+      if (Platform.isAndroid && !legacyAndroid) {
+        await controller.runJavaScript('''
+Bridge.postMessage(42);
+Bridge.postMessage({toString: function() { return 'custom string'; }});
+Bridge.postMessage(null);
+Bridge.postMessage(undefined);
+Bridge.postMessage(new ArrayBuffer(1));
+null;
+''');
+        for (final text in <String>[
+          '42',
+          'custom string',
+          'null',
+          'undefined',
+          '[object ArrayBuffer]',
+        ]) {
+          final message = await received[text]!.future.timeout(timeout);
+          expect(message.message, text);
+          expect(message.sourceOrigin, prefixUrl);
+          expect(message.isMainFrame, isTrue);
+        }
+      }
+      if (!Platform.isAndroid) expect(history.sourceUrl, changedUrl);
+      if (!legacyAndroid) {
+        expect(history.sourceOrigin, prefixUrl);
+        expect(history.isMainFrame, isTrue);
+        expect(child.sourceOrigin, prefixUrl);
+        expect(child.isMainFrame, isFalse);
+        expect(opaque.sourceOrigin, 'null');
+        expect(opaque.isMainFrame, isFalse);
+      } else {
+        for (final message in <JavaScriptMessage>[history, child, opaque]) {
+          expect(message.sourceUrl, isNull);
+          expect(message.sourceOrigin, isNull);
+          expect(message.isMainFrame, isNull);
+        }
+      }
+    },
+    skip:
+        !(Platform.isAndroid ||
+            Platform.isIOS ||
+            Platform.isMacOS ||
+            Platform.isLinux),
+  );
 
   testWidgets(
     'Windows channel sources follow navigation and ignore payload metadata',
