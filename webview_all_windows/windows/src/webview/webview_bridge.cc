@@ -308,12 +308,17 @@ void WebviewBridge::RegisterEventHandlers() {
     EmitEvent(event);
   });
 
-  webview_->OnWebMessageReceived([this](const std::string &message) {
-    const auto event = flutter::EncodableValue(
-        flutter::EncodableMap{{flutter::EncodableValue(kEventType),
-                               flutter::EncodableValue("webMessageReceived")},
-                              {flutter::EncodableValue(kEventValue), message}});
-    EmitEvent(event);
+  webview_->OnWebMessageReceived([this](const std::string &message,
+                                      const std::string &source) {
+    flutter::EncodableMap event_map{
+        {flutter::EncodableValue(kEventType),
+         flutter::EncodableValue("webMessageReceived")},
+        {flutter::EncodableValue(kEventValue), message}};
+    if (!source.empty()) {
+      event_map[flutter::EncodableValue("source")] =
+          flutter::EncodableValue(source);
+    }
+    EmitEvent(flutter::EncodableValue(event_map));
   });
 
   webview_->OnFocusChanged([this](bool focused) {

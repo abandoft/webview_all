@@ -639,7 +639,14 @@ void Webview::RegisterEventHandlers() {
             if (web_message_received_callback_ &&
                 args->get_WebMessageAsJson(&wmessage) == S_OK) {
               const std::string message = util::Utf8FromUtf16(wmessage.get());
-              web_message_received_callback_(message);
+              // The URI of the document that sent this web message; only the
+              // top-level document raises this event.
+              wil::unique_cotaskmem_string wsource;
+              const std::string source =
+                  args->get_Source(&wsource) == S_OK && wsource
+                      ? util::Utf8FromUtf16(wsource.get())
+                      : std::string();
+              web_message_received_callback_(message, source);
             }
 
             return S_OK;

@@ -418,6 +418,111 @@ void main() {
     await expectLater(result, completion(7));
   });
 
+  test(
+    'a javaScript channel message names the document WebView2 reports, as the main frame',
+    () async {
+      _mockWindowsWebViewCreation();
+      final WindowsWebViewController controller = _createWindowsController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final received = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        JavaScriptChannelParams(
+          name: 'Bridge',
+          onMessageReceived: received.add,
+        ),
+      );
+
+      await _emitWindowsWebViewEvent(<String, Object?>{
+        'type': 'webMessageReceived',
+        'value': jsonEncode(<String, Object?>{
+          '__windows_webview_all_type': 'javascriptChannel',
+          'channelName': 'Bridge',
+          'message': 'hi',
+        }),
+        'source': 'https://a.example/page',
+      });
+      await _flushAsyncEvents();
+
+      expect(received, hasLength(1));
+      expect(received.single.message, 'hi');
+      expect(received.single.sourceUrl, 'https://a.example/page');
+      expect(received.single.isMainFrame, isTrue);
+    },
+  );
+
+  for (final Object? source in <Object?>[null, '', 42]) {
+    test('a channel message with unavailable source ($source) is still from '
+        'the main frame', () async {
+      final WindowsWebViewController controller = _createWindowsController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final received = <JavaScriptMessage>[];
+      await controller.addJavaScriptChannel(
+        JavaScriptChannelParams(
+          name: 'Bridge',
+          onMessageReceived: received.add,
+        ),
+      );
+
+      await _emitWindowsWebViewEvent(<String, Object?>{
+        'type': 'webMessageReceived',
+        'value': jsonEncode(<String, Object?>{
+          '__windows_webview_all_type': 'javascriptChannel',
+          'channelName': 'Bridge',
+          'message': 'hi',
+        }),
+        if (source != null) 'source': source,
+      });
+      await _flushAsyncEvents();
+
+      expect(received, hasLength(1));
+      expect(received.single.message, 'hi');
+      expect(received.single.sourceUrl, isNull);
+      expect(received.single.isMainFrame, isTrue);
+    });
+  }
+
+  test('channel sender metadata comes from the native event, not the payload '
+      'or current URL', () async {
+    final controller = _createWindowsController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    final received = <JavaScriptMessage>[];
+    await controller.addJavaScriptChannel(
+      JavaScriptChannelParams(name: 'Bridge', onMessageReceived: received.add),
+    );
+    await _emitWindowsWebViewEvent(<String, Object?>{
+      'type': 'urlChanged',
+      'value': 'https://current.example/next',
+    });
+    for (final String? source in <String?>[
+      'https://sender.example/old',
+      null,
+    ]) {
+      await _emitWindowsWebViewEvent(<String, Object?>{
+        'type': 'webMessageReceived',
+        'value': jsonEncode(<String, Object?>{
+          '__windows_webview_all_type': 'javascriptChannel',
+          'channelName': 'Bridge',
+          'message': 'hi',
+          'source': 'https://forged.example/',
+          'sourceUrl': 'https://forged.example/',
+          'isMainFrame': false,
+        }),
+        if (source != null) 'source': source,
+      });
+    }
+    await _flushAsyncEvents();
+
+    expect(await controller.currentUrl(), 'https://current.example/next');
+    expect(received.map((message) => message.sourceUrl), <String?>[
+      'https://sender.example/old',
+      null,
+    ]);
+    expect(received.every((message) => message.isMainFrame == true), isTrue);
+  });
+
   test('registers and removes document-start user scripts', () async {
     final List<String> addedScripts = <String>[];
     final List<String> removedScripts = <String>[];
@@ -522,6 +627,7 @@ void main() {
       controller.securityStateChanged.drain<void>(),
       controller.title.drain<void>(),
       controller.webMessage.drain<void>(),
+      controller.webMessageWithSource.drain<void>(),
       controller.containsFullScreenElementChanged.drain<void>(),
     ];
 
@@ -538,6 +644,151 @@ void main() {
       },
     );
     expect(response, isNull);
+  });
+
+  for (final String? activeStream in <String?>[null, 'legacy', 'withSource']) {
+    test('unread message streams do not buffer values or errors '
+        '(active stream: $activeStream)', () async {
+      final native_webview.WebviewController controller =
+          _createNativeController();
+      await controller.initialize();
+
+      final legacyValues = <dynamic>[];
+      final sourceValues = <({dynamic value, String? source})>[];
+      final legacyErrors = <Object>[];
+      final sourceErrors = <Object>[];
+      StreamSubscription<dynamic>? legacySubscription;
+      StreamSubscription<({dynamic value, String? source})>? sourceSubscription;
+      if (activeStream == 'legacy') {
+        legacySubscription = controller.webMessage.listen(
+          legacyValues.add,
+          onError: legacyErrors.add,
+        );
+      } else if (activeStream == 'withSource') {
+        sourceSubscription = controller.webMessageWithSource.listen(
+          sourceValues.add,
+          onError: sourceErrors.add,
+        );
+      }
+
+      await _emitWindowsWebViewEvent(<String, Object?>{
+        'type': 'webMessageReceived',
+        'value': 'not JSON',
+      });
+      for (var i = 0; i < 500; i++) {
+        await _emitWindowsWebViewEvent(<String, Object?>{
+          'type': 'webMessageReceived',
+          'value': jsonEncode(i),
+        });
+      }
+      await _flushAsyncEvents();
+
+      legacySubscription ??= controller.webMessage.listen(
+        legacyValues.add,
+        onError: legacyErrors.add,
+      );
+      sourceSubscription ??= controller.webMessageWithSource.listen(
+        sourceValues.add,
+        onError: sourceErrors.add,
+      );
+      await _flushAsyncEvents();
+
+      final expectedValues = List<int>.generate(500, (int index) => index);
+      expect(legacyValues, activeStream == 'legacy' ? expectedValues : isEmpty);
+      expect(
+        sourceValues.map((event) => event.value),
+        activeStream == 'withSource' ? expectedValues : isEmpty,
+      );
+      expect(
+        legacyErrors,
+        activeStream == 'legacy' ? <Matcher>[isA<FormatException>()] : isEmpty,
+      );
+      expect(
+        sourceErrors,
+        activeStream == 'withSource'
+            ? <Matcher>[isA<FormatException>()]
+            : isEmpty,
+      );
+
+      // A late listener still receives new messages after the discarded burst.
+      await _emitWindowsWebViewEvent(<String, Object?>{
+        'type': 'webMessageReceived',
+        'value': '500',
+        'source': 'https://sender.example/page',
+      });
+      await _flushAsyncEvents();
+      expect(legacyValues.last, 500);
+      expect(legacyValues, hasLength(activeStream == 'legacy' ? 501 : 1));
+      expect(sourceValues.last, (
+        value: 500,
+        source: 'https://sender.example/page',
+      ));
+      expect(sourceValues, hasLength(activeStream == 'withSource' ? 501 : 1));
+
+      await legacySubscription.cancel();
+      await sourceSubscription.cancel();
+    });
+  }
+
+  test('both message streams recover from a decoding error and tolerate '
+      'invalid source metadata without duplicating messages', () async {
+    final controller = _createNativeController();
+    await controller.initialize();
+    final legacyValues = <dynamic>[];
+    final sourceValues = <({dynamic value, String? source})>[];
+    final legacyErrors = <(Object, StackTrace)>[];
+    final sourceErrors = <(Object, StackTrace)>[];
+    final legacySubscription = controller.webMessage.listen(
+      legacyValues.add,
+      onError: (Object error, StackTrace stackTrace) {
+        legacyErrors.add((error, stackTrace));
+      },
+    );
+    final sourceSubscription = controller.webMessageWithSource.listen(
+      sourceValues.add,
+      onError: (Object error, StackTrace stackTrace) {
+        sourceErrors.add((error, stackTrace));
+      },
+    );
+
+    await _emitWindowsWebViewEvent(<String, Object?>{
+      'type': 'webMessageReceived',
+      'value': 'not JSON',
+    });
+    for (final Object? source in <Object?>[
+      42,
+      '',
+      null,
+      'https://sender.example/',
+    ]) {
+      await _emitWindowsWebViewEvent(<String, Object?>{
+        'type': 'webMessageReceived',
+        'value': jsonEncode(<String, Object?>{'text': 'hi'}),
+        if (source != null) 'source': source,
+      });
+    }
+    await _flushAsyncEvents();
+
+    expect(legacyErrors, hasLength(1));
+    expect(sourceErrors, hasLength(1));
+    expect(legacyErrors.single.$1, isA<FormatException>());
+    expect(sourceErrors.single.$1, same(legacyErrors.single.$1));
+    expect(sourceErrors.single.$2, same(legacyErrors.single.$2));
+    expect(legacyErrors.single.$2.toString(), isNotEmpty);
+    expect(
+      legacyValues,
+      List<Map<String, Object?>>.filled(4, <String, Object?>{'text': 'hi'}),
+    );
+    expect(sourceValues.map((event) => event.value), legacyValues);
+    expect(sourceValues.map((event) => event.source), <String?>[
+      null,
+      null,
+      null,
+      'https://sender.example/',
+    ]);
+
+    await legacySubscription.cancel();
+    await sourceSubscription.cancel();
   });
 
   test('native controller can retry after an initialization failure', () async {

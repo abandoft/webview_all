@@ -1,3 +1,7 @@
+## 1.4.5
+
+* Add sender URL and main-frame information to JavaScript channel messages on Windows.
+
 ## 1.4.4
 
 * Fix a certificate API deprecation warning when building for iOS and macOS.

@@ -386,8 +386,10 @@ class WindowsWebViewController extends PlatformWebViewController {
       ) {
         weakThis.target?._handleHttpResponseError(error);
       }),
-      _webviewController.webMessage.listen((dynamic message) {
-        weakThis.target?._handleWebMessage(message);
+      _webviewController.webMessageWithSource.listen((
+        ({dynamic value, String? source}) event,
+      ) {
+        weakThis.target?._handleWebMessage(event.value, event.source);
       }),
     ]);
   }
@@ -611,7 +613,7 @@ class WindowsWebViewController extends PlatformWebViewController {
     );
   }
 
-  void _handleWebMessage(dynamic message) {
+  void _handleWebMessage(dynamic message, String? source) {
     if (message is! Map) {
       return;
     }
@@ -625,7 +627,13 @@ class WindowsWebViewController extends PlatformWebViewController {
             : _javaScriptChannelParams[channelName];
         if (params != null) {
           params.onMessageReceived(
-            JavaScriptMessage(message: '${message['message'] ?? ''}'),
+            JavaScriptMessage(
+              message: '${message['message'] ?? ''}',
+              sourceUrl: source,
+              // This WebMessageReceived event only reports the top-level
+              // document, even if WebView2 could not provide its URL.
+              isMainFrame: true,
+            ),
           );
         }
         break;

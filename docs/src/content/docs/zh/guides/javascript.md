@@ -108,6 +108,29 @@ Checkout.postMessage(JSON.stringify({ type: 'loaded' }));
 await controller.removeJavaScriptChannel('Checkout');
 ```
 
+`JavaScriptMessage.sourceUrl` 是平台报告的发送文档完整 URL，不是 origin。平台知道 frame 信息时，`isMainFrame` 表示消息是否来自主 frame。Windows bridge 仅接收 WebView2 的顶层文档事件，返回 `isMainFrame: true`，并在 WebView2 提供时返回 `sourceUrl`；不订阅 iframe 消息事件。Android、iOS、macOS、Linux、OHOS 和 Web 目前均将这两个字段设为 null。
+
+敏感操作的 channel 应拒绝发送方未知的消息。`sourceUrl` 缺失时，不要回退到 `controller.currentUrl()`：消息发送后，WebView 可能已经导航到了其他页面。对于 HTTP(S) URL，应先校验 scheme 和 host，再比较包含 scheme、host 和端口的 `Uri.origin`。`about:blank`、`about:srcdoc`、`blob:` 等 URL 无法通过此 API 提供 HTTP(S) origin。Windows 对 sandbox 文档也可能返回其加载 URL，即使该文档具有不透明的浏览器安全 origin，因此来源 URL 本身不能证明文档的安全 origin。
+
+以下示例只接受来源 URL 匹配指定 HTTPS origin、且标记为主文档的消息；没有发送方元数据的平台会拒绝这些消息：
+
+```dart
+await controller.addJavaScriptChannel(
+  'Checkout',
+  onMessageReceived: (JavaScriptMessage message) {
+    final source = Uri.tryParse(message.sourceUrl ?? '');
+    if (message.isMainFrame != true ||
+        source == null ||
+        source.scheme != 'https' ||
+        source.host.isEmpty ||
+        source.origin != 'https://shop.example.com') {
+      return;
+    }
+    debugPrint('Accepted checkout event: ${message.message}');
+  },
+);
+```
+
 ## Console
 
 ```dart
