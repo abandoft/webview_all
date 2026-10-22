@@ -705,17 +705,22 @@ class JavaScriptChannelFlutterApiImpl {
 
   /// Maintains instances stored to communicate with java objects.
   final InstanceManager instanceManager;
-  void postMessage(int instanceId, String message) {
+  void postMessage(int instanceId, String message, {String? sourceUrl}) {
     final JavaScriptChannel? instance = _callbackInstance<JavaScriptChannel>(
       instanceManager,
       instanceId,
       'JavaScriptChannel',
     );
     if (instance != null) {
-      _runOhosVoidCallbackSafely(
-        'JavaScript channel callback',
-        () => instance.postMessage(message),
-      );
+      _runOhosVoidCallbackSafely('JavaScript channel callback', () {
+        final void Function(String, String?)? callback =
+            instance.postMessageWithSource;
+        if (callback != null) {
+          callback(message, sourceUrl);
+        } else {
+          instance.postMessage(message);
+        }
+      });
     }
   }
 }

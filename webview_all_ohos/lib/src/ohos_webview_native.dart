@@ -740,6 +740,7 @@ class JavaScriptChannel extends OhosObject {
   JavaScriptChannel(
     this.channelName, {
     required this.postMessage,
+    this.postMessageWithSource,
     @visibleForTesting super.binaryMessenger,
     @visibleForTesting super.instanceManager,
   }) : super.detached() {
@@ -756,6 +757,7 @@ class JavaScriptChannel extends OhosObject {
   JavaScriptChannel.detached(
     this.channelName, {
     required this.postMessage,
+    this.postMessageWithSource,
     super.binaryMessenger,
     super.instanceManager,
   }) : super.detached();
@@ -770,11 +772,18 @@ class JavaScriptChannel extends OhosObject {
   /// Callback method when javaScript calls `postMessage` on the object instance passed.
   final void Function(String message) postMessage;
 
+  /// Receives the native calling frame's URL when available.
+  ///
+  /// When supplied, this callback is used instead of [postMessage]. The URL is
+  /// captured inside the native proxy call; it is not the view's current URL.
+  final void Function(String message, String? sourceUrl)? postMessageWithSource;
+
   @override
   JavaScriptChannel copy() {
     return JavaScriptChannel.detached(
       channelName,
       postMessage: postMessage,
+      postMessageWithSource: postMessageWithSource,
       binaryMessenger: _api.binaryMessenger,
       instanceManager: _api.instanceManager,
     );

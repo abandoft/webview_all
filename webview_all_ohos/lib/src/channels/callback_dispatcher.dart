@@ -48,9 +48,13 @@ class OhosWebViewCallbackDispatcher {
         );
         return null;
       case 'JavaScriptChannel.postMessage':
+        final Object? sourceUrl = args['sourceUrl'];
         apis.javaScriptChannelFlutterApi.postMessage(
           args.intValue('instanceId'),
           args.stringValue('message'),
+          sourceUrl: sourceUrl is String && sourceUrl.isNotEmpty
+              ? sourceUrl
+              : null,
         );
         return null;
       case 'WebViewClient.onPageStarted':

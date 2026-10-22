@@ -446,11 +446,7 @@ export class WebViewPlatformView extends PlatformView {
     try {
       this.javaScriptChannels.forEach((channel: JavaScriptChannel, channelName: string) => {
         this.controller.registerJavaScriptProxy(
-          {
-            postMessage: (message: string): void => {
-              channel.postMessage(message);
-            }
-          },
+          channel.createJavaScriptProxy(this.controller),
           channelName,
           ['postMessage']
         );

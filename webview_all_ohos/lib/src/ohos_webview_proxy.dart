@@ -127,6 +127,7 @@ class OhosWebViewProxy {
   final ohos_webview.JavaScriptChannel Function(
     String channelName, {
     required void Function(String) postMessage,
+    void Function(String, String?)? postMessageWithSource,
   })
   createJavaScriptChannel;
 

@@ -15,11 +15,13 @@ export class JavaScriptChannelFlutterApiImpl {
   postMessage(
     javaScriptChannel: JavaScriptChannel,
     message: string,
+    sourceUrl: string | null,
     callback?: Reply<void>
   ): void {
     this.callbackApi.invoke('JavaScriptChannel.postMessage', new Map<string, ESObject>()
       .set('instanceId', this.getIdentifierForJavaScriptChannel(javaScriptChannel))
-      .set('message', message), callback);
+      .set('message', message)
+      .set('sourceUrl', sourceUrl), callback);
   }
 
   private getIdentifierForJavaScriptChannel(javaScriptChannel: JavaScriptChannel): number {

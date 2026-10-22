@@ -211,11 +211,7 @@ export class WebViewHostApiImpl {
     try {
       webView.addJavaScriptChannel(channel);
       webView.getController().registerJavaScriptProxy(
-        {
-          postMessage: (message: ESObject): void => {
-            channel.postMessage(String(message));
-          }
-        },
+        channel.createJavaScriptProxy(webView.getController()),
         channel.getJavaScriptChannelName(),
         ['postMessage']
       );

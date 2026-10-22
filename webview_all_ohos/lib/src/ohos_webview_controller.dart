@@ -1487,18 +1487,33 @@ class OhosJavaScriptChannelParams extends JavaScriptChannelParams {
     required super.onMessageReceived,
     @visibleForTesting OhosWebViewProxy webViewProxy = const OhosWebViewProxy(),
   }) : assert(name.isNotEmpty),
-       _javaScriptChannel = webViewProxy.createJavaScriptChannel(
+       _javaScriptChannel = _createJavaScriptChannel(
          name,
-         postMessage: withWeakReferenceTo(onMessageReceived, (
-           WeakReference<void Function(JavaScriptMessage)> weakReference,
-         ) {
-           return (String message) {
-             if (weakReference.target != null) {
-               weakReference.target!(JavaScriptMessage(message: message));
-             }
-           };
-         }),
+         onMessageReceived,
+         webViewProxy,
        );
+
+  static ohos_webview.JavaScriptChannel _createJavaScriptChannel(
+    String name,
+    void Function(JavaScriptMessage) onMessageReceived,
+    OhosWebViewProxy webViewProxy,
+  ) {
+    final void Function(String, [String?]) callback = withWeakReferenceTo(
+      onMessageReceived,
+      (WeakReference<void Function(JavaScriptMessage)> weakReference) {
+        return (String message, [String? sourceUrl]) {
+          weakReference.target?.call(
+            JavaScriptMessage(message: message, sourceUrl: sourceUrl),
+          );
+        };
+      },
+    );
+    return webViewProxy.createJavaScriptChannel(
+      name,
+      postMessage: callback,
+      postMessageWithSource: callback,
+    );
+  }
 
   /// Constructs a [OhosJavaScriptChannelParams] using a
   /// [JavaScriptChannelParams].
