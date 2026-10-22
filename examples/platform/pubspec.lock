@@ -345,28 +345,28 @@ packages:
       path: "../../webview_all_android"
       relative: true
     source: path
-    version: "1.4.4"
+    version: "1.4.5"
   webview_all_linux:
     dependency: "direct main"
     description:
       path: "../../webview_all_linux"
       relative: true
     source: path
-    version: "1.4.4"
+    version: "1.4.5"
   webview_all_ohos:
     dependency: "direct overridden"
     description:
       path: "../../webview_all_ohos"
       relative: true
     source: path
-    version: "1.4.4"
+    version: "1.4.5"
   webview_all_web:
     dependency: "direct overridden"
     description:
       path: "../../webview_all_web"
       relative: true
     source: path
-    version: "1.4.4"
+    version: "1.4.5"
   webview_all_windows:
     dependency: "direct dev"
     description:
@@ -380,7 +380,7 @@ packages:
       path: "../../webview_all_wkwebview"
       relative: true
     source: path
-    version: "1.4.4"
+    version: "1.4.5"
   webview_platform_interface:
     dependency: "direct dev"
     description:
