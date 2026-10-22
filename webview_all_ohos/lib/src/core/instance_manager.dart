@@ -11,6 +11,12 @@ mixin Copyable {
   Copyable copy();
 }
 
+class _WeakReferenceToken {
+  const _WeakReferenceToken(this.identifier);
+
+  final int identifier;
+}
+
 /// Keeps Dart objects and native OHOS object identifiers in sync.
 ///
 /// Dart-created objects use identifiers below [_maxDartCreatedIdentifier].
@@ -22,7 +28,7 @@ class InstanceManager {
   /// Creates an [InstanceManager].
   InstanceManager({required void Function(int) onWeakReferenceRemoved})
     : _nativeDispose = onWeakReferenceRemoved {
-    _finalizer = Finalizer<int>(_handleFinalizedWeakReference);
+    _finalizer = Finalizer<_WeakReferenceToken>(_releaseWeakReference);
   }
 
   static const int _maxDartCreatedIdentifier = 65536;
@@ -32,7 +38,9 @@ class InstanceManager {
   final Map<int, WeakReference<Copyable>> _weakInstances =
       <int, WeakReference<Copyable>>{};
   final Map<int, Copyable> _strongCopies = <int, Copyable>{};
-  late final Finalizer<int> _finalizer;
+  final Map<int, _WeakReferenceToken> _weakReferenceTokens =
+      <int, _WeakReferenceToken>{};
+  late final Finalizer<_WeakReferenceToken> _finalizer;
   int _nextIdentifier = 0;
 
   /// Adds an object that Dart created and returns its generated identifier.
@@ -52,19 +60,32 @@ class InstanceManager {
   /// The strong detached copy remains available until [remove] is called.
   int? removeWeakReference(Copyable instance) {
     final int? identifier = getIdentifier(instance);
-    if (identifier == null) {
+    if (identifier == null ||
+        !identical(_weakInstances[identifier]?.target, instance)) {
       return null;
     }
 
     _identifiers[instance] = null;
     _finalizer.detach(instance);
-    _releaseWeakReference(identifier);
+    _releaseWeakReference(_weakReferenceTokens[identifier]!);
     return identifier;
   }
 
-  /// Removes the strong detached copy for [identifier].
+  /// Removes all references after the native instance has been released.
+  ///
+  /// A callback received after this point must not recreate a disposed object.
   T? remove<T extends Copyable>(int identifier) {
-    return _strongCopies.remove(identifier) as T?;
+    final Copyable? weakInstance = _weakInstances.remove(identifier)?.target;
+    if (weakInstance != null) {
+      _identifiers[weakInstance] = null;
+      _finalizer.detach(weakInstance);
+    }
+    _weakReferenceTokens.remove(identifier);
+    final Copyable? strongCopy = _strongCopies.remove(identifier);
+    if (strongCopy != null) {
+      _identifiers[strongCopy] = null;
+    }
+    return strongCopy as T?;
   }
 
   /// Returns the object for [identifier], recreating a weak copy when needed.
@@ -81,8 +102,7 @@ class InstanceManager {
 
     final Copyable weakCopy = strongCopy.copy();
     _identifiers[weakCopy] = identifier;
-    _weakInstances[identifier] = WeakReference<Copyable>(weakCopy);
-    _finalizer.attach(weakCopy, identifier, detach: weakCopy);
+    _attachWeakReference(weakCopy, identifier);
     return weakCopy as T;
   }
 
@@ -98,24 +118,45 @@ class InstanceManager {
   }
 
   void _addInstance(Copyable instance, int identifier) {
-    assert(identifier >= 0);
-    assert(!containsIdentifier(identifier));
-    assert(getIdentifier(instance) == null);
+    if (identifier < 0) {
+      throw ArgumentError.value(
+        identifier,
+        'identifier',
+        'Must be nonnegative.',
+      );
+    }
+    if (containsIdentifier(identifier)) {
+      throw StateError(
+        'OHOS instance identifier is already registered: $identifier.',
+      );
+    }
+    if (getIdentifier(instance) != null) {
+      throw StateError('The OHOS instance is already registered.');
+    }
 
     _identifiers[instance] = identifier;
-    _weakInstances[identifier] = WeakReference<Copyable>(instance);
-    _finalizer.attach(instance, identifier, detach: instance);
+    _attachWeakReference(instance, identifier);
 
     final Copyable strongCopy = instance.copy();
     _identifiers[strongCopy] = identifier;
     _strongCopies[identifier] = strongCopy;
   }
 
-  void _handleFinalizedWeakReference(int identifier) {
-    _releaseWeakReference(identifier);
+  void _attachWeakReference(Copyable instance, int identifier) {
+    final _WeakReferenceToken token = _WeakReferenceToken(identifier);
+    _weakInstances[identifier] = WeakReference<Copyable>(instance);
+    _weakReferenceTokens[identifier] = token;
+    _finalizer.attach(instance, token, detach: instance);
   }
 
-  void _releaseWeakReference(int identifier) {
+  void _releaseWeakReference(_WeakReferenceToken token) {
+    final int identifier = token.identifier;
+    // A callback may have recreated a weak copy before an older finalizer runs.
+    // Only the token for the currently registered weak copy may release it.
+    if (!identical(_weakReferenceTokens[identifier], token)) {
+      return;
+    }
+    _weakReferenceTokens.remove(identifier);
     _weakInstances.remove(identifier);
     _nativeDispose(identifier);
   }
