@@ -2351,55 +2351,34 @@ void main() {
             overrideConsoleScript.injectionTime,
             UserScriptInjectionTime.atDocumentStart,
           );
-          expect(overrideConsoleScript.source, '''
-var _flutter_webview_plugin_overrides = _flutter_webview_plugin_overrides || {
-  removeCyclicObject: function() {
-    const traversalStack = [];
-    return function (k, v) {
-      if (typeof v !== "object" || v === null) { return v; }
-      const currentParentObj = this;
-      while (
-        traversalStack.length > 0 &&
-        traversalStack[traversalStack.length - 1] !== currentParentObj
-      ) {
-        traversalStack.pop();
-      }
-      if (traversalStack.includes(v)) { return; }
-      traversalStack.push(v);
-      return v;
-    };
-  },
-  log: function (type, args) {
-    var message =  Object.values(args)
-        .map(v => typeof(v) === "undefined" ? "undefined" : typeof(v) === "object" ? JSON.stringify(v, _flutter_webview_plugin_overrides.removeCyclicObject()) : v.toString())
-        .map(v => v.substring(0, 3000)) // Limit msg to 3000 chars
-        .join(", ");
-
-    var log = {
-      level: type,
-      message: message
-    };
-
-    window.webkit.messageHandlers.fltConsoleMessage.postMessage(JSON.stringify(log));
-  }
-};
-
-let originalLog = console.log;
-let originalInfo = console.info;
-let originalWarn = console.warn;
-let originalError = console.error;
-let originalDebug = console.debug;
-
-console.log = function() { _flutter_webview_plugin_overrides.log("log", arguments); originalLog.apply(null, arguments) };
-console.info = function() { _flutter_webview_plugin_overrides.log("info", arguments); originalInfo.apply(null, arguments) };
-console.warn = function() { _flutter_webview_plugin_overrides.log("warning", arguments); originalWarn.apply(null, arguments) };
-console.error = function() { _flutter_webview_plugin_overrides.log("error", arguments); originalError.apply(null, arguments) };
-console.debug = function() { _flutter_webview_plugin_overrides.log("debug", arguments); originalDebug.apply(null, arguments) };
-
-window.addEventListener("error", function(e) {
-  log("error", e.message + " at " + e.filename + ":" + e.lineno + ":" + e.colno);
-});
-      ''');
+          expect(
+            overrideConsoleScript.source,
+            contains('if (window._flutter_webview_plugin_overrides)'),
+          );
+          expect(
+            overrideConsoleScript.source,
+            contains("['log', 'info', 'warn', 'error', 'debug']"),
+          );
+          expect(
+            overrideConsoleScript.source,
+            contains('original.apply(console, arguments)'),
+          );
+          expect(
+            overrideConsoleScript.source,
+            contains('overrides.log("error", [e.message'),
+          );
+          expect(
+            overrideConsoleScript.source,
+            contains('window.addEventListener("error", overrides.onError)'),
+          );
+          expect(
+            overrideConsoleScript.source,
+            contains('new MutationObserver(restoreErrorListener)'),
+          );
+          expect(
+            overrideConsoleScript.source,
+            contains('.observe(document, { childList: true })'),
+          );
         },
       );
 

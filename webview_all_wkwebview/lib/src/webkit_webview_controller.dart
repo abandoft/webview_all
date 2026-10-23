@@ -1523,53 +1523,62 @@ ${params.functionBody}
     final overrideScript = WKUserScript(
       source:
           '''
-var _flutter_webview_plugin_overrides = _flutter_webview_plugin_overrides || {
-  removeCyclicObject: function() {
-    const traversalStack = [];
-    return function (k, v) {
-      if (typeof v !== "object" || v === null) { return v; }
-      const currentParentObj = this;
-      while (
-        traversalStack.length > 0 &&
-        traversalStack[traversalStack.length - 1] !== currentParentObj
-      ) {
-        traversalStack.pop();
-      }
-      if (traversalStack.includes(v)) { return; }
-      traversalStack.push(v);
-      return v;
-    };
-  },
-  log: function (type, args) {
-    var message =  Object.values(args)
-        .map(v => typeof(v) === "undefined" ? "undefined" : typeof(v) === "object" ? JSON.stringify(v, _flutter_webview_plugin_overrides.removeCyclicObject()) : v.toString())
-        .map(v => v.substring(0, 3000)) // Limit msg to 3000 chars
-        .join(", ");
-
-    var log = {
-      level: type,
-      message: message
-    };
-
-    window.webkit.messageHandlers.$_onConsoleMessageChannelName.postMessage(JSON.stringify(log));
+(function() {
+  if (window._flutter_webview_plugin_overrides) {
+    if (typeof window._flutter_webview_plugin_overrides.onError === 'function') {
+      window.addEventListener("error", window._flutter_webview_plugin_overrides.onError);
+    }
+    return;
   }
-};
+  const overrides = window._flutter_webview_plugin_overrides = {
+    removeCyclicObject: function() {
+      const traversalStack = [];
+      return function (k, v) {
+        if (typeof v !== "object" || v === null) { return v; }
+        const currentParentObj = this;
+        while (
+          traversalStack.length > 0 &&
+          traversalStack[traversalStack.length - 1] !== currentParentObj
+        ) {
+          traversalStack.pop();
+        }
+        if (traversalStack.includes(v)) { return; }
+        traversalStack.push(v);
+        return v;
+      };
+    },
+    log: function (type, args) {
+      var message = Object.values(args)
+          .map(v => typeof(v) === "undefined" ? "undefined" : typeof(v) === "object" ? JSON.stringify(v, overrides.removeCyclicObject()) : v.toString())
+          .map(v => v.substring(0, 3000)) // Limit msg to 3000 chars
+          .join(", ");
 
-let originalLog = console.log;
-let originalInfo = console.info;
-let originalWarn = console.warn;
-let originalError = console.error;
-let originalDebug = console.debug;
+      window.webkit.messageHandlers.$_onConsoleMessageChannelName.postMessage(JSON.stringify({
+        level: type,
+        message: message
+      }));
+    }
+  };
 
-console.log = function() { _flutter_webview_plugin_overrides.log("log", arguments); originalLog.apply(null, arguments) };
-console.info = function() { _flutter_webview_plugin_overrides.log("info", arguments); originalInfo.apply(null, arguments) };
-console.warn = function() { _flutter_webview_plugin_overrides.log("warning", arguments); originalWarn.apply(null, arguments) };
-console.error = function() { _flutter_webview_plugin_overrides.log("error", arguments); originalError.apply(null, arguments) };
-console.debug = function() { _flutter_webview_plugin_overrides.log("debug", arguments); originalDebug.apply(null, arguments) };
+  ['log', 'info', 'warn', 'error', 'debug'].forEach(function(level) {
+    const original = console[level];
+    console[level] = function() {
+      overrides.log(level === 'warn' ? 'warning' : level, arguments);
+      original.apply(console, arguments);
+    };
+  });
 
-window.addEventListener("error", function(e) {
-  log("error", e.message + " at " + e.filename + ":" + e.lineno + ":" + e.colno);
-});
+  overrides.onError = function(e) {
+    overrides.log("error", [e.message + " at " + e.filename + ":" + e.lineno + ":" + e.colno]);
+  };
+  function restoreErrorListener() {
+    window.addEventListener("error", overrides.onError);
+  }
+  restoreErrorListener();
+  // document.open() clears window listeners, but retains the Document and
+  // its observers. Reusing onError prevents duplicate error reports.
+  new MutationObserver(restoreErrorListener).observe(document, { childList: true });
+})();
       ''',
       injectionTime: UserScriptInjectionTime.atDocumentStart,
       isForMainFrameOnly: true,
