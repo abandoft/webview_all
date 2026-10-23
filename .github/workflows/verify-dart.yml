@@ -1,0 +1,103 @@
+name: Dart analysis and tests
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dart:
+    name: Dart (${{ matrix.flutter }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter:
+          - 3.35.7
+          - 3.44.x
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ matrix.flutter }}
+          channel: stable
+          cache: true
+
+      - name: Verify generated channel namespaces
+        run: python3 tool/normalize_pigeon_namespaces.py --check all
+
+      - name: Analyze and test Dart packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          write_overrides() {
+            local package="$1"
+            if [[ "$package" == "webview_platform_interface" ]]; then
+              return
+            fi
+            {
+              echo "dependency_overrides:"
+              echo "  webview_platform_interface:"
+              echo "    path: ../webview_platform_interface"
+              if [[ "$package" == "webview_all" ]]; then
+                for platform in android wkwebview web windows linux ohos; do
+                  echo "  webview_all_${platform}:"
+                  echo "    path: ../webview_all_${platform}"
+                done
+              fi
+            } > "$package/pubspec_overrides.yaml"
+          }
+          packages=(
+            webview_platform_interface
+            webview_all
+            webview_all_android
+            webview_all_wkwebview
+            webview_all_web
+            webview_all_windows
+            webview_all_linux
+          )
+          for package in "${packages[@]}"; do
+            echo "::group::$package"
+            write_overrides "$package"
+            (
+              cd "$package"
+              flutter pub get
+              flutter analyze --fatal-infos
+              if [[ "$package" != "webview_all_web" ]]; then
+                flutter test
+              fi
+            )
+            echo "::endgroup::"
+          done
+          examples=(
+            webview_all/example
+            examples/platform
+          )
+          for example in "${examples[@]}"; do
+            echo "::group::$example"
+            (
+              cd "$example"
+              flutter pub get
+              flutter analyze --fatal-infos
+              flutter test
+            )
+            echo "::endgroup::"
+          done

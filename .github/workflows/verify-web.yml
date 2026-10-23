@@ -1,0 +1,62 @@
+name: Web browser tests and build
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web browser tests (${{ matrix.flutter }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter:
+          - 3.35.7
+          - 3.44.x
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ matrix.flutter }}
+          channel: stable
+          cache: true
+
+      - name: Run browser tests
+        working-directory: webview_all_web
+        run: |
+          printf '%s\n' \
+            'dependency_overrides:' \
+            '  webview_platform_interface:' \
+            '    path: ../webview_platform_interface' \
+            > pubspec_overrides.yaml
+          flutter pub get
+          flutter test --platform chrome
+
+      - name: Build example
+        working-directory: webview_all/example
+        run: |
+          flutter pub get
+          flutter build web
+
+      - name: Verify coexistence with the official Web plugin
+        run: tool/test_plugin_coexistence.sh web

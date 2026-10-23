@@ -1,0 +1,76 @@
+name: Linux build and integration tests
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux native build and integration (${{ matrix.flutter }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter:
+          - 3.35.7
+          - 3.44.x
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libgtk-3-dev libwebkit2gtk-4.1-dev ninja-build xdotool xvfb
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ matrix.flutter }}
+          channel: stable
+          cache: true
+
+      - name: Test native policies and JavaScript bridges
+        run: |
+          cmake -S webview_all_linux/linux/test -B build/linux-native-tests
+          cmake --build build/linux-native-tests
+          xvfb-run -a ctest --test-dir build/linux-native-tests --output-on-failure
+
+      - name: Build Linux example
+        working-directory: examples/platform
+        run: |
+          flutter config --enable-linux-desktop
+          flutter pub get
+          flutter build linux --debug
+
+      - name: Run Linux integration tests
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: |
+          xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+            flutter test integration_test/webview_flutter_test.dart -d linux
+
+      - name: Run Linux HiDPI native input test
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: |
+          xvfb-run -a -s '-screen 0 3840x2160x24' \
+            env GDK_BACKEND=x11 GDK_SCALE=2 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+            flutter test integration_test/webview_flutter_test.dart -d linux \
+              --plain-name 'Linux native view receives system pointer and keyboard input'

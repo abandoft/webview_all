@@ -1,0 +1,64 @@
+name: Android build and native tests
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android native tests and build (${{ matrix.flutter }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter:
+          - 3.35.7
+          - 3.44.x
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ matrix.flutter }}
+          channel: stable
+          cache: true
+
+      - name: Resolve example
+        working-directory: examples/platform
+        run: flutter pub get
+
+      - name: Build Android example
+        working-directory: examples/platform
+        run: flutter build apk --debug
+
+      - name: Run Android plugin unit tests
+        working-directory: examples/platform
+        run: android/gradlew -p android :webview_all_android:testDebugUnitTest
+
+      - name: Verify coexistence with the official Android plugin
+        if: matrix.flutter == '3.44.x'
+        run: tool/test_plugin_coexistence.sh android

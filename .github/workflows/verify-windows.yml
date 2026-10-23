@@ -1,0 +1,61 @@
+name: Windows build and integration tests
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows native build and integration (${{ matrix.flutter }})
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter:
+          - 3.35.7
+          - 3.44.x
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ matrix.flutter }}
+          channel: stable
+          cache: true
+
+      - name: Build Windows example
+        working-directory: examples/platform
+        run: |
+          flutter config --enable-windows-desktop
+          flutter pub get
+          flutter build windows --debug
+
+      - name: Run Windows integration tests
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_flutter_test.dart -d windows
+
+      - name: Test WebView2 scrolling after document rewrites
+        if: matrix.flutter == '3.44.x'
+        shell: powershell
+        run: |
+          $sdk = (Resolve-Path 'examples/platform/build/windows/x64/packages/Microsoft.Web.WebView2').Path
+          & ./webview_all_windows/test/scroll_document_rewrite_test.ps1 -WebView2Sdk $sdk
