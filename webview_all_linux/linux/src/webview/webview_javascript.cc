@@ -1,6 +1,7 @@
 #include "common/method_channel_utils.h"
 #include "webview/webview_internal.h"
 #include "webview/webview_message_bridge.h"
+#include "webview/webview_scroll_hook.h"
 
 #include <cstring>
 #include <initializer_list>
@@ -425,19 +426,7 @@ void rebuild_user_scripts(LinuxWebView *webview) {
     })();
   )");
 
-  add_user_script(webview->content_manager, R"(
-    (function() {
-      if (window.__webviewAllScrollHookInstalled) return;
-      window.__webviewAllScrollHookInstalled = true;
-      window.addEventListener('scroll', function() {
-        try {
-          window.webkit.messageHandlers.__webview_all_scroll.postMessage(
-            [window.scrollX || 0, window.scrollY || 0].join(',')
-          );
-        } catch (_) {}
-      }, { passive: true });
-    })();
-  )");
+  add_user_script(webview->content_manager, kScrollHookScript);
 
   gchar *channel_source = build_javascript_channels_script(webview->js_channels);
   add_user_script(webview->content_manager, channel_source);
