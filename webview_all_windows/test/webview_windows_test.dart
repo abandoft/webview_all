@@ -1623,10 +1623,15 @@ void main() {
     'dispatches console and scroll messages from Windows web messages',
     () async {
       final List<String> addedScripts = <String>[];
+      final List<String> executedScripts = <String>[];
       _mockWindowsWebViewCreation(
         onAddScript: (String script) {
           addedScripts.add(script);
           return 'script-${addedScripts.length}';
+        },
+        onExecuteScript: (String script) {
+          executedScripts.add(script);
+          return 'null';
         },
       );
 
@@ -1649,6 +1654,17 @@ void main() {
       );
       expect(addedScripts[0], contains('catch (_)'));
       expect(addedScripts[1], contains('__flutterWindowsScrollHookInstalled'));
+      expect(addedScripts[1], contains('new MutationObserver'));
+      expect(
+        addedScripts[1],
+        contains('.observe(document, { childList: true })'),
+      );
+      expect(executedScripts, <String>[addedScripts[1]]);
+
+      await controller.setOnScrollPositionChange(null);
+      await controller.setOnScrollPositionChange(scrollChanges.add);
+      expect(addedScripts, hasLength(2));
+      expect(executedScripts, hasLength(1));
 
       await _emitWindowsWebViewEvent(<String, Object?>{
         'type': 'webMessageReceived',

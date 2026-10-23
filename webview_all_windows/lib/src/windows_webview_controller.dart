@@ -1590,21 +1590,44 @@ ${params.functionBody}
     }
 
     _scrollBridgeInstalled = true;
-    await _webviewController.addScriptToExecuteOnDocumentCreated('''
+    final script =
+        '''
       (function() {
         if (window.__flutterWindowsScrollHookInstalled) {
           return;
         }
         window.__flutterWindowsScrollHookInstalled = true;
-        window.addEventListener('scroll', function() {
+        let lastX = window.scrollX || window.pageXOffset || 0;
+        let lastY = window.scrollY || window.pageYOffset || 0;
+        function emitScroll() {
+          const x = window.scrollX || window.pageXOffset || 0;
+          const y = window.scrollY || window.pageYOffset || 0;
+          lastX = x;
+          lastY = y;
           window.chrome.webview.postMessage({
             "$_channelMessageType": "$_scrollMessageType",
-            "x": window.scrollX || window.pageXOffset || 0,
-            "y": window.scrollY || window.pageYOffset || 0
+            "x": x,
+            "y": y
           });
-        }, { passive: true });
+        }
+        function restoreScrollListener() {
+          // Reusing the callback also makes repeated attachment idempotent.
+          window.addEventListener('scroll', emitScroll, { passive: true });
+        }
+        restoreScrollListener();
+        // document.open() clears window listeners, but retains the Document
+        // and its observers. Only watch top-level document replacements.
+        new MutationObserver(function() {
+          restoreScrollListener();
+          if ((window.scrollX || window.pageXOffset || 0) !== lastX ||
+              (window.scrollY || window.pageYOffset || 0) !== lastY) {
+            emitScroll();
+          }
+        }).observe(document, { childList: true });
       })();
-      ''');
+      ''';
+    await _webviewController.addScriptToExecuteOnDocumentCreated(script);
+    await _executeScriptBestEffort('scroll position listener', script);
   }
 
   @override
