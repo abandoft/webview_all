@@ -1517,7 +1517,11 @@ window.chrome.webview.postMessage({
         ScrollPositionChange? recordedPosition;
         await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
         await controller.setNavigationDelegate(
-          NavigationDelegate(onPageFinished: (_) => pageLoaded.complete()),
+          NavigationDelegate(
+            onPageFinished: (_) {
+              if (!pageLoaded.isCompleted) pageLoaded.complete();
+            },
+          ),
         );
         await controller.setOnScrollPositionChange((
           ScrollPositionChange contentOffsetChange,
@@ -1576,6 +1580,32 @@ window.chrome.webview.postMessage({
         );
         expect(recordedPosition?.x, closeTo(xScroll * 2, 1));
         expect(recordedPosition?.y, closeTo(yScroll * 2, 1));
+
+        if (Platform.isWindows || Platform.isLinux) {
+          for (final closeDocument in <bool>[false, true]) {
+            await controller.runJavaScript('''
+              (function() {
+                const root = document.documentElement;
+                document.open();
+                document.appendChild(root);
+                ${closeDocument ? 'document.close();' : ''}
+              })();
+            ''');
+            recordedPosition = null;
+            final targetX = closeDocument ? 150 : 250;
+            final targetY = closeDocument ? 200 : 300;
+            await controller.scrollTo(targetX, targetY);
+            await _waitForCondition(
+              () =>
+                  _isWithinOnePixel(recordedPosition?.x, targetX) &&
+                  _isWithinOnePixel(recordedPosition?.y, targetY),
+              reason: 'Scroll callbacks did not recover after document.open().',
+            );
+            final position = await controller.getScrollPosition();
+            expect(position.dx, closeTo(targetX, 1));
+            expect(position.dy, closeTo(targetY, 1));
+          }
+        }
       });
     },
     // Scroll position is currently not implemented for macOS.
