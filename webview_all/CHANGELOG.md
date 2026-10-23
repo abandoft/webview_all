@@ -1,3 +1,10 @@
+## 1.4.6
+
+* Fix JavaScript message sender information being lost after document rewrites on Linux.
+* Fix scroll callbacks stopping after document rewrites on Linux, Windows, and Web.
+* Fix script execution timeouts in sandboxed Web pages and media permission requests hanging after document rewrites.
+* Fix forwarding of uncaught JavaScript errors on iOS and macOS.
+
 ## 1.4.5
 
 * Raise the minimum supported OHOS version to API 22.
