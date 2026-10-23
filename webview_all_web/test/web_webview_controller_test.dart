@@ -205,6 +205,481 @@ void main() {
           isNot(contains('isolatedBridgeReady')),
         );
       });
+
+      test('restores the isolated bridge after document.open', () async {
+        final params = WebWebViewControllerCreationParams(
+          iFrameSandbox: 'allow-scripts',
+        );
+        final controller = WebWebViewController(params);
+        final changes = <ScrollPositionChange>[];
+        final messages = <JavaScriptMessage>[];
+        addTearDown(() => params.iFrame.remove());
+        await _attachAndLoadScrollableHtml(controller, params);
+        await controller.setOnScrollPositionChange(changes.add);
+        await controller.addJavaScriptChannel(
+          JavaScriptChannelParams(
+            name: 'LifecycleChannel',
+            onMessageReceived: messages.add,
+          ),
+        );
+
+        for (final bool closeDocument in <bool>[false, true]) {
+          await controller.runJavaScript(
+            _rewriteCurrentDocumentScript(closeDocument: closeDocument),
+          );
+          expect(
+            await controller.callAsyncJavaScript(
+              JavaScriptInvocationParams(
+                functionBody: 'await Promise.resolve(); return 6 * 7;',
+                timeout: const Duration(seconds: 1),
+              ),
+            ),
+            42,
+          );
+          expect(await controller.getTitle(), 'Scrollable');
+          await controller.runJavaScript(
+            'LifecycleChannel.postMessage("$closeDocument");',
+          );
+          expect(await controller.runJavaScriptReturningResult('1 + 1'), 2);
+          final double expectedY = closeDocument ? 160 : 80;
+          changes.clear();
+          await controller.scrollTo(0, expectedY.toInt());
+          await _waitForScrollChange(changes, expectedY);
+          expect(await controller.getScrollPosition(), Offset(0, expectedY));
+          expect(
+            changes.map((ScrollPositionChange change) => change.y),
+            contains(expectedY),
+          );
+          changes.clear();
+          await controller.runJavaScript(
+            'window.dispatchEvent(new Event("scroll"));',
+          );
+          expect(changes, hasLength(1));
+        }
+        expect(
+          messages.map((JavaScriptMessage message) => message.message),
+          <String>['false', 'true'],
+        );
+        expect(
+          messages.every(
+            (JavaScriptMessage message) => message.isMainFrame == true,
+          ),
+          isTrue,
+        );
+        expect(
+          messages.map((JavaScriptMessage message) => message.sourceOrigin),
+          everyElement('null'),
+        );
+        expect(() => params.iFrame.contentWindow!.document, throwsA(anything));
+      });
+    });
+
+    group('isolated message ports', () {
+      test(
+        'allows initial operations before an unclosed document loads',
+        () async {
+          final params = WebWebViewControllerCreationParams(
+            iFrameSandbox: 'allow-scripts',
+          );
+          final controller = WebWebViewController(params);
+          addTearDown(() => params.iFrame.remove());
+          web.document.body!.append(params.iFrame);
+          await controller.loadHtmlString('<script>document.open();</script>');
+          expect(
+            await controller.callAsyncJavaScript(
+              JavaScriptInvocationParams(
+                functionBody: 'return 6 * 7;',
+                timeout: const Duration(seconds: 1),
+              ),
+            ),
+            42,
+          );
+        },
+      );
+
+      test('installs hooks when reload makes the iframe accessible', () async {
+        final params = WebWebViewControllerCreationParams(
+          iFrameSandbox: 'allow-scripts',
+        );
+        final controller = WebWebViewController(params);
+        final messages = <JavaScriptMessage>[];
+        addTearDown(() => params.iFrame.remove());
+        await controller.addJavaScriptChannel(
+          JavaScriptChannelParams(
+            name: 'ReloadChannel',
+            onMessageReceived: messages.add,
+          ),
+        );
+        await _attachAndLoadScrollableHtml(controller, params);
+        await controller.setIFrameSandbox('allow-scripts allow-same-origin');
+        final Future<web.Event> reloaded = params.iFrame.onLoad.first;
+        await controller.callAsyncJavaScript(
+          JavaScriptInvocationParams(
+            functionBody: '''
+            setTimeout(function() { location.reload(); }, 25);
+            return 'scheduled';
+          ''',
+          ),
+        );
+        await reloaded;
+        expect(params.iFrame.contentWindow!.document.title, 'Scrollable');
+        await controller.runJavaScript(
+          'ReloadChannel.postMessage("accessible")',
+        );
+        for (int i = 0; i < 40 && messages.isEmpty; i += 1) {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+        expect(messages.map((message) => message.message), <String>[
+          'accessible',
+        ]);
+        expect(messages.single.sourceOrigin, web.window.location.origin);
+      });
+
+      for (final bool fetchedData in <bool>[false, true]) {
+        test('reconnects after page-initiated reload ($fetchedData)', () async {
+          final params = WebWebViewControllerCreationParams(
+            httpRequestFactory: MockHttpRequestFactory(),
+            iFrameSandbox: fetchedData ? null : 'allow-scripts',
+          );
+          final controller = WebWebViewController(params);
+          final messages = <JavaScriptMessage>[];
+          final changes = <ScrollPositionChange>[];
+          addTearDown(() => params.iFrame.remove());
+          await controller.addJavaScriptChannel(
+            JavaScriptChannelParams(
+              name: 'ReloadChannel',
+              onMessageReceived: messages.add,
+            ),
+          );
+          await controller.setOnScrollPositionChange(changes.add);
+          await _attachAndLoadReloadableHtml(
+            controller,
+            params,
+            fetchedData: fetchedData,
+          );
+          expect(await controller.runJavaScriptReturningResult('6 * 7'), 42);
+
+          final Future<web.Event> reloaded = params.iFrame.onLoad.first;
+          await controller.callAsyncJavaScript(
+            JavaScriptInvocationParams(
+              functionBody: '''
+              setTimeout(function() { location.reload(); }, 25);
+              return 'scheduled';
+            ''',
+            ),
+          );
+          await reloaded;
+          expect(
+            await controller.callAsyncJavaScript(
+              JavaScriptInvocationParams(
+                functionBody: 'return 6 * 7;',
+                timeout: const Duration(seconds: 1),
+              ),
+            ),
+            42,
+          );
+          expect(await controller.getTitle(), 'Reloadable');
+          await controller.runJavaScript(
+            'ReloadChannel.postMessage("reloaded")',
+          );
+          for (int i = 0; i < 40 && messages.isEmpty; i += 1) {
+            await Future<void>.delayed(const Duration(milliseconds: 25));
+          }
+          expect(messages.map((message) => message.message), <String>[
+            'reloaded',
+          ]);
+          expect(messages.single.sourceOrigin, 'null');
+          await controller.scrollTo(0, 80);
+          await _waitForScrollChange(changes, 80);
+          expect(changes.last.y, 80);
+        });
+
+        test(
+          'keeps same-document requests and invalidates reload requests ($fetchedData)',
+          () async {
+            final params = WebWebViewControllerCreationParams(
+              httpRequestFactory: MockHttpRequestFactory(),
+              iFrameSandbox: fetchedData ? null : 'allow-scripts',
+            );
+            final controller = WebWebViewController(params);
+            final requests = <PlatformWebViewPermissionRequest>[];
+            addTearDown(() => params.iFrame.remove());
+            await _attachAndLoadReloadableHtml(
+              controller,
+              params,
+              fetchedData: fetchedData,
+            );
+            await controller.setOnPlatformPermissionRequest(requests.add);
+            final Future<Object?> operation = controller.callAsyncJavaScript(
+              JavaScriptInvocationParams(
+                functionBody: '''
+              window.operationStarted = true;
+              await new Promise(function() {});
+              return 'old document';
+            ''',
+              ),
+            );
+            bool operationInvalidated = false;
+            final Future<void> invalidated =
+                expectLater(
+                  operation,
+                  throwsA(isA<JavaScriptExecutionException>()),
+                ).then<void>((_) {
+                  operationInvalidated = true;
+                });
+            expect(
+              await _waitForJavaScriptValue(
+                controller,
+                'Boolean(window.operationStarted)',
+                isTrue,
+              ),
+              isTrue,
+            );
+            const String startPermission = '''
+            window.permissionResult = 'pending';
+            navigator.mediaDevices.getUserMedia({video: true}).then(
+              function() { window.permissionResult = 'granted'; },
+              function(error) { window.permissionResult = error.name; }
+            );
+          ''';
+            await controller.runJavaScript(startPermission);
+            for (int i = 0; i < 40 && requests.isEmpty; i += 1) {
+              await Future<void>.delayed(const Duration(milliseconds: 25));
+            }
+            expect(requests, hasLength(1));
+            final Future<web.Event> rewritten = params.iFrame.onLoad.first;
+            await controller.runJavaScript(
+              _rewriteCurrentDocumentScript(closeDocument: true),
+            );
+            await rewritten;
+            expect(await controller.getTitle(), 'Reloadable');
+            expect(operationInvalidated, isFalse);
+            await requests.single.deny();
+            expect(
+              await _waitForJavaScriptValue(
+                controller,
+                'window.permissionResult',
+                isNot('pending'),
+              ),
+              'NotAllowedError',
+            );
+
+            await controller.runJavaScript('document.open();');
+            final Future<web.Event> emptyClosed = params.iFrame.onLoad.first;
+            await controller.runJavaScript(
+              'document.open(); document.close();',
+            );
+            await emptyClosed;
+            expect(
+              await controller.callAsyncJavaScript(
+                JavaScriptInvocationParams(functionBody: 'return 6 * 7;'),
+              ),
+              42,
+            );
+            expect(operationInvalidated, isFalse);
+
+            await controller.runJavaScript(startPermission);
+            for (int i = 0; i < 40 && requests.length < 2; i += 1) {
+              await Future<void>.delayed(const Duration(milliseconds: 25));
+            }
+            expect(requests, hasLength(2));
+            final Future<web.Event> reloaded = params.iFrame.onLoad.first;
+            await controller.callAsyncJavaScript(
+              JavaScriptInvocationParams(
+                functionBody: '''
+              setTimeout(function() { location.reload(); }, 25);
+              return 'scheduled';
+            ''',
+              ),
+            );
+            await reloaded;
+            expect(await controller.getTitle(), 'Reloadable');
+            await invalidated.timeout(const Duration(seconds: 1));
+            await controller.runJavaScript(startPermission);
+            for (int i = 0; i < 40 && requests.length < 3; i += 1) {
+              await Future<void>.delayed(const Duration(milliseconds: 25));
+            }
+            expect(requests, hasLength(3));
+            await requests[1].grant();
+            await Future<void>.delayed(const Duration(milliseconds: 25));
+            expect(
+              await controller.runJavaScriptReturningResult(
+                'window.permissionResult',
+              ),
+              'pending',
+            );
+            await requests[2].deny();
+            expect(
+              await _waitForJavaScriptValue(
+                controller,
+                'window.permissionResult',
+                isNot('pending'),
+              ),
+              'NotAllowedError',
+            );
+          },
+        );
+      }
+
+      test(
+        'keeps operations working across empty document.open calls',
+        () async {
+          final params = WebWebViewControllerCreationParams(
+            iFrameSandbox: 'allow-scripts',
+          );
+          final controller = WebWebViewController(params);
+          addTearDown(() => params.iFrame.remove());
+          await _attachAndLoadScrollableHtml(controller, params);
+
+          await controller.runJavaScript('document.open();');
+          for (int i = 1; i <= 3; i += 1) {
+            expect(
+              await controller.callAsyncJavaScript(
+                JavaScriptInvocationParams(
+                  functionBody: '''
+                  document.open();
+                  window.operationCount = (window.operationCount || 0) + 1;
+                  return document.childNodes.length;
+                ''',
+                  timeout: const Duration(seconds: 1),
+                ),
+              ),
+              0,
+            );
+            expect(
+              await controller.runJavaScriptReturningResult(
+                'window.operationCount',
+              ),
+              i,
+            );
+          }
+          expect(await controller.getTitle(), isNull);
+        },
+      );
+
+      test('rejects stale and duplicate isolated port handshakes', () async {
+        final params = WebWebViewControllerCreationParams(
+          iFrameSandbox: 'allow-scripts',
+        );
+        final controller = WebWebViewController(params);
+        addTearDown(() => params.iFrame.remove());
+        await _attachAndLoadScrollableHtml(controller, params);
+        expect(await controller.runJavaScriptReturningResult('6 * 7'), 42);
+        final String bootstrap = params.iFrame.getAttribute('srcdoc')!;
+        final int generation = int.parse(
+          RegExp(r'const generation = (\d+);').firstMatch(bootstrap)!.group(1)!,
+        );
+        final Object documentId = await controller.runJavaScriptReturningResult(
+          'window.__webviewAllDocumentId',
+        );
+
+        for (final int spoofGeneration in <int>[-1, generation]) {
+          await controller.runJavaScript('''
+            (function() {
+              const channel = new MessageChannel();
+              channel.port1.onmessage = function(event) {
+                const data = event.data;
+                channel.port1.postMessage(Object.assign({}, data, {
+                  __webview_all_type: 'isolatedBridgeResponse',
+                  ok: true,
+                  result: 'wrong-port'
+                }));
+              };
+              window.parent.postMessage({
+                __webview_all_type: 'isolatedBridgeReady',
+                webViewId: ${jsonEncode(params.iFrame.id)},
+                generation: $spoofGeneration,
+                documentId: ${jsonEncode(documentId)}
+              }, '*', [channel.port2]);
+            })();
+          ''');
+          expect(await controller.runJavaScriptReturningResult('6 * 7'), 42);
+        }
+      });
+
+      test('rejects same-origin handshakes during opaque navigation', () async {
+        final params = WebWebViewControllerCreationParams();
+        final controller = WebWebViewController(params);
+        addTearDown(() => params.iFrame.remove());
+        await _attachAndLoadScrollableHtml(controller, params);
+        await controller.setIFrameSandbox('allow-scripts');
+        final Future<web.Event> loaded = params.iFrame.onLoad.first;
+        await controller.loadHtmlString('<title>Opaque destination</title>');
+        final int generation = int.parse(
+          RegExp(
+            r'const generation = (\d+);',
+          ).firstMatch(params.iFrame.getAttribute('srcdoc')!)!.group(1)!,
+        );
+
+        // Navigation has not committed yet. This old, still-accessible Window
+        // has the same source/id/generation, but its real origin is not opaque.
+        expect(params.iFrame.contentWindow!.document.body, isNotNull);
+        await controller.runJavaScript('''
+          (function() {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = function(event) {
+              channel.port1.postMessage(Object.assign({}, event.data, {
+                __webview_all_type: 'isolatedBridgeResponse',
+                ok: true,
+                result: 'wrong-origin'
+              }));
+            };
+            window.parent.postMessage({
+              __webview_all_type: 'isolatedBridgeReady',
+              webViewId: ${jsonEncode(params.iFrame.id)},
+              generation: $generation,
+              documentId: 'wrong-origin-document'
+            }, '*', [channel.port2]);
+          })();
+        ''');
+        await loaded;
+        expect(
+          await controller.callAsyncJavaScript(
+            JavaScriptInvocationParams(
+              functionBody: 'return 6 * 7;',
+              timeout: const Duration(seconds: 1),
+            ),
+          ),
+          42,
+        );
+        expect(await controller.getTitle(), 'Opaque destination');
+      });
+
+      test('invalidates pending isolated operations on navigation', () async {
+        final params = WebWebViewControllerCreationParams(
+          iFrameSandbox: 'allow-scripts',
+        );
+        final controller = WebWebViewController(params);
+        addTearDown(() => params.iFrame.remove());
+        await _attachAndLoadScrollableHtml(controller, params);
+        final Future<Object?> pending = controller.callAsyncJavaScript(
+          JavaScriptInvocationParams(
+            functionBody: '''
+            window.operationStarted = true;
+            await new Promise(function() {});
+            return 'old document';
+          ''',
+          ),
+        );
+        final Future<void> invalidated = expectLater(
+          pending,
+          throwsA(isA<JavaScriptExecutionException>()),
+        );
+        expect(
+          await _waitForJavaScriptValue(
+            controller,
+            'Boolean(window.operationStarted)',
+            isTrue,
+          ),
+          isTrue,
+        );
+        final Future<web.Event> loaded = params.iFrame.onLoad.first;
+        await controller.loadHtmlString('<title>New document</title>');
+        await loaded;
+        await invalidated;
+        expect(await controller.getTitle(), 'New document');
+        expect(await controller.runJavaScriptReturningResult('6 * 7'), 42);
+      });
     });
 
     group('loadRequest', () {
@@ -1820,6 +2295,195 @@ void main() {
     });
 
     group('permissions', () {
+      for (final String? sandbox in <String?>[null, 'allow-scripts']) {
+        test(
+          'restores permission decisions after document.open ($sandbox)',
+          () async {
+            final params = WebWebViewControllerCreationParams(
+              iFrameSandbox: sandbox,
+            );
+            final controller = WebWebViewController(params);
+            final requests = <PlatformWebViewPermissionRequest>[];
+            addTearDown(() => params.iFrame.remove());
+            await _attachAndLoadScrollableHtml(controller, params);
+            await _installFakeGetUserMedia(controller);
+            await controller.setOnPlatformPermissionRequest((request) {
+              requests.add(request);
+              request.deny();
+            });
+            await _waitForJavaScriptValue(
+              controller,
+              'Boolean(window.__webviewAllPermissionRequestHookInstalled)',
+              isTrue,
+            );
+            await controller.runJavaScript('''
+            window.permissionWrapper = navigator.mediaDevices.getUserMedia;
+          ''');
+
+            for (final bool closeDocument in <bool>[false, true]) {
+              // The pending request must settle even when document.open()
+              // clears Window listeners before the host handles the request.
+              await controller.runJavaScript('''
+              window.permissionResult = 'pending';
+              navigator.mediaDevices.getUserMedia({video: true}).then(
+                function() { window.permissionResult = 'granted'; },
+                function(error) { window.permissionResult = error.name; }
+              );
+              ${_rewriteCurrentDocumentScript(closeDocument: closeDocument)}
+            ''');
+              expect(
+                await _waitForJavaScriptValue(
+                  controller,
+                  'window.permissionResult',
+                  isNot('pending'),
+                ),
+                'NotAllowedError',
+              );
+              expect(
+                await controller.runJavaScriptReturningResult(
+                  'navigator.mediaDevices.getUserMedia === window.permissionWrapper',
+                ),
+                isTrue,
+              );
+            }
+            expect(requests, hasLength(2));
+            expect(
+              await controller.runJavaScriptReturningResult(
+                'document.body.getAttribute("data-original-get-user-media-called")',
+              ),
+              'no',
+            );
+          },
+        );
+      }
+
+      for (final String? sandbox in <String?>[null, 'allow-scripts']) {
+        test(
+          'settles permission decisions after repeated empty open ($sandbox)',
+          () async {
+            final params = WebWebViewControllerCreationParams(
+              iFrameSandbox: sandbox,
+            );
+            final controller = WebWebViewController(params);
+            final requests = <PlatformWebViewPermissionRequest>[];
+            addTearDown(() => params.iFrame.remove());
+            await _attachAndLoadScrollableHtml(controller, params);
+            await _installFakeGetUserMedia(controller);
+            await controller.setOnPlatformPermissionRequest((request) {
+              requests.add(request);
+              request.deny();
+            });
+            await controller.runJavaScript('document.open();');
+
+            for (int i = 0; i < 3; i += 1) {
+              await controller.runJavaScript('''
+              document.open();
+              window.permissionResult = 'pending';
+              navigator.mediaDevices.getUserMedia({video: true}).then(
+                function() { window.permissionResult = 'granted'; },
+                function(error) { window.permissionResult = error.name; }
+              );
+              document.open();
+            ''');
+              expect(
+                await _waitForJavaScriptValue(
+                  controller,
+                  'window.permissionResult',
+                  isNot('pending'),
+                ),
+                'NotAllowedError',
+              );
+            }
+            expect(requests, hasLength(3));
+          },
+        );
+
+        test(
+          'ignores permission decisions from a previous document ($sandbox)',
+          () async {
+            final params = WebWebViewControllerCreationParams(
+              iFrameSandbox: sandbox,
+            );
+            final controller = WebWebViewController(params);
+            final requests = <PlatformWebViewPermissionRequest>[];
+            addTearDown(() => params.iFrame.remove());
+            await _attachAndLoadScrollableHtml(controller, params);
+            await _installFakeGetUserMedia(controller);
+            await controller.setOnPlatformPermissionRequest(requests.add);
+            const String startRequest = '''
+            window.permissionResult = 'pending';
+            navigator.mediaDevices.getUserMedia({video: true}).then(
+              function() { window.permissionResult = 'granted'; },
+              function(error) { window.permissionResult = error.name; }
+            );
+          ''';
+            await controller.runJavaScript(startRequest);
+            for (int i = 0; i < 40 && requests.isEmpty; i += 1) {
+              await Future<void>.delayed(const Duration(milliseconds: 25));
+            }
+            expect(requests, hasLength(1));
+
+            final Future<web.Event> loaded = params.iFrame.onLoad.first;
+            await controller.loadHtmlString('''
+              <body>New document<script>$_fakeGetUserMediaScript</script></body>
+            ''');
+            await loaded;
+            await controller.runJavaScript(startRequest);
+            for (int i = 0; i < 40 && requests.length < 2; i += 1) {
+              await Future<void>.delayed(const Duration(milliseconds: 25));
+            }
+            expect(requests, hasLength(2));
+
+            await requests.first.grant();
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+            expect(
+              await controller.runJavaScriptReturningResult(
+                'window.permissionResult',
+              ),
+              'pending',
+            );
+            await requests.last.deny();
+            expect(
+              await _waitForJavaScriptValue(
+                controller,
+                'window.permissionResult',
+                isNot('pending'),
+              ),
+              'NotAllowedError',
+            );
+            expect(
+              await controller.runJavaScriptReturningResult(
+                'document.body.getAttribute("data-original-get-user-media-called")',
+              ),
+              'no',
+            );
+          },
+        );
+      }
+
+      test(
+        'rejects permission requests queued by a previous document',
+        () async {
+          final params = WebWebViewControllerCreationParams();
+          final controller = WebWebViewController(params);
+          final requests = <PlatformWebViewPermissionRequest>[];
+          addTearDown(() => params.iFrame.remove());
+          await _attachAndLoadScrollableHtml(controller, params);
+          await _installFakeGetUserMedia(controller);
+          await controller.setOnPlatformPermissionRequest(requests.add);
+
+          // Same-origin evaluation completes before the posted Window message
+          // runs, allowing navigation to invalidate this queued request first.
+          await controller.runJavaScript('''
+          navigator.mediaDevices.getUserMedia({video: true}).catch(function() {});
+        ''');
+          final Future<web.Event> loaded = params.iFrame.onLoad.first;
+          await controller.loadHtmlString('<body>New document</body>');
+          await loaded;
+          expect(requests, isEmpty);
+        },
+      );
+
       test('denies same-origin getUserMedia requests', () async {
         final params = WebWebViewControllerCreationParams();
         final controller = WebWebViewController(params);
@@ -2118,6 +2782,40 @@ void main() {
         expect(changes, isNotEmpty);
         expect(changes.last.y, 80);
       });
+
+      test('restores accessible scroll listeners after document.open', () async {
+        final params = WebWebViewControllerCreationParams();
+        final controller = WebWebViewController(params);
+        final changes = <ScrollPositionChange>[];
+        addTearDown(() => params.iFrame.remove());
+        await _attachAndLoadScrollableHtml(controller, params);
+        await controller.setOnScrollPositionChange(changes.add);
+
+        for (final bool closeDocument in <bool>[false, true]) {
+          await controller.runJavaScript(
+            _rewriteCurrentDocumentScript(closeDocument: closeDocument),
+          );
+          final double expectedY = closeDocument ? 160 : 80;
+          changes.clear();
+          await controller.scrollTo(0, expectedY.toInt());
+          await _waitForScrollChange(changes, expectedY);
+          expect(await controller.getScrollPosition(), Offset(0, expectedY));
+          expect(changes.last.y, expectedY);
+          changes.clear();
+          await controller.runJavaScript(
+            'window.dispatchEvent(new Event("scroll"));',
+          );
+          expect(changes, hasLength(1));
+        }
+
+        // Removing the callback must also stop the observer from reattaching it.
+        await controller.setOnScrollPositionChange(null);
+        changes.clear();
+        await controller.runJavaScript(_rewriteCurrentDocumentScript());
+        await controller.scrollTo(0, 240);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(changes, isEmpty);
+      });
     });
 
     group('scrollbars', () {
@@ -2199,8 +2897,7 @@ void main() {
   });
 }
 
-Future<void> _installFakeGetUserMedia(WebWebViewController controller) {
-  return controller.runJavaScript('''
+const String _fakeGetUserMediaScript = '''
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
       value: {
@@ -2214,7 +2911,79 @@ Future<void> _installFakeGetUserMedia(WebWebViewController controller) {
       }
     });
     document.body.setAttribute('data-original-get-user-media-called', 'no');
-  ''');
+  ''';
+
+Future<void> _installFakeGetUserMedia(WebWebViewController controller) {
+  return controller.runJavaScript(_fakeGetUserMediaScript);
+}
+
+Future<void> _attachAndLoadReloadableHtml(
+  WebWebViewController controller,
+  WebWebViewControllerCreationParams params, {
+  required bool fetchedData,
+}) async {
+  final String html =
+      '''
+    <!doctype html><html><head><title>Reloadable</title></head>
+    <body style="margin:0;width:2000px;height:2000px;">
+      <script>$_fakeGetUserMediaScript</script>
+    </body></html>
+  ''';
+  params.iFrame.style.width = '200px';
+  params.iFrame.style.height = '200px';
+  web.document.body!.append(params.iFrame);
+  final Future<web.Event> loaded = params.iFrame.onLoad.first;
+  if (fetchedData) {
+    final MockHttpRequestFactory factory =
+        params.httpRequestFactory as MockHttpRequestFactory;
+    when(
+      factory.request(
+        any,
+        method: anyNamed('method'),
+        requestHeaders: anyNamed('requestHeaders'),
+        sendData: anyNamed('sendData'),
+      ),
+    ).thenAnswer(
+      (_) async => web.Response(
+        html.toJS,
+        <String, Object>{
+              'headers': <String, Object>{'content-type': 'text/html'},
+            }.jsify()!
+            as web.ResponseInit,
+      ),
+    );
+    await controller.loadRequest(
+      LoadRequestParams(
+        uri: Uri.parse('https://example.com/reloadable'),
+        headers: const <String, String>{'x-load': 'fetch'},
+      ),
+    );
+  } else {
+    await controller.loadHtmlString(html);
+  }
+  await loaded;
+}
+
+String _rewriteCurrentDocumentScript({bool closeDocument = false}) =>
+    '''
+  (function() {
+    const root = document.documentElement;
+    document.open();
+    document.appendChild(root);
+    ${closeDocument ? 'document.close();' : ''}
+  })();
+''';
+
+Future<void> _waitForScrollChange(
+  List<ScrollPositionChange> changes,
+  double expectedY,
+) async {
+  for (int i = 0; i < 40; i += 1) {
+    if (changes.any((ScrollPositionChange change) => change.y == expectedY)) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 25));
+  }
 }
 
 Future<Object> _waitForJavaScriptValue(

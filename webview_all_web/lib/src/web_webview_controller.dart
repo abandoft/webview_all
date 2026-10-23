@@ -178,11 +178,15 @@ class WebWebViewController extends PlatformWebViewController {
       weakThis.target?._handleWindowMessage(event as web.MessageEvent);
     }).toJS;
     web.window.addEventListener('message', _messageEventListener);
-    _loadEventSubscription = _webWebViewParams.iFrame.onLoad.listen((_) {
+    _loadEventSubscription = _webWebViewParams.iFrame.onLoad.listen((event) {
+      if (!event.isTrusted) {
+        return;
+      }
       final WebWebViewController? target = weakThis.target;
       if (target == null) {
         return;
       }
+      target._handleDocumentLoad();
       final String? resolvedUrl = target._shouldPreserveLogicalUrl
           ? target._currentUrl
           : target._tryReadCurrentFrameUrl() ?? target._currentUrl;
@@ -194,14 +198,6 @@ class WebWebViewController extends PlatformWebViewController {
         );
         target._navigationDelegate?.onPageFinished?.call(resolvedUrl);
       }
-      target._applyScrollBarStyle();
-      target._installJavaScriptChannels();
-      target._installConsoleMessageHook();
-      target._installJavaScriptAlertDialogHook();
-      target._installJavaScriptConfirmDialogHook();
-      target._installJavaScriptTextInputDialogHook();
-      target._installPlatformPermissionRequestHook();
-      target._attachScrollListenerToCurrentWindow();
       target._navigationDelegate?.onProgress?.call(100);
     });
     final String iFrameId = _webWebViewParams.iFrame.id;
@@ -232,14 +228,16 @@ class WebWebViewController extends PlatformWebViewController {
   static bool _isJavaScriptDialogBridgeRootInstalled = false;
   static const String _platformPermissionRequestMessageType =
       'platformPermissionRequest';
-  static const String _platformPermissionDecisionMessageType =
-      'platformPermissionDecision';
   static const String _isolatedBridgeReadyMessageType = 'isolatedBridgeReady';
   static const String _isolatedBridgeRequestMessageType =
       'isolatedBridgeRequest';
   static const String _isolatedBridgeResponseMessageType =
       'isolatedBridgeResponse';
   static const String _isolatedBridgeScrollMessageType = 'isolatedBridgeScroll';
+  static const String _documentIdentityExpression = '''
+    (window.__webviewAllDocumentId || (window.__webviewAllDocumentId =
+      Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)))
+  ''';
   static const Duration _isolatedBridgeTimeout = Duration(seconds: 10);
   static const String _javaScriptDisabledSandbox =
       'allow-same-origin allow-forms allow-popups allow-downloads allow-modals';
@@ -283,6 +281,15 @@ class WebWebViewController extends PlatformWebViewController {
   int _isolatedBridgeGeneration = 0;
   int _nextIsolatedBridgeRequestId = 0;
   Completer<void>? _isolatedBridgeReady;
+  String? _currentDocumentId;
+  web.Document? _accessibleDocument;
+  int _nextAccessibleDocumentId = 0;
+  String? _candidateDocumentId;
+  int _iFrameLoadId = 0;
+  bool _isolatedBridgeLoadPending = false;
+  Completer<void>? _isolatedBridgeLoadReady;
+  final List<web.MessageEvent> _deferredIsolatedBridgeMessages =
+      <web.MessageEvent>[];
   final Map<int, Completer<Object?>> _pendingIsolatedBridgeRequests =
       <int, Completer<Object?>>{};
   final Set<String> _reportedLimitations = <String>{};
@@ -541,6 +548,15 @@ class WebWebViewController extends PlatformWebViewController {
   }
 
   void _resetIsolatedBridge() {
+    _nativeDisposal.closeMessagePorts();
+    _currentDocumentId = null;
+    _accessibleDocument = null;
+    _candidateDocumentId = null;
+    _isolatedBridgeLoadPending = false;
+    final Completer<void>? loadReady = _isolatedBridgeLoadReady;
+    _isolatedBridgeLoadReady = null;
+    loadReady?.complete();
+    _deferredIsolatedBridgeMessages.clear();
     _isolatedBridgeGeneration += 1;
     final Completer<void>? ready = _isolatedBridgeReady;
     if (ready != null && !ready.isCompleted) {
@@ -548,7 +564,10 @@ class WebWebViewController extends PlatformWebViewController {
       ready.complete();
     }
     _isolatedBridgeReady = null;
+    _invalidatePendingIsolatedBridgeRequests();
+  }
 
+  void _invalidatePendingIsolatedBridgeRequests() {
     final StateError error = StateError(
       'The WebView navigated before an isolated frame operation completed.',
     );
@@ -559,6 +578,128 @@ class WebWebViewController extends PlatformWebViewController {
       }
     }
     _pendingIsolatedBridgeRequests.clear();
+  }
+
+  void _installCurrentDocumentHooks() {
+    _applyScrollBarStyle();
+    _installJavaScriptChannels();
+    _installConsoleMessageHook();
+    _installJavaScriptAlertDialogHook();
+    _installJavaScriptConfirmDialogHook();
+    _installJavaScriptTextInputDialogHook();
+    _installPlatformPermissionRequestHook();
+    _attachScrollListenerToCurrentWindow();
+  }
+
+  void _refreshAccessibleDocumentIdentity() {
+    final web.Window? window = _tryReadAccessibleContentWindow();
+    final web.Document? document = _tryReadContentDocument();
+    if (window == null || document == null) {
+      return;
+    }
+    if (!_isSameJavaScriptObject(document, _accessibleDocument)) {
+      if (_currentDocumentId != null) {
+        _nativeDisposal.closeMessagePorts();
+        _candidateDocumentId = null;
+        _invalidatePendingIsolatedBridgeRequests();
+        _deferredIsolatedBridgeMessages.clear();
+      }
+      _accessibleDocument = document;
+      _currentDocumentId =
+          '${_webWebViewParams.iFrame.id}:${++_nextAccessibleDocumentId}';
+    }
+    // Assigning a property does not execute page script or require unsafe-eval.
+    window.setProperty('__webviewAllDocumentId'.toJS, _currentDocumentId!.toJS);
+  }
+
+  void _handleDocumentLoad() {
+    _iFrameLoadId += 1;
+    if (_tryReadAccessibleContentWindow() != null || !_hasIsolatedBridge) {
+      _refreshAccessibleDocumentIdentity();
+      _finishIsolatedDocumentLoad();
+      return;
+    }
+
+    // A load can be a new Document or document.open()/close() on the same one.
+    // Only a different bootstrap identity replaces its connection and requests.
+    _isolatedBridgeLoadPending = true;
+    final Completer<void>? previousLoad = _isolatedBridgeLoadReady;
+    _isolatedBridgeLoadReady = Completer<void>();
+    previousLoad?.complete();
+    final web.MessagePort? candidate =
+        _nativeDisposal.isolatedBridgeCandidatePort;
+    final String? documentId = _candidateDocumentId;
+    if (candidate != null && documentId != null) {
+      _nativeDisposal.isolatedBridgeCandidatePort = null;
+      _candidateDocumentId = null;
+      _acceptIsolatedBridgeConnection(candidate, documentId);
+      return;
+    }
+    _nativeDisposal.isolatedBridgePort?.postMessage(
+      <String, Object?>{
+        _channelMessageType: _isolatedBridgeRequestMessageType,
+        'webViewId': _webWebViewParams.iFrame.id,
+        'generation': _isolatedBridgeGeneration,
+        'documentId': _currentDocumentId,
+        'action': 'documentLoaded',
+        'loadId': _iFrameLoadId,
+      }.jsify(),
+    );
+  }
+
+  void _acceptIsolatedBridgeConnection(
+    web.MessagePort port,
+    String documentId, {
+    bool installHooks = true,
+  }) {
+    if (_currentDocumentId != null && _currentDocumentId != documentId) {
+      _nativeDisposal.closeMessagePorts();
+      _invalidatePendingIsolatedBridgeRequests();
+      _deferredIsolatedBridgeMessages.clear();
+    }
+    _nativeDisposal.isolatedBridgePort = port;
+    _accessibleDocument = null;
+    _currentDocumentId = documentId;
+    _isolatedBridgeLoadPending = false;
+    final int generation = _isolatedBridgeGeneration;
+    final WeakReference<WebWebViewController> weakThis =
+        WeakReference<WebWebViewController>(this);
+    port.addEventListener(
+      'message',
+      ((web.Event event) {
+        weakThis.target?._handleIsolatedBridgeMessage(
+          event as web.MessageEvent,
+          port,
+          generation,
+        );
+      }).toJS,
+    );
+    port.start();
+    final Completer<void>? ready = _isolatedBridgeReady;
+    if (ready != null && !ready.isCompleted) {
+      ready.complete();
+    }
+    if (installHooks) {
+      _finishIsolatedDocumentLoad();
+    }
+  }
+
+  void _finishIsolatedDocumentLoad() {
+    _isolatedBridgeLoadPending = false;
+    final Completer<void>? loadReady = _isolatedBridgeLoadReady;
+    _isolatedBridgeLoadReady = null;
+    _installCurrentDocumentHooks();
+    loadReady?.complete();
+    final List<web.MessageEvent> deferred = List<web.MessageEvent>.of(
+      _deferredIsolatedBridgeMessages,
+    );
+    _deferredIsolatedBridgeMessages.clear();
+    final web.MessagePort? port = _nativeDisposal.isolatedBridgePort;
+    if (port != null) {
+      for (final web.MessageEvent event in deferred) {
+        _handleIsolatedBridgeMessage(event, port, _isolatedBridgeGeneration);
+      }
+    }
   }
 
   void _prepareIsolatedBridge() {
@@ -608,6 +749,7 @@ class WebWebViewController extends PlatformWebViewController {
     String action, {
     Map<String, Object?> payload = const <String, Object?>{},
     Duration timeout = _isolatedBridgeTimeout,
+    bool waitForDocumentLoad = true,
   }) async {
     final int generation = _isolatedBridgeGeneration;
     final Completer<void>? ready = _isolatedBridgeReady;
@@ -617,13 +759,28 @@ class WebWebViewController extends PlatformWebViewController {
       );
     }
 
-    await ready.future.timeout(
-      timeout,
-      onTimeout: () => throw TimeoutException(
-        'Timed out waiting for the isolated WebView bridge to initialize.',
+    // Queue hook installation on the accepted port before releasing user calls
+    // that were already waiting for this connection or its load confirmation.
+    if (waitForDocumentLoad || _nativeDisposal.isolatedBridgePort == null) {
+      await ready.future.timeout(
         timeout,
-      ),
-    );
+        onTimeout: () => throw TimeoutException(
+          'Timed out waiting for the isolated WebView bridge to initialize.',
+          timeout,
+        ),
+      );
+    }
+    if (waitForDocumentLoad) {
+      while (_isolatedBridgeLoadReady != null) {
+        await _isolatedBridgeLoadReady!.future.timeout(
+          timeout,
+          onTimeout: () => throw TimeoutException(
+            'Timed out waiting for the isolated WebView document to load.',
+            timeout,
+          ),
+        );
+      }
+    }
     if (generation != _isolatedBridgeGeneration ||
         !identical(ready, _isolatedBridgeReady)) {
       throw StateError('The WebView navigated before the operation started.');
@@ -633,21 +790,21 @@ class WebWebViewController extends PlatformWebViewController {
     final Completer<Object?> completer = Completer<Object?>();
     _pendingIsolatedBridgeRequests[requestId] = completer;
 
-    final web.Window? window = _webWebViewParams.iFrame.contentWindow;
-    if (window == null) {
+    final web.MessagePort? port = _nativeDisposal.isolatedBridgePort;
+    if (port == null) {
       _pendingIsolatedBridgeRequests.remove(requestId);
-      throw StateError('The iframe content window is unavailable.');
+      throw StateError('The isolated WebView message port is unavailable.');
     }
-    window.postMessage(
+    port.postMessage(
       <String, Object?>{
         _channelMessageType: _isolatedBridgeRequestMessageType,
         'webViewId': _webWebViewParams.iFrame.id,
         'generation': generation,
+        'documentId': _currentDocumentId,
         'requestId': requestId,
         'action': action,
         'payload': payload,
       }.jsify(),
-      '*'.toJS,
     );
 
     return completer.future.timeout(
@@ -672,6 +829,7 @@ class WebWebViewController extends PlatformWebViewController {
       await _invokeIsolatedBridge(
         'evaluate',
         payload: <String, Object?>{'script': script},
+        waitForDocumentLoad: false,
       );
       return true;
     }
@@ -762,19 +920,29 @@ class WebWebViewController extends PlatformWebViewController {
     }
 
     final web.Window? window = _tryReadAccessibleContentWindow();
-    if (window == null ||
-        identical(window, _nativeDisposal.scrollEventListenerWindow)) {
+    _detachScrollListener();
+    if (window == null) {
       return;
     }
 
-    _detachScrollListener();
     final WeakReference<WebWebViewController> weakThis =
         WeakReference<WebWebViewController>(this);
     final web.EventListener listener = ((web.Event event) {
       weakThis.target?._emitScrollPositionChange();
     }).toJS;
     window.addEventListener('scroll', listener);
-    _nativeDisposal.setScrollListener(window, listener);
+    // document.open() keeps the Document and Window, but removes their event
+    // listeners. Its document mutations still reach MutationObserver callbacks.
+    final web.MutationObserver observer = web.MutationObserver(
+      ((JSArray<web.MutationRecord> records, web.MutationObserver observer) {
+        window.addEventListener('scroll', listener);
+      }).toJS,
+    );
+    observer.observe(
+      window.document,
+      web.MutationObserverInit(childList: true),
+    );
+    _nativeDisposal.setScrollListener(window, listener, observer);
   }
 
   void _setIframeScrollBarVisibility({
@@ -1134,47 +1302,40 @@ ${params.functionBody}
 
     switch (decoded[_channelMessageType]) {
       case _isolatedBridgeReadyMessageType:
-        if (decoded['generation'] != _isolatedBridgeGeneration) {
+        final List<web.MessagePort> ports = event.ports.toDart;
+        if (event.origin != 'null' ||
+            decoded['generation'] != _isolatedBridgeGeneration) {
+          for (final web.MessagePort port in ports) {
+            port.close();
+          }
           return;
         }
         final Completer<void>? ready = _isolatedBridgeReady;
-        if (ready != null && !ready.isCompleted) {
-          ready.complete();
-        }
-        return;
-      case _isolatedBridgeResponseMessageType:
-        if (decoded['generation'] != _isolatedBridgeGeneration) {
+        final String? documentId = decoded['documentId'] as String?;
+        if (ready == null ||
+            documentId == null ||
+            documentId.isEmpty ||
+            documentId == _currentDocumentId ||
+            documentId == _candidateDocumentId ||
+            ports.length != 1) {
+          for (final web.MessagePort port in ports) {
+            port.close();
+          }
           return;
         }
-        final int? requestId = (decoded['requestId'] as num?)?.toInt();
-        final Completer<Object?>? completer = requestId == null
-            ? null
-            : _pendingIsolatedBridgeRequests.remove(requestId);
-        if (completer == null || completer.isCompleted) {
-          return;
-        }
-        if (decoded['ok'] == true) {
-          completer.complete(decoded['result']);
-        } else {
-          final String errorName = '${decoded['errorName'] ?? 'Error'}';
-          final String errorMessage =
-              '${decoded['errorMessage'] ?? 'The isolated frame operation failed.'}';
-          completer.completeError(
-            JavaScriptExecutionException(
-              name: errorName,
-              message: errorMessage,
-              javaScriptStackTrace: decoded['errorStack'] as String?,
-            ),
+        final web.MessagePort port = ports.single;
+        if (!ready.isCompleted || _isolatedBridgeLoadPending) {
+          _acceptIsolatedBridgeConnection(
+            port,
+            documentId,
+            installHooks: _isolatedBridgeLoadPending,
           );
-        }
-        return;
-      case _isolatedBridgeScrollMessageType:
-        final void Function(ScrollPositionChange scrollPositionChange)?
-        callback = _onScrollPositionChange;
-        final num? x = decoded['x'] as num?;
-        final num? y = decoded['y'] as num?;
-        if (callback != null && x != null && y != null) {
-          callback(ScrollPositionChange(x.toDouble(), y.toDouble()));
+        } else {
+          // Reloading srcdoc/data reuses its embedded generation. An early
+          // ready waits for the iframe's load instead of replacing a live page.
+          _nativeDisposal.isolatedBridgeCandidatePort?.close();
+          _nativeDisposal.isolatedBridgeCandidatePort = port;
+          _candidateDocumentId = documentId;
         }
         return;
       case _javaScriptChannelMessageType:
@@ -1223,17 +1384,35 @@ ${params.functionBody}
         );
         return;
       case _platformPermissionRequestMessageType:
+        _refreshAccessibleDocumentIdentity();
         final void Function(PlatformWebViewPermissionRequest request)?
         callback = _onPlatformPermissionRequest;
         final String? requestId = decoded['requestId'] as String?;
-        if (callback == null || requestId == null) {
+        final List<web.MessagePort> ports = event.ports.toDart;
+        if (callback == null ||
+            requestId == null ||
+            decoded['generation'] != _isolatedBridgeGeneration ||
+            decoded['documentId'] != _currentDocumentId ||
+            (_candidateDocumentId != null &&
+                decoded['documentId'] != _candidateDocumentId) ||
+            ports.length != 1) {
+          for (final web.MessagePort port in ports) {
+            port.postMessage(false.toJS);
+            port.close();
+          }
           return;
         }
+        final web.MessagePort port = ports.single;
+        final _WebWebViewDisposal disposal = _nativeDisposal;
+        disposal.permissionDecisionPorts.add(port);
         final WebWebViewPermissionRequest request =
             WebWebViewPermissionRequest._(
               types: _permissionTypesFromMessage(decoded['types']),
               onDecision: (bool granted) {
-                _sendPlatformPermissionDecision(requestId, granted);
+                if (disposal.permissionDecisionPorts.remove(port)) {
+                  port.postMessage(granted.toJS);
+                  port.close();
+                }
               },
             );
         try {
@@ -1264,6 +1443,79 @@ ${params.functionBody}
     }
   }
 
+  void _handleIsolatedBridgeMessage(
+    web.MessageEvent event,
+    web.MessagePort port,
+    int generation,
+  ) {
+    // The port is a private capability received through the authenticated
+    // Window handshake. Port events have no Window source or origin.
+    if (!event.isTrusted ||
+        generation != _isolatedBridgeGeneration ||
+        !_isSameJavaScriptObject(port, _nativeDisposal.isolatedBridgePort)) {
+      return;
+    }
+    final JSString? jsonData = _jsonStringify(event.data);
+    if (jsonData == null) {
+      return;
+    }
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(jsonData.toDart);
+    } catch (_) {
+      return;
+    }
+    if (decoded is! Map<String, dynamic> ||
+        decoded['webViewId'] != _webWebViewParams.iFrame.id ||
+        decoded['generation'] != generation ||
+        decoded['documentId'] != _currentDocumentId) {
+      return;
+    }
+    switch (decoded[_channelMessageType]) {
+      case _isolatedBridgeReadyMessageType:
+        if (_isolatedBridgeLoadPending && decoded['loadId'] == _iFrameLoadId) {
+          _finishIsolatedDocumentLoad();
+        }
+        return;
+      case _isolatedBridgeResponseMessageType:
+        if (_isolatedBridgeLoadPending) {
+          _deferredIsolatedBridgeMessages.add(event);
+          return;
+        }
+        final int? requestId = (decoded['requestId'] as num?)?.toInt();
+        final Completer<Object?>? completer = requestId == null
+            ? null
+            : _pendingIsolatedBridgeRequests.remove(requestId);
+        if (completer == null || completer.isCompleted) {
+          return;
+        }
+        if (decoded['ok'] == true) {
+          completer.complete(decoded['result']);
+        } else {
+          completer.completeError(
+            JavaScriptExecutionException(
+              name: '${decoded['errorName'] ?? 'Error'}',
+              message:
+                  '${decoded['errorMessage'] ?? 'The isolated frame operation failed.'}',
+              javaScriptStackTrace: decoded['errorStack'] as String?,
+            ),
+          );
+        }
+        return;
+      case _isolatedBridgeScrollMessageType:
+        if (_isolatedBridgeLoadPending) {
+          _deferredIsolatedBridgeMessages.add(event);
+          return;
+        }
+        final callback = _onScrollPositionChange;
+        final num? x = decoded['x'] as num?;
+        final num? y = decoded['y'] as num?;
+        if (callback != null && x != null && y != null) {
+          callback(ScrollPositionChange(x.toDouble(), y.toDouble()));
+        }
+    }
+  }
+
   Set<WebViewPermissionResourceType> _permissionTypesFromMessage(
     Object? value,
   ) {
@@ -1281,18 +1533,6 @@ ${params.functionBody}
         })
         .whereType<WebViewPermissionResourceType>()
         .toSet();
-  }
-
-  void _sendPlatformPermissionDecision(String requestId, bool granted) {
-    _webWebViewParams.iFrame.contentWindow?.postMessage(
-      <String, Object?>{
-        _channelMessageType: _platformPermissionDecisionMessageType,
-        'webViewId': _webWebViewParams.iFrame.id,
-        'requestId': requestId,
-        'granted': granted,
-      }.jsify(),
-      '*'.toJS,
-    );
   }
 
   JavaScriptLogLevel _javaScriptLogLevelFromString(String? level) {
@@ -1740,6 +1980,7 @@ ${params.functionBody}
     if (_onPlatformPermissionRequest == null) {
       return;
     }
+    _refreshAccessibleDocumentIdentity();
 
     _installScriptBestEffort('platform permission forwarding', '''
       (function() {
@@ -1752,36 +1993,11 @@ ${params.functionBody}
 
         window.__webviewAllPermissionRequestHookInstalled = true;
         const webViewId = ${jsonEncode(_webWebViewParams.iFrame.id)};
+        const generation = $_isolatedBridgeGeneration;
+        const documentId = $_documentIdentityExpression;
         const originalGetUserMedia =
           navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-        const pending = new Map();
         let nextRequestId = 0;
-
-        window.addEventListener('message', function(event) {
-          if (event.source !== window.parent) {
-            return;
-          }
-          const data = event.data;
-          if (!data ||
-              data["$_channelMessageType"] !== "$_platformPermissionDecisionMessageType" ||
-              data.webViewId !== webViewId) {
-            return;
-          }
-
-          const request = pending.get(data.requestId);
-          if (!request) {
-            return;
-          }
-          pending.delete(data.requestId);
-          if (data.granted) {
-            request.resolve();
-          } else {
-            request.reject(new DOMException(
-              'Permission denied by host application.',
-              'NotAllowedError'
-            ));
-          }
-        });
 
         navigator.mediaDevices.getUserMedia = function(constraints) {
           const requestedTypes = [];
@@ -1796,15 +2012,30 @@ ${params.functionBody}
           }
 
           const requestId = String(++nextRequestId);
+          // MessagePort listeners survive document.open(), including repeated
+          // calls on an empty Document that produce no observable mutations.
+          const channel = new MessageChannel();
           const permission = new Promise(function(resolve, reject) {
-            pending.set(requestId, { resolve: resolve, reject: reject });
+            channel.port1.onmessage = function(event) {
+              channel.port1.close();
+              if (event.data === true) {
+                resolve();
+              } else {
+                reject(new DOMException(
+                  'Permission denied by host application.',
+                  'NotAllowedError'
+                ));
+              }
+            };
           });
           window.parent.postMessage({
             "$_channelMessageType": "$_platformPermissionRequestMessageType",
             "webViewId": webViewId,
+            "generation": generation,
+            "documentId": documentId,
             "requestId": requestId,
             "types": requestedTypes
-          }, "*");
+          }, "*", [channel.port2]);
 
           return permission.then(function() {
             return originalGetUserMedia(constraints);
@@ -2080,6 +2311,8 @@ ${params.functionBody}
 <script>
 (function() {
   'use strict';
+  if (window.__webviewAllIsolatedBridgeInstalled) return;
+  window.__webviewAllIsolatedBridgeInstalled = true;
   const messageTypeKey = ${jsonEncode(_channelMessageType)};
   const requestType = ${jsonEncode(_isolatedBridgeRequestMessageType)};
   const responseType = ${jsonEncode(_isolatedBridgeResponseMessageType)};
@@ -2087,13 +2320,16 @@ ${params.functionBody}
   const scrollType = ${jsonEncode(_isolatedBridgeScrollMessageType)};
   const webViewId = ${jsonEncode(_webWebViewParams.iFrame.id)};
   const generation = $generation;
+  const documentId = $_documentIdentityExpression;
+  const channel = new MessageChannel();
 
   function send(message) {
     message[messageTypeKey] = message.type;
     delete message.type;
     message.webViewId = webViewId;
     message.generation = generation;
-    window.parent.postMessage(message, '*');
+    message.documentId = documentId;
+    channel.port1.postMessage(message);
   }
 
   function respond(requestId, result) {
@@ -2111,15 +2347,13 @@ ${params.functionBody}
     });
   }
 
-  window.addEventListener('message', async function(event) {
-    if (event.source !== window.parent) {
-      return;
-    }
+  async function handleRequest(event) {
     const data = event.data;
     if (!data ||
         data[messageTypeKey] !== requestType ||
         data.webViewId !== webViewId ||
-        data.generation !== generation) {
+        data.generation !== generation ||
+        data.documentId !== documentId) {
       return;
     }
 
@@ -2127,6 +2361,9 @@ ${params.functionBody}
     const payload = data.payload || {};
     try {
       switch (data.action) {
+        case 'documentLoaded':
+          send({type: readyType, loadId: data.loadId});
+          return;
         case 'evaluate':
           (0, eval)(String(payload.script || ''));
           respond(requestId, null);
@@ -2168,13 +2405,28 @@ ${params.functionBody}
     } catch (error) {
       fail(requestId, error);
     }
-  });
+  }
 
-  window.addEventListener('scroll', function() {
+  function handleScroll() {
     send({type: scrollType, x: window.scrollX, y: window.scrollY});
-  }, {passive: true});
+  }
 
-  send({type: readyType});
+  function restoreScrollListener() {
+    window.addEventListener('scroll', handleScroll, {passive: true});
+  }
+  // document.open() removes Window listeners but preserves this Document and
+  // observer. The message port remains active even while the Document is empty.
+  const observer = new MutationObserver(restoreScrollListener);
+  observer.observe(document, {childList: true});
+  restoreScrollListener();
+
+  channel.port1.onmessage = handleRequest;
+  window.parent.postMessage({
+    [messageTypeKey]: readyType,
+    webViewId: webViewId,
+    generation: generation,
+    documentId: documentId
+  }, '*', [channel.port2]);
 })();
 </script>
 ''';
@@ -2594,14 +2846,25 @@ class _WebWebViewDisposal {
   final void Function() clearJavaScriptDialogBridge;
   web.EventListener? _scrollEventListener;
   web.Window? scrollEventListenerWindow;
+  web.MutationObserver? _scrollDocumentObserver;
+  web.MessagePort? isolatedBridgePort;
+  web.MessagePort? isolatedBridgeCandidatePort;
+  final Set<web.MessagePort> permissionDecisionPorts = <web.MessagePort>{};
   Future<void>? _disposeFuture;
 
-  void setScrollListener(web.Window window, web.EventListener listener) {
+  void setScrollListener(
+    web.Window window,
+    web.EventListener listener,
+    web.MutationObserver observer,
+  ) {
     scrollEventListenerWindow = window;
     _scrollEventListener = listener;
+    _scrollDocumentObserver = observer;
   }
 
   void detachScrollListener() {
+    _scrollDocumentObserver?.disconnect();
+    _scrollDocumentObserver = null;
     final web.Window? window = scrollEventListenerWindow;
     final web.EventListener? listener = _scrollEventListener;
     if (window != null && listener != null) {
@@ -2613,12 +2876,25 @@ class _WebWebViewDisposal {
     _scrollEventListener = null;
   }
 
+  void closeMessagePorts() {
+    isolatedBridgeCandidatePort?.close();
+    isolatedBridgeCandidatePort = null;
+    isolatedBridgePort?.close();
+    isolatedBridgePort = null;
+    for (final web.MessagePort port in permissionDecisionPorts) {
+      port.postMessage(false.toJS);
+      port.close();
+    }
+    permissionDecisionPorts.clear();
+  }
+
   Future<void> dispose() {
     return _disposeFuture ??= _dispose();
   }
 
   Future<void> _dispose() async {
     web.window.removeEventListener('message', messageEventListener);
+    closeMessagePorts();
     detachScrollListener();
     try {
       await loadEventSubscription.cancel();
