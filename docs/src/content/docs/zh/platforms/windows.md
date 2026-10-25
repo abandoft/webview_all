@@ -3,7 +3,7 @@ title: Windows
 description: WebView2 实现、运行时设置、API 和限制。
 ---
 
-Windows 由 `webview_all_windows 1.4.0` 提供，底层使用 Microsoft Edge WebView2。
+Windows 由 `webview_all_windows` 提供，底层使用 Microsoft Edge WebView2。
 
 | 项 | 值 |
 | --- | --- |
@@ -24,16 +24,20 @@ await WindowsWebViewController.ensureEnvironment(
 final version = await WindowsWebViewController.getWebViewVersion();
 ```
 
-需要自定义用户数据目录、浏览器路径或启动参数时，应在创建 controller 前调用。
-参数相同的多次调用（包括环境仍在创建时发起的并发调用）会合并并复用共享环境；参数冲突时会返回
-`environment_configuration_conflict`，不会静默切换数据区。旧的
-`initializeEnvironment` 保留给明确要求只能初始化一次的调用方。
+需要自定义用户数据目录、浏览器路径或启动参数时，应在首次创建 controller、操作
+Cookie 或清理网站数据前调用。从 1.4.7 起，所有参数均为 `null` 时复用已选环境，
+包括仍在创建中的环境；尚无环境时才初始化默认配置。显式传参代表完整配置，其中
+省略或空字符串路径表示平台默认目录。相同配置可重复调用，配置冲突时返回
+`environment_configuration_conflict`。旧的 `initializeEnvironment` 保留用于严格的
+一次性初始化。
 
 环境初始化只检查 WebView2 Runtime 和 profile。图形捕获、Direct3D 与
 Windows Composition 会推迟到首个 controller 创建时初始化，
 `ensureEnvironment` 不会再被无关的渲染能力拦截。
 
-网站数据清理也可以直接携带环境参数，不会启动图形捕获或创建 Flutter 纹理：
+默认 `WebViewCookieManager` 和 `WebViewDataManager` 自动使用已选环境，无需
+重复传参。网站数据清理不会启动图形捕获或创建 Flutter 纹理；如果它是首次操作，
+也可直接携带环境参数：
 
 ```dart
 final manager = WebViewDataManager.fromPlatformCreationParams(
@@ -43,6 +47,10 @@ final manager = WebViewDataManager.fromPlatformCreationParams(
 );
 final result = await manager.clearAllWebsiteData();
 ```
+
+会话 Cookie 受 WebView2 浏览器会话的生命周期约束。设置和使用会话 Cookie 时，
+应保留一个已初始化的 WebView 或 `OffscreenWebViewSession`。关闭最后一个 WebView
+可能结束浏览器会话并丢弃会话 Cookie，即使共享环境配置仍然保留。
 
 controller 初始化失败时，组件中心会显示错误和恢复操作：
 
@@ -88,7 +96,7 @@ DevTools 默认配置及显式配置均会在首次导航前应用，初始化
 
 | API | 作用 |
 | --- | --- |
-| `ensureEnvironment` | 幂等创建或复用配置一致的共享 WebView2 环境。 |
+| `ensureEnvironment` | 复用已选共享环境；显式配置必须一致。 |
 | `openDevTools` | 打开 WebView2 DevTools。 |
 | `suspend` / `resume` | 暂停/恢复 WebView。 |
 | `setPopupWindowPolicy` | 运行时修改 popup 策略。 |
@@ -174,7 +182,7 @@ await manager.setWindowsCookie(
   [WebView2 上游问题](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5663)
   记录了 Windows Server 和虚拟化环境中的失败反馈。
 - 滚动条和 overscroll 通过 CSS 注入实现。
-- 自定义环境参数应早于 controller 创建，或通过 `WindowsWebViewDataManagerCreationParams` 将相同参数传给数据清理操作。
+- 自定义环境应在首次创建 controller、操作 Cookie 或清理网站数据前配置。默认 manager 复用该环境；显式 manager 参数必须与它一致。切换目录不会自动迁移已有网站数据。
 - WebView2 environment、composition texture 或帧捕获启动失败时会返回
   `PlatformException`，不再因原生断言终止进程。
 - Windows 初始化异常包含稳定的失败阶段、HRESULT、远程会话标记，并在可用时

@@ -46,19 +46,21 @@ if (!result.isComplete) {
 }
 ```
 
-该 manager 操作普通 WebView 共用的默认持久化数据区，按平台能力清理 Cookie、缓存、local/session storage、IndexedDB、WebSQL、Cache Storage 和 service worker，并明确返回每类数据是已清理、不支持还是失败。注销流程必须检查 `isComplete`，不能把部分成功当成完整清理。密码、自动填充、下载记录、浏览记录和引擎设置不在该接口范围内。
+该 manager 操作普通 WebView 共用的数据区；Windows 和 Linux 使用已选共享环境，其他平台使用默认数据区。它按平台能力清理 Cookie、缓存、local/session storage、IndexedDB、WebSQL、Cache Storage 和 service worker，并明确返回每类数据是已清理、不支持还是失败。注销流程必须检查 `isComplete`，不能把部分成功当成完整清理。密码、自动填充、下载记录、浏览记录和引擎设置不在该接口范围内。
 
-Windows 会为该操作创建临时 controller，因此可能同时初始化共享 WebView2
-环境。需要自定义环境参数时，通过
-`WindowsWebViewDataManagerCreationParams` 构造 manager；相同配置会复用已有
-环境，配置冲突则明确失败。
+Windows 和 Linux 的自定义目录应在首次创建 WebView、操作 Cookie 或清理网站
+数据前配置。从 1.4.7 起，默认 manager 会复用已选环境，无需重复传参。如果首次
+操作就是清理，可通过 `WindowsWebViewDataManagerCreationParams` 或
+`LinuxWebViewDataManagerCreationParams` 指定环境。显式参数必须与已选配置一致，
+冲突会记录在 `result.failures` 中。Windows 使用临时 native controller，但不会
+启动图形捕获或创建 Flutter 纹理；Linux 清理时无需创建 WebView。
 
 | 平台 | 行为 |
 | --- | --- |
 | Android | 系统 WebView 支持时使用 AndroidX WebKit 的完整清理接口；旧版本清理 Cookie、缓存、local storage 和 WebSQL，其余类型标记为不支持。 |
 | iOS/macOS | 清理 `WKWebsiteDataStore.default()` 中的对应数据类型。 |
 | Windows | 清理 WebView2 暴露的 Cookie、DOM storage 类型和磁盘缓存；session storage 与 service worker 注册标记为不支持，旧 Runtime 没有 profile 清理接口时全部标记为不支持。 |
-| Linux | 清理默认 WebKitGTK context 的全部网站数据。 |
+| Linux | 清理已选共享 WebKitGTK 环境中的全部网站数据。 |
 | OHOS | 无需创建 WebView 即可清理 Cookie、共享资源缓存、local storage 和 WebSQL；session storage、IndexedDB、Cache Storage 和 service worker 注册标记为不支持。 |
 | Web | 全部标记为不支持，因为宿主页无权清理任意 iframe origin 或 `HttpOnly` Cookie。 |
 
@@ -74,6 +76,11 @@ Windows 会为该操作创建临时 controller，因此可能同时初始化共�
 | Web | `document.cookie` | 只能访问宿主页可见 cookie。 |
 
 ## Windows 完整 cookie
+
+Windows 使用会话 Cookie 时，应保留已初始化的 WebView 或
+`OffscreenWebViewSession`。关闭最后一个 WebView 可能结束底层浏览器会话并丢弃这些
+Cookie；自定义数据目录不会改变 Cookie 的会话或持久化设置。
+
 
 ```dart
 final manager = WebViewCookieManager().platform

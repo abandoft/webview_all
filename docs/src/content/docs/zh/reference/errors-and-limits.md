@@ -111,6 +111,15 @@ Windows 原生异常详情包含 `stage`、十六进制 `hresult`、有符号
 `webView2RuntimeVersion`。配置相同的并发 `ensureEnvironment` 调用只执行一次
 原生创建；配置冲突时不会替换正在创建或已生效的环境。
 
+## 共享存储配置
+
+Windows 和 Linux 的无参 `ensureEnvironment()` 复用已选环境，尚无环境时才初始化
+默认配置。显式参数必须与已选完整配置一致，否则返回
+`environment_configuration_conflict`；重复调用严格的 `initializeEnvironment`
+返回 `environment_already_initialized`。目录无效或不可用时返回
+`environment_creation_failed`，修正路径后可重试。网站数据 manager 会将这些失败
+记录在清理结果中，不会转而清理其他环境。
+
 ## 运行时限制
 
 | 平台 | 限制 |

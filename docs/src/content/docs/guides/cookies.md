@@ -44,19 +44,23 @@ if (!result.isComplete) {
 }
 ```
 
-The manager targets the default persistent data store shared by normal WebViews. It clears the website-data categories exposed by the platform—cookies, cache, local/session storage, IndexedDB, WebSQL, Cache Storage, and service workers—and reports every category as cleared, unsupported, or failed. Always inspect `isComplete` before treating logout cleanup as successful. Passwords, autofill data, download history, browsing history, and engine settings are outside this API.
+The manager targets the website-data store shared by normal WebViews. On Windows and Linux, this follows the selected shared environment; other platforms use their default store. It clears the website-data categories exposed by the platform—cookies, cache, local/session storage, IndexedDB, WebSQL, Cache Storage, and service workers—and reports every category as cleared, unsupported, or failed. Always inspect `isComplete` before treating logout cleanup as successful. Passwords, autofill data, download history, browsing history, and engine settings are outside this API.
 
-On Windows, this operation creates a temporary controller and may initialize
-the shared WebView2 environment. When custom options are required, construct
-the manager with `WindowsWebViewDataManagerCreationParams`; equivalent options
-reuse an existing environment and conflicting options fail explicitly.
+On Windows and Linux, configure custom directories before the first WebView,
+cookie operation, or website-data cleanup. From 1.4.7, a default manager reuses
+the selected environment without repeating its options. When cleanup is the
+first operation, `WindowsWebViewDataManagerCreationParams` or
+`LinuxWebViewDataManagerCreationParams` can select the environment. Explicit
+options must match an existing configuration; conflicts are reported in
+`result.failures`. Windows uses a temporary native controller without graphics
+capture or a Flutter texture; Linux does not create a WebView for cleanup.
 
 | Platform | Behavior |
 | --- | --- |
 | Android | Uses AndroidX WebKit's complete browsing-data operation when supported; older System WebView versions clear cookies, cache, local storage, and WebSQL, and report the remaining categories as unsupported. |
 | iOS/macOS | Clears the corresponding types from `WKWebsiteDataStore.default()`. |
 | Windows | Clears the cookies, DOM storage types, and disk cache exposed by WebView2. Session storage and service worker registrations are reported as unsupported; runtimes without the profile clearing API report every category as unsupported. |
-| Linux | Clears all website data from the default WebKitGTK context. |
+| Linux | Clears all website data from the selected shared WebKitGTK environment. |
 | OHOS | Clears cookies, shared resource cache, local storage, and WebSQL without creating a WebView. Session storage, IndexedDB, Cache Storage, and service worker registrations are reported as unsupported. |
 | Web | Reports all categories as unsupported because a host page cannot clear arbitrary iframe origins or `HttpOnly` cookies. |
 
@@ -72,6 +76,12 @@ reuse an existing environment and conflicting options fail explicitly.
 | Web | `document.cookie`. | Limited to cookies visible to the host page origin. `HttpOnly` cookies are not readable from JavaScript. |
 
 ## Windows Full Cookie API
+
+On Windows, keep an initialized WebView or `OffscreenWebViewSession` alive
+while using session cookies. Closing the last WebView can end the underlying
+browser session and discard those cookies. A custom data directory does not
+change a cookie's session or persistence settings.
+
 
 Windows exposes WebView2 cookie metadata:
 

@@ -3,7 +3,7 @@ title: Linux
 description: WebKitGTK implementation, automatic GtkOverlay integration, APIs, and limits.
 ---
 
-Linux is provided by `webview_all_linux 1.4.0` and uses WebKitGTK.
+Linux is provided by `webview_all_linux` and uses WebKitGTK.
 
 ## Engine
 
@@ -23,6 +23,47 @@ Linux is provided by `webview_all_linux 1.4.0` and uses WebKitGTK.
 The Linux implementation uses a native WebKitGTK widget. The plugin
 automatically installs the required `GtkOverlay` before the standard Flutter
 runner realizes `FlView`; applications do not need to modify their runner.
+
+## Website Data Directories
+
+From 1.4.7, configure the shared environment before the first WebView, cookie
+operation, or website-data cleanup. Call this after
+`WidgetsFlutterBinding.ensureInitialized()`:
+
+```dart
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:webview_all_linux/webview_all_linux.dart';
+
+final dataDirectory = await getApplicationSupportDirectory();
+final cacheDirectory = await getApplicationCacheDirectory();
+await LinuxWebViewController.ensureEnvironment(
+  userDataPath: p.join(dataDirectory.path, 'WebKit'),
+  cachePath: p.join(cacheDirectory.path, 'WebKit'),
+);
+```
+
+All WebViews, cookies, and website-data cleanup share this environment.
+`userDataPath` selects persistent website data; `cachePath` selects caches.
+Leaving both options null reuses the selected environment, or uses WebKitGTK's
+default directories when none has been selected. Relative paths are resolved
+against the working directory.
+
+Repeated calls with matching options succeed. Explicit options describe a
+complete configuration: omitted or empty paths select platform defaults.
+Conflicting options fail with `environment_configuration_conflict`; an active
+environment cannot change directories. It remains selected until the app process
+exits, even after all WebViews are closed. `initializeEnvironment` is also
+available for strict one-time initialization.
+
+Once configured, the default `WebViewCookieManager` and `WebViewDataManager`
+follow the selected environment without repeating the directory options.
+`LinuxWebViewDataManagerCreationParams(userDataPath: ..., cachePath: ...)` can
+also select directories when cleanup is the first operation.
+
+Existing website data is not migrated to a new directory. Keep the same paths
+across app launches to retain access to that data. Cookie lifetime and
+persistence behavior are unchanged.
 
 ## Creation Params
 

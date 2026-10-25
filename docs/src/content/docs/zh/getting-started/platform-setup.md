@@ -55,7 +55,7 @@ if (version == null) {
 }
 ```
 
-需要自定义用户数据目录或浏览器路径时，在创建 controller 前确保共享环境使用所需配置：
+需要自定义用户数据目录或浏览器路径时，在首次创建 controller、操作 Cookie 或清理网站数据前配置共享环境：
 
 ```dart
 await WindowsWebViewController.ensureEnvironment(
@@ -63,7 +63,7 @@ await WindowsWebViewController.ensureEnvironment(
 );
 ```
 
-参数相同的多次调用会安全复用已有环境；后续参数冲突时会明确失败，不会静默使用或替换其他数据区。
+相同配置可重复调用。从 1.4.7 起，无参调用也会复用已选环境；显式配置冲突时会明确失败。
 
 ## Linux
 
@@ -75,6 +75,10 @@ sudo apt install libwebkit2gtk-4.1-dev
 
 Linux 实现会在标准 Flutter runner realize `FlView` 之前自动安装所需的
 `GtkOverlay`，应用无需修改 `linux/runner/my_application.cc`。
+
+如需自定义网站数据和缓存目录，在首次创建 WebView、操作 Cookie 或清理网站数据前
+调用 `LinuxWebViewController.ensureEnvironment(userDataPath: ..., cachePath: ...)`。
+这些操作共用已选环境；旧数据不会自动迁移，详见 [Linux 目录配置](/webview_all/zh/platforms/linux/#网站数据目录)。
 
 ## OHOS
 

@@ -3,7 +3,7 @@ title: Linux
 description: WebKitGTK 实现、自动 GtkOverlay 集成、API 和限制。
 ---
 
-Linux 由 `webview_all_linux 1.4.0` 提供，底层使用 WebKitGTK。
+Linux 由 `webview_all_linux` 提供，底层使用 WebKitGTK。
 
 | 项 | 值 |
 | --- | --- |
@@ -18,6 +18,41 @@ Linux 由 `webview_all_linux 1.4.0` 提供，底层使用 WebKitGTK。
 
 Linux WebView 是 native GTK widget。插件会在标准 Flutter runner realize
 `FlView` 前自动安装所需的 `GtkOverlay`，应用无需修改 runner。
+
+## 网站数据目录
+
+从 1.4.7 起，可在首次创建 WebView、操作 Cookie 或清理网站数据前配置共享环境。
+应先完成 `WidgetsFlutterBinding.ensureInitialized()`：
+
+```dart
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:webview_all_linux/webview_all_linux.dart';
+
+final dataDirectory = await getApplicationSupportDirectory();
+final cacheDirectory = await getApplicationCacheDirectory();
+await LinuxWebViewController.ensureEnvironment(
+  userDataPath: p.join(dataDirectory.path, 'WebKit'),
+  cachePath: p.join(cacheDirectory.path, 'WebKit'),
+);
+```
+
+所有 WebView、Cookie 和网站数据清理共用该环境。`userDataPath` 指定持久化网站
+数据目录，`cachePath` 指定缓存目录。两项都为 `null` 时，复用已选环境；尚未选择
+时沿用 WebKitGTK 默认目录。相对路径按当前工作目录解析。
+
+相同配置可重复调用。显式传参代表完整配置，其中省略或空字符串路径表示平台默认
+目录；配置不一致时返回 `environment_configuration_conflict`，已选环境不能更换
+目录。所选环境会保持到应用进程结束，关闭全部 WebView 也不会重置目录。也可使用
+`initializeEnvironment` 进行严格的一次性初始化。
+
+配置后，默认 `WebViewCookieManager` 和 `WebViewDataManager` 自动使用所选环境，
+无需重复传路径。如果首次操作就是清理，也可通过
+`LinuxWebViewDataManagerCreationParams(userDataPath: ..., cachePath: ...)`
+指定目录。
+
+切换目录不会自动迁移旧网站数据。应用后续启动应继续使用相同路径，才能访问该
+数据。Cookie 的有效期和持久化行为保持原样。
 
 ## 创建参数
 

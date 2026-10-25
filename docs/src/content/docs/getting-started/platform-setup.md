@@ -58,7 +58,7 @@ if (version == null) {
 }
 ```
 
-Applications that need a custom user data directory or a fixed browser executable should ensure that the shared environment is configured before creating controllers:
+Applications that need a custom user data directory or a fixed browser executable should configure the shared environment before the first controller, cookie operation, or website-data cleanup:
 
 ```dart
 await WindowsWebViewController.ensureEnvironment(
@@ -67,7 +67,7 @@ await WindowsWebViewController.ensureEnvironment(
 );
 ```
 
-Equivalent calls safely reuse the same environment. A later call with different options fails instead of silently using or replacing a different profile.
+Equivalent calls safely reuse the same environment. From 1.4.7, calling without options also reuses the selected environment. Explicit conflicting options fail without replacing it.
 
 ## Linux
 
@@ -81,6 +81,12 @@ The Linux implementation positions a native WebKitGTK widget above the Flutter
 view. The plugin installs the required `GtkOverlay` before the standard Flutter
 runner realizes its `FlView`; applications do not need to modify
 `linux/runner/my_application.cc`.
+
+For custom website-data and cache directories, call
+`LinuxWebViewController.ensureEnvironment(userDataPath: ..., cachePath: ...)`
+before the first WebView, cookie operation, or website-data cleanup. All of
+these share the selected environment. Existing data is not moved automatically;
+see [Linux storage configuration](/webview_all/platforms/linux/#website-data-directories).
 
 ## OHOS
 

@@ -3,7 +3,7 @@ title: Windows
 description: WebView2 implementation, runtime setup, APIs, and limits.
 ---
 
-Windows is provided by `webview_all_windows 1.4.0` and uses Microsoft Edge WebView2.
+Windows is provided by `webview_all_windows` and uses Microsoft Edge WebView2.
 
 ## Engine
 
@@ -30,19 +30,24 @@ await WindowsWebViewController.ensureEnvironment(
 );
 ```
 
-Equivalent calls reuse the active environment, including concurrent calls made
-while the environment is still being created. A call with conflicting options
-fails with `environment_configuration_conflict`; it never silently switches
-profiles. The older `initializeEnvironment` remains available for callers that
-intentionally require a single strict initialization call.
+From 1.4.7, a call with all options null reuses the selected environment,
+including one still being created. With no selected environment, it initializes
+the defaults. Explicit options describe a complete configuration, with omitted
+or empty paths selecting platform defaults. Matching configurations reuse the
+shared environment; conflicting configurations fail with
+`environment_configuration_conflict`. The older `initializeEnvironment` remains
+available for strict one-time initialization. Configure custom options before
+the first controller, cookie operation, or website-data cleanup.
 
 Environment creation checks the WebView2 Runtime and profile only. Graphics
 capture, Direct3D, and Windows Composition are initialized later when the first
 controller is created, so `ensureEnvironment` is not rejected by an unrelated
 rendering capability.
 
-Website-data cleanup can carry its own environment configuration and does not
-start graphics capture or allocate a Flutter texture:
+The default `WebViewCookieManager` and `WebViewDataManager` use the selected
+environment without repeating its options. Website-data cleanup does not start
+graphics capture or allocate a Flutter texture. When cleanup is the first
+operation, its manager can select the environment directly:
 
 ```dart
 final manager = WebViewDataManager.fromPlatformCreationParams(
@@ -53,6 +58,11 @@ final manager = WebViewDataManager.fromPlatformCreationParams(
 );
 final result = await manager.clearAllWebsiteData();
 ```
+
+Session cookies follow WebView2's browser-session lifetime. Keep a WebView
+(or an `OffscreenWebViewSession`) initialized and alive while setting and using
+session cookies. Closing the last WebView can end that session and discard its
+session cookies, even though the shared environment configuration is retained.
 
 Check runtime version:
 
@@ -128,7 +138,7 @@ final widget = WebViewWidget.fromPlatformCreationParams(
 
 | API | Purpose |
 | --- | --- |
-| `ensureEnvironment(...)` | Idempotently creates or reuses the matching shared WebView2 environment. |
+| `ensureEnvironment(...)` | Reuses the selected shared environment; explicit options must match its configuration. |
 | `openDevTools()` | Opens WebView2 DevTools. |
 | `suspend()` / `resume()` | Suspends or resumes the WebView. |
 | `setPopupWindowPolicy(policy)` | Changes popup handling after creation. |
@@ -242,7 +252,7 @@ Windows-specific response classes add request and response detail:
 - WebAuthn availability is owned by the WebView2 Runtime, Windows, and the
   credential provider. An [upstream WebView2 report](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5663)
   tracks failures observed in Windows Server and virtualized environments.
-- Configure custom environment options before creating controllers or pass the same options to `WindowsWebViewDataManagerCreationParams`.
+- Configure custom environment options before the first controller, cookie operation, or website-data cleanup. Default managers reuse that environment; explicit manager options must match it. Changing directories does not migrate existing website data.
 - WebView2 environment, composition texture, and frame-capture startup failures
   are returned as `PlatformException`s instead of terminating the process
   through native assertions.

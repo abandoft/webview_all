@@ -143,6 +143,16 @@ Equivalent concurrent `ensureEnvironment` calls share one native creation
 operation; conflicting configurations fail without replacing active or pending
 state.
 
+## Shared Storage Configuration
+
+On Windows and Linux, `ensureEnvironment()` with no options reuses the selected
+environment or initializes defaults. Explicit options must match the complete
+selected configuration. A mismatch returns `environment_configuration_conflict`;
+a second strict `initializeEnvironment` returns `environment_already_initialized`.
+Invalid or unavailable directories cause `environment_creation_failed` and may
+be retried after correcting the path. Website-data managers report these failures
+in their clearing result without clearing another environment.
+
 ## Native Runtime Limits
 
 | Platform | Limit |
