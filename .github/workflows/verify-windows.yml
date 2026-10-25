@@ -48,6 +48,17 @@ jobs:
           flutter pub get
           flutter build windows --debug
 
+      - name: Test shared environment configuration
+        run: |
+          cmake -S webview_all_windows/windows/test -B build/windows-native-tests -G "Visual Studio 17 2022" -A x64
+          cmake --build build/windows-native-tests --config Debug
+          ctest --test-dir build/windows-native-tests -C Debug --output-on-failure
+
+      - name: Test custom storage and shared data cleanup
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_environment_test.dart -d windows
+
       - name: Run Windows integration tests
         if: matrix.flutter == '3.44.x'
         working-directory: examples/platform
