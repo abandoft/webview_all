@@ -27,8 +27,17 @@ target_link_libraries(scroll_hook_test PRIVATE PkgConfig::WEBKIT)
 target_compile_options(scroll_hook_test PRIVATE -Wall -Wextra -Werror
   -Wno-unused-parameter)
 add_test(NAME scroll_hook COMMAND scroll_hook_test)
+add_executable(environment_test
+  environment_test.cc
+  ../src/webview/webview_environment.cc
+)
+target_include_directories(environment_test PRIVATE ../src)
+target_link_libraries(environment_test PRIVATE PkgConfig::WEBKIT)
+target_compile_options(environment_test PRIVATE -Wall -Wextra -Werror
+  -Wno-unused-parameter)
+add_test(NAME environment COMMAND environment_test)
 # Download policy tests do not use the desktop accessibility service.
-set_tests_properties(download_policy message_bridge scroll_hook PROPERTIES
+set_tests_properties(download_policy message_bridge scroll_hook environment PROPERTIES
   TIMEOUT 60
   ENVIRONMENT "NO_AT_BRIDGE=1"
 )
