@@ -20,6 +20,11 @@ class WindowsWebViewCookieManagerCreationParams
 }
 
 /// Cookie manager implementation for Windows.
+///
+/// Uses the shared WebView2 environment, including an active or initializing
+/// custom data directory. Configure custom environment options with
+/// `WindowsWebViewController.ensureEnvironment` before the first cookie operation
+/// or WebView. If no environment exists, cookie operations initialize defaults.
 class WindowsWebViewCookieManager extends PlatformWebViewCookieManager {
   /// Creates a [WindowsWebViewCookieManager].
   WindowsWebViewCookieManager(PlatformWebViewCookieManagerCreationParams params)

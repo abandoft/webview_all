@@ -29,10 +29,16 @@ class WindowsWebViewDataManagerCreationParams
 
 /// Clears website data in the shared WebView2 profile.
 ///
-/// This operation does not initialize the Flutter texture renderer. Supply
-/// [WindowsWebViewDataManagerCreationParams] when the application requires
-/// custom environment options. Equivalent options reuse an existing shared
-/// environment; conflicting options fail without replacing it.
+/// This operation does not initialize the Flutter texture renderer. With all
+/// environment options null, it uses the active or initializing shared
+/// environment, including its custom data directory. If none exists, it creates
+/// an environment with platform defaults.
+///
+/// Supply [WindowsWebViewDataManagerCreationParams] to initialize custom options
+/// or validate a specific configuration. Any non-null option, including an empty
+/// string, requests a complete configuration with defaults for omitted values.
+/// Conflicting configurations fail without clearing data or replacing the
+/// environment.
 class WindowsWebViewDataManager extends PlatformWebViewDataManager {
   WindowsWebViewDataManager(PlatformWebViewDataManagerCreationParams params)
     : super.implementation(

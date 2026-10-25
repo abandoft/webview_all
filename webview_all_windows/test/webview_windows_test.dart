@@ -302,6 +302,9 @@ void main() {
       expect(clearCalls, 1);
       expect(createCalls, 0);
       expect(environmentOptions, isNotNull);
+      expect(environmentOptions!.userDataPath, isNull);
+      expect(environmentOptions!.browserExePath, isNull);
+      expect(environmentOptions!.additionalArguments, isNull);
     },
   );
 
@@ -329,6 +332,102 @@ void main() {
       '--disable-features=Example',
     );
   });
+
+  test('website-data configuration conflicts do not clear data', () async {
+    var clearCalls = 0;
+    var createCalls = 0;
+    _mockWindowsWebViewCreation(
+      beforeCreateWebView: () async => createCalls += 1,
+      ensureEnvironmentFailureCode: 'environment_configuration_conflict',
+      onClearAllWebsiteData: () {
+        clearCalls += 1;
+        return true;
+      },
+    );
+    final manager = WindowsWebViewDataManager(
+      const WindowsWebViewDataManagerCreationParams(
+        userDataPath: r'C:\OtherProfile',
+      ),
+    );
+
+    final result = await manager.clearAllWebsiteData();
+
+    expect(clearCalls, 0);
+    expect(createCalls, 0);
+    expect(result.clearedDataTypes, isEmpty);
+    expect(result.failures, hasLength(6));
+    expect(
+      result.failures.values,
+      everyElement(contains('environment_configuration_conflict')),
+    );
+  });
+
+  test('website-data consumers wait for initialization failure', () async {
+    final initialization = Completer<void>();
+    final requested = Completer<void>();
+    var ensureCalls = 0;
+    var clearCalls = 0;
+    _mockWindowsWebViewCreation(
+      beforeEnsureEnvironment: () => initialization.future,
+      onEnsureEnvironment: (_) {
+        ensureCalls += 1;
+        if (ensureCalls == 2) requested.complete();
+      },
+      ensureEnvironmentFailureCode: 'environment_creation_failed',
+      onClearAllWebsiteData: () {
+        clearCalls += 1;
+        return true;
+      },
+    );
+    final first = WindowsWebViewDataManager(
+      const PlatformWebViewDataManagerCreationParams(),
+    ).clearAllWebsiteData();
+    final second = WindowsWebViewDataManager(
+      const PlatformWebViewDataManagerCreationParams(),
+    ).clearAllWebsiteData();
+    await requested.future;
+    expect(clearCalls, 0);
+
+    initialization.complete();
+    final results = await Future.wait(<Future<WebViewDataClearingResult>>[
+      first,
+      second,
+    ]);
+
+    expect(clearCalls, 0);
+    for (final result in results) {
+      expect(result.clearedDataTypes, isEmpty);
+      expect(result.failures, hasLength(6));
+      expect(
+        result.failures.values,
+        everyElement(contains('environment_creation_failed')),
+      );
+    }
+  });
+
+  test(
+    'cookie clearing creates a view without requesting default options',
+    () async {
+      var ensureCalls = 0;
+      var createCalls = 0;
+      var disposeCalls = 0;
+      _mockWindowsWebViewCreation(
+        beforeCreateWebView: () async => createCalls += 1,
+        onEnsureEnvironment: (_) => ensureCalls += 1,
+        onClearCookies: () => true,
+        onDisposeWebView: () => disposeCalls += 1,
+      );
+      final manager = WindowsWebViewCookieManager(
+        const PlatformWebViewCookieManagerCreationParams(),
+      );
+
+      expect(await manager.clearCookies(), isTrue);
+
+      expect(ensureCalls, 0);
+      expect(createCalls, 1);
+      expect(disposeCalls, 1);
+    },
+  );
 
   test(
     'reports website-data clearing as unsupported on old runtimes',
@@ -2815,7 +2914,9 @@ void _mockWindowsWebViewCreation({
   String creationFailureCode = 'environment_creation_failed',
   Object? creationFailureDetails,
   Future<void> Function()? beforeCreateWebView,
+  Future<void> Function()? beforeEnsureEnvironment,
   void Function(WindowsEnvironmentOptions options)? onEnsureEnvironment,
+  String? ensureEnvironmentFailureCode,
   void Function()? onOpenWebView2DownloadPage,
   void Function(WindowsLoadRequestData request)? onLoadRequest,
   void Function(String url)? onLoadUrl,
@@ -2830,6 +2931,7 @@ void _mockWindowsWebViewCreation({
   String? Function()? onGetUserAgent,
   void Function()? onClearLocalStorage,
   bool Function()? onClearAllWebsiteData,
+  bool Function()? onClearCookies,
   String? clearAllWebsiteDataFailureCode,
   void Function(bool enabled)? onSetJavaScriptEnabled,
   void Function(bool enabled)? onSetZoomControlEnabled,
@@ -2859,6 +2961,14 @@ void _mockWindowsWebViewCreation({
   ) async {
     final args = _decodePigeonArgs(message);
     onEnsureEnvironment?.call(args[0]! as WindowsEnvironmentOptions);
+    await beforeEnsureEnvironment?.call();
+    if (ensureEnvironmentFailureCode != null) {
+      return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
+        ensureEnvironmentFailureCode,
+        'The shared WebView2 environment could not be ensured.',
+        null,
+      ]);
+    }
     return _encodePigeonSuccess();
   });
   messenger.setMockMessageHandler(_hostApiChannel('createWebView'), (
@@ -2987,6 +3097,13 @@ void _mockWindowsWebViewCreation({
   ) async {
     return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
       onClearAllWebsiteData?.call() ?? true,
+    ]);
+  });
+  messenger.setMockMessageHandler(_hostApiChannel('clearCookies'), (
+    ByteData? message,
+  ) async {
+    return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
+      onClearCookies?.call() ?? false,
     ]);
   });
   messenger.setMockMessageHandler(
@@ -3159,6 +3276,7 @@ void _clearWindowsWebViewCreationMock() {
   messenger.setMockMessageHandler(_hostApiChannel('getUserAgent'), null);
   messenger.setMockMessageHandler(_hostApiChannel('clearLocalStorage'), null);
   messenger.setMockMessageHandler(_hostApiChannel('clearAllWebsiteData'), null);
+  messenger.setMockMessageHandler(_hostApiChannel('clearCookies'), null);
   messenger.setMockMessageHandler(
     _hostApiChannel('clearAllWebsiteDataForEnvironment'),
     null,

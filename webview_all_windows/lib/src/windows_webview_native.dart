@@ -136,9 +136,9 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   /// using  an optional [browserExePath], an optional [userDataPath]
   /// and optional Chromium command line arguments [additionalArguments].
   ///
-  /// The environment is shared between all WebviewController instances and
-  /// can be initialized only once. Initialization must take place before any
-  /// WebviewController is created/initialized.
+  /// The environment is shared between WebviewController instances attached to
+  /// the same Flutter engine and can be initialized only once. Initialization
+  /// must take place before any WebviewController is created/initialized.
   ///
   /// Throws [PlatformException] if the environment was initialized before.
   static Future<void> initializeEnvironment({
@@ -157,8 +157,13 @@ class WebviewController extends ValueNotifier<WebviewValue> {
 
   /// Initializes the shared environment or validates an existing one.
   ///
-  /// Repeated calls with equivalent options succeed. A conflicting
-  /// configuration fails without replacing the active environment.
+  /// With all options null, inherits an active environment or waits for pending
+  /// initialization. If neither exists, initializes the platform defaults.
+  ///
+  /// Any non-null option, including an empty string, requests a complete
+  /// configuration, resolving omitted or empty values to platform defaults.
+  /// Equivalent configurations succeed; conflicts fail without replacing the
+  /// environment. Waiters receive the same initialization failure if it fails.
   static Future<void> ensureEnvironment({
     String? userDataPath,
     String? browserExePath,

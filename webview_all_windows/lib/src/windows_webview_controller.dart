@@ -291,9 +291,16 @@ class WindowsWebViewController extends PlatformWebViewController {
 
   /// Initializes the shared WebView2 environment idempotently.
   ///
-  /// Equivalent options reuse the active environment. Conflicting options
-  /// fail without replacing it. Prefer this when multiple application
-  /// components may initialize WebView2 independently.
+  /// The environment is shared by WebViews attached to the same Flutter engine.
+  /// With all options null, reuses the active environment or waits for its
+  /// initialization, including custom options chosen by another component.
+  /// Creates an environment with platform defaults if none exists.
+  ///
+  /// Supplying any option, including an empty string, requests a complete
+  /// configuration, with omitted or empty options resolved to platform defaults.
+  /// Equivalent configurations reuse the environment; conflicting ones fail
+  /// without replacing it. Configure custom options before the first WebView,
+  /// cookie operation, or website-data clearing operation.
   static Future<void> ensureEnvironment({
     String? userDataPath,
     String? browserExePath,

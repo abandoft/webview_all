@@ -12,6 +12,7 @@
 #include <sstream>
 #include <string>
 
+#include "plugin/environment_request.h"
 #include "util/logging.h"
 #include "util/string_converter.h"
 
@@ -219,34 +220,37 @@ void WindowsHostApi::InitializeEnvironment(
 void WindowsHostApi::EnsureEnvironment(
     const webview_all_windows::WindowsEnvironmentOptions &options,
     std::function<void(std::optional<FlutterError> reply)> result) {
-  const EnvironmentConfiguration requested =
-      ResolveEnvironmentConfiguration(options);
-  if (webview_host_) {
-    if (environment_configuration_ &&
-        *environment_configuration_ == requested) {
-      result(std::nullopt);
-    } else {
-      result(webview_all_windows::FlutterError(
-          kErrorCodeEnvironmentConfigurationConflict,
-          "The active WebView2 environment uses different configuration "
-          "options."));
-    }
-    return;
+  std::optional<EnvironmentConfiguration> requested;
+  if (HasExplicitEnvironmentOptions(options.user_data_path(),
+                                    options.browser_exe_path(),
+                                    options.additional_arguments())) {
+    requested = ResolveEnvironmentConfiguration(options);
   }
 
-  if (pending_environment_configuration_.has_value()) {
-    if (*pending_environment_configuration_ == requested) {
-      pending_environment_callbacks_.push_back(std::move(result));
-    } else {
-      result(webview_all_windows::FlutterError(
-          kErrorCodeEnvironmentConfigurationConflict,
-          "The WebView2 environment being initialized uses different "
-          "configuration options."));
-    }
+  switch (SelectEnvironmentRequestAction(
+      requested, webview_host_ != nullptr, environment_configuration_,
+      pending_environment_configuration_)) {
+  case EnvironmentRequestAction::reuse:
+    result(std::nullopt);
+    return;
+  case EnvironmentRequestAction::wait:
+    pending_environment_callbacks_.push_back(std::move(result));
+    return;
+  case EnvironmentRequestAction::conflict:
+    result(webview_all_windows::FlutterError(
+        kErrorCodeEnvironmentConfigurationConflict,
+        webview_host_
+            ? "The active WebView2 environment uses different configuration "
+              "options."
+            : "The WebView2 environment being initialized uses different "
+              "configuration options."));
+    return;
+  case EnvironmentRequestAction::create:
+    CreateEnvironment(requested ? *requested
+                                : ResolveEnvironmentConfiguration(options),
+                      std::move(result));
     return;
   }
-
-  CreateEnvironment(requested, std::move(result));
 }
 
 WindowsHostApi::EnvironmentConfiguration
