@@ -49,3 +49,14 @@ Widget build(BuildContext context) {
 ```
 
 更详细的用法、接口覆盖和平台限制请参考[中文文档](https://abandoft.github.io/webview_all/zh)
+
+## 谁在使用
+
+- [野火 IM](https://github.com/wildfirechat) 官方 Flutter 版：老牌的 IM/RTC 商业软件。
+- [Miru](https://github.com/miru-project) 新版官方客户端：知名的视频、漫画和小说聚合应用。
+- [GodotHub](https://github.com/godothub) 官方客户端：广受喜爱的 Godot 社区平台。
+- [Operit2](https://github.com/AAswordman/Operit2)：全平台的 AI Agent 智能体。
+- [Dartotsu](https://github.com/aayush2622/Dartotsu)：跨平台动画、漫画和小说追踪客户端。
+- [Bili-music](https://github.com/AprDeci/bili-music)：基于哔哩哔哩的跨平台音乐播放器。
+- [ShonenX](https://github.com/roshancodespace/ShonenX)：发现新番、追踪进度、在线播放一站搞定。
+- [AFAN](https://github.com/SX-Code/afan)：集成切片、网页嗅探、自定义播放源的追番应用。

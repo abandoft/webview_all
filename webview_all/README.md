@@ -50,3 +50,14 @@ Widget build(BuildContext context) {
 ```
 
 For detailed usage, API coverage, and platform limits, see the [Documentation](https://abandoft.github.io/webview_all).
+
+## Who's Using It?
+
+- [Wildfire IM](https://github.com/wildfirechat) official Flutter client: A well-established commercial IM/RTC platform.
+- [Miru](https://github.com/miru-project) new official client: A popular video, manga, and novel aggregation app.
+- [GodotHub](https://github.com/godothub) official client: A much-loved Godot community platform.
+- [Operit2](https://github.com/AAswordman/Operit2): An AI agent for all platforms.
+- [Dartotsu](https://github.com/aayush2622/Dartotsu): A cross-platform anime, manga, and novel tracking client.
+- [Bili-music](https://github.com/AprDeci/bili-music): A cross-platform music player for Bilibili.
+- [ShonenX](https://github.com/roshancodespace/ShonenX): Discover anime, track your progress, and stream, all in one app.
+- [AFAN](https://github.com/SX-Code/afan): An anime app with video slicing, web media detection, and custom playback sources.
