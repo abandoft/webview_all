@@ -1,3 +1,8 @@
+## 1.4.7
+
+* Support custom website data and cache directories on Linux.
+* Fix website data cleanup with custom data directories on Windows.
+
 ## 1.4.6
 
 * Fix JavaScript message sender information being lost after document rewrites on Linux.
