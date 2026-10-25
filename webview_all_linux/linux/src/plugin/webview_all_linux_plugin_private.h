@@ -88,7 +88,8 @@ typedef struct {
   gboolean open_in_place;
 } PendingNavigationDecision;
 
-LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self);
+LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self,
+                                  GError **error = nullptr);
 void destroy_linux_webview(gpointer data);
 void root_method_call_cb(FlMethodChannel *channel, FlMethodCall *method_call,
                          gpointer user_data);

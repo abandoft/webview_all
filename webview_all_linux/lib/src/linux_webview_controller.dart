@@ -56,6 +56,66 @@ class LinuxWebViewController extends PlatformWebViewController {
   static const MethodChannel rootChannel = MethodChannel(
     linuxWebViewChannelPrefix,
   );
+
+  /// Initializes the shared WebKitGTK environment or reuses its configuration.
+  ///
+  /// Configure custom directories before creating a controller or using cookie
+  /// and website-data managers. With no options, an existing environment is
+  /// reused; otherwise WebKitGTK's default directories are used.
+  ///
+  /// [userDataPath] stores persistent website data and [cachePath] stores cache
+  /// files. Relative paths are resolved against the current working directory.
+  /// Explicit options must match the active configuration, including omitted
+  /// paths, which select platform defaults. Empty paths also select defaults.
+  /// Conflicting options throw a [PlatformException] with code
+  /// `environment_configuration_conflict` without replacing the environment.
+  /// Existing website data is not moved when custom directories are selected.
+  static Future<void> ensureEnvironment({
+    String? userDataPath,
+    String? cachePath,
+  }) => _configureEnvironment(
+    'ensureEnvironment',
+    userDataPath: userDataPath,
+    cachePath: cachePath,
+  );
+
+  /// Explicitly initializes the shared WebKitGTK environment.
+  ///
+  /// Throws `environment_already_initialized` after the environment has been
+  /// initialized, even with the same options. Prefer [ensureEnvironment] when
+  /// independent components may initialize the shared environment.
+  static Future<void> initializeEnvironment({
+    String? userDataPath,
+    String? cachePath,
+  }) => _configureEnvironment(
+    'initializeEnvironment',
+    userDataPath: userDataPath,
+    cachePath: cachePath,
+  );
+
+  static Future<void> _configureEnvironment(
+    String method, {
+    String? userDataPath,
+    String? cachePath,
+  }) async {
+    for (final entry in <String, String?>{
+      'userDataPath': userDataPath,
+      'cachePath': cachePath,
+    }.entries) {
+      if (entry.value?.contains('\u0000') ?? false) {
+        throw ArgumentError.value(
+          entry.value,
+          entry.key,
+          'Contains a NUL byte',
+        );
+      }
+    }
+    await rootChannel.invokeMethod<void>(method, <String, Object?>{
+      'userDataPath': userDataPath,
+      'cachePath': cachePath,
+    });
+  }
+
   static final RegExp _javaScriptIdentifierPattern = RegExp(
     r'^[A-Za-z_$][A-Za-z0-9_$]*$',
   );

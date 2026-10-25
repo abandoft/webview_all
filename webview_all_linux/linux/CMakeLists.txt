@@ -16,6 +16,7 @@ add_library(${PLUGIN_NAME} SHARED
   "src/plugin/root_channel.cc"
   "src/webview/linux_webview.cc"
   "src/webview/download_policy.cc"
+  "src/webview/webview_environment.cc"
   "src/webview/webview_javascript.cc"
   "src/webview/webview_method_handler.cc"
 )

@@ -1,6 +1,7 @@
 #include "common/method_channel_utils.h"
 #include "plugin/webview_all_linux_plugin_private.h"
 #include "webview/download_policy.h"
+#include "webview/webview_environment.h"
 #include "webview/webview_internal.h"
 
 #include <libsoup/soup.h>
@@ -767,13 +768,18 @@ void destroy_linux_webview(gpointer data) {
   g_free(webview);
 }
 
-LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self) {
+LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self, GError **error) {
   LinuxWebView *webview = g_new0(LinuxWebView, 1);
   webview->plugin = self;
   webview->id = self->next_webview_id++;
   webview->content_manager = webkit_user_content_manager_new();
-  webview->web_view = WEBKIT_WEB_VIEW(
-      webkit_web_view_new_with_user_content_manager(webview->content_manager));
+  webview->web_view =
+      create_linux_environment_web_view(webview->content_manager, error);
+  if (webview->web_view == nullptr) {
+    g_object_unref(webview->content_manager);
+    g_free(webview);
+    return nullptr;
+  }
   g_object_ref_sink(webview->web_view);
   g_object_set_data(G_OBJECT(webview->web_view), kLinuxWebViewInstanceKey,
                     webview);

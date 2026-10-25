@@ -4,14 +4,29 @@ import 'linux_webview_controller.dart';
 
 class LinuxWebViewDataManagerCreationParams
     extends PlatformWebViewDataManagerCreationParams {
-  const LinuxWebViewDataManagerCreationParams();
+  const LinuxWebViewDataManagerCreationParams({
+    this.userDataPath,
+    this.cachePath,
+  });
 
   const LinuxWebViewDataManagerCreationParams.fromPlatformWebViewDataManagerCreationParams(
-    PlatformWebViewDataManagerCreationParams params,
-  );
+    PlatformWebViewDataManagerCreationParams params, {
+    this.userDataPath,
+    this.cachePath,
+  });
+
+  /// The persistent website-data directory used by the shared environment.
+  final String? userDataPath;
+
+  /// The cache directory used by the shared environment.
+  final String? cachePath;
 }
 
-/// Clears website data from the default WebKitGTK context.
+/// Clears website data from the shared WebKitGTK environment.
+///
+/// With no options, this reuses the active environment or initializes defaults.
+/// Explicit paths configure the environment before its first use, or must match
+/// its active configuration. No WebView is created by this operation.
 class LinuxWebViewDataManager extends PlatformWebViewDataManager {
   LinuxWebViewDataManager(PlatformWebViewDataManagerCreationParams params)
     : super.implementation(
@@ -24,7 +39,12 @@ class LinuxWebViewDataManager extends PlatformWebViewDataManager {
 
   @override
   Future<WebViewDataClearingResult> clearAllWebsiteData() async {
+    final linuxParams = params as LinuxWebViewDataManagerCreationParams;
     try {
+      await LinuxWebViewController.ensureEnvironment(
+        userDataPath: linuxParams.userDataPath,
+        cachePath: linuxParams.cachePath,
+      );
       await LinuxWebViewController.rootChannel.invokeMethod<void>(
         'clearAllWebsiteData',
       );

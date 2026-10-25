@@ -16,6 +16,60 @@ void main() {
   tearDown(_clearLinuxWebViewCreationMock);
 
   test(
+    'environment options preserve omitted and explicit default paths',
+    () async {
+      final calls = <MethodCall>[];
+      _mockLinuxWebViewCreation(onRootCall: calls.add);
+
+      await LinuxWebViewController.ensureEnvironment();
+      await LinuxWebViewController.ensureEnvironment(
+        userDataPath: '',
+        cachePath: './cache',
+      );
+      await LinuxWebViewController.initializeEnvironment(
+        userDataPath: '/data/WebKit',
+        cachePath: '/cache/WebKit',
+      );
+
+      expect(calls.map((call) => call.method), <String>[
+        'ensureEnvironment',
+        'ensureEnvironment',
+        'initializeEnvironment',
+      ]);
+      expect(calls.map((call) => call.arguments), <Map<String, Object?>>[
+        <String, Object?>{'userDataPath': null, 'cachePath': null},
+        <String, Object?>{'userDataPath': '', 'cachePath': './cache'},
+        <String, Object?>{
+          'userDataPath': '/data/WebKit',
+          'cachePath': '/cache/WebKit',
+        },
+      ]);
+    },
+  );
+
+  test(
+    'rejects NUL in environment paths before native initialization',
+    () async {
+      final calls = <MethodCall>[];
+      _mockLinuxWebViewCreation(onRootCall: calls.add);
+
+      await expectLater(
+        LinuxWebViewController.ensureEnvironment(
+          userDataPath: '/data/\u0000rest',
+        ),
+        throwsArgumentError,
+      );
+      await expectLater(
+        LinuxWebViewController.initializeEnvironment(
+          cachePath: '/cache/\u0000rest',
+        ),
+        throwsArgumentError,
+      );
+      expect(calls, isEmpty);
+    },
+  );
+
+  test(
     'channel events preserve metadata and keep legacy senders unknown',
     () async {
       final controller = LinuxWebViewController(
@@ -1130,9 +1184,69 @@ void main() {
         .clearAllWebsiteData();
 
     expect(result.isComplete, isTrue);
-    expect(rootCalls, hasLength(1));
-    expect(rootCalls.single.method, 'clearAllWebsiteData');
+    expect(rootCalls.map((call) => call.method), <String>[
+      'ensureEnvironment',
+      'clearAllWebsiteData',
+    ]);
+    expect(rootCalls.first.arguments, <String, Object?>{
+      'userDataPath': null,
+      'cachePath': null,
+    });
   });
+
+  test(
+    'website-data manager can select directories without a WebView',
+    () async {
+      final calls = <MethodCall>[];
+      _mockLinuxWebViewCreation(onRootCall: calls.add);
+      final manager = LinuxWebViewDataManager(
+        const LinuxWebViewDataManagerCreationParams(
+          userDataPath: '/data/WebKit',
+          cachePath: '/cache/WebKit',
+        ),
+      );
+
+      final result = await manager.clearAllWebsiteData();
+
+      expect(result.isComplete, isTrue);
+      expect(calls.map((call) => call.method), <String>[
+        'ensureEnvironment',
+        'clearAllWebsiteData',
+      ]);
+      expect(calls.first.arguments, <String, Object?>{
+        'userDataPath': '/data/WebKit',
+        'cachePath': '/cache/WebKit',
+      });
+    },
+  );
+
+  test(
+    'website-data cleanup stops when environment options conflict',
+    () async {
+      final calls = <MethodCall>[];
+      _mockLinuxWebViewCreation(
+        onRootCall: (call) {
+          calls.add(call);
+          if (call.method == 'ensureEnvironment') {
+            throw PlatformException(code: 'environment_configuration_conflict');
+          }
+        },
+      );
+      final manager = LinuxWebViewDataManager(
+        const LinuxWebViewDataManagerCreationParams(userDataPath: '/another'),
+      );
+
+      final result = await manager.clearAllWebsiteData();
+
+      expect(result.clearedDataTypes, isEmpty);
+      expect(result.failures.keys.toSet(), WebViewDataType.values.toSet());
+      expect(
+        result.failures.values,
+        everyElement(contains('environment_configuration_conflict')),
+      );
+      expect(calls.single.method, 'ensureEnvironment');
+    },
+  );
 
   test('invokes asynchronous JavaScript and correlates its result', () async {
     final List<MethodCall> calls = <MethodCall>[];
