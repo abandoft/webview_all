@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.15)
+project(webview_all_windows_native_tests LANGUAGES CXX)
+
+enable_testing()
+add_executable(environment_request_test environment_request_test.cc)
+target_compile_features(environment_request_test PRIVATE cxx_std_17)
+target_include_directories(environment_request_test PRIVATE ../src)
+if(MSVC)
+  target_compile_options(environment_request_test PRIVATE /W4 /WX)
+else()
+  target_compile_options(environment_request_test PRIVATE -Wall -Wextra -Werror)
+endif()
+add_test(NAME environment_request_test COMMAND environment_request_test)
