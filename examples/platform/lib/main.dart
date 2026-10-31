@@ -17,6 +17,8 @@ import 'package:webview_all/webview_all.dart';
 import 'package:webview_all_android/webview_all_android.dart';
 // Import for iOS/macOS features.
 import 'package:webview_all_wkwebview/webview_all_wkwebview.dart';
+import 'download_example.dart';
+
 // #enddocregion platform_imports
 
 void main() => runApp(const MaterialApp(home: WebViewExample()));
@@ -312,6 +314,7 @@ enum MenuOptions {
   setCookie,
   logExample,
   basicAuthentication,
+  downloads,
 }
 
 class SampleMenu extends StatelessWidget {
@@ -356,6 +359,8 @@ class SampleMenu extends StatelessWidget {
             _onLogExample();
           case MenuOptions.basicAuthentication:
             _promptForUrl(context);
+          case MenuOptions.downloads:
+            showDownloadExample(context, webViewController);
         }
       },
       itemBuilder: (BuildContext context) => <PopupMenuItem<MenuOptions>>[
@@ -419,6 +424,10 @@ class SampleMenu extends StatelessWidget {
         const PopupMenuItem<MenuOptions>(
           value: MenuOptions.basicAuthentication,
           child: Text('Basic Authentication Example'),
+        ),
+        const PopupMenuItem<MenuOptions>(
+          value: MenuOptions.downloads,
+          child: Text('Download handling example'),
         ),
       ],
     );
