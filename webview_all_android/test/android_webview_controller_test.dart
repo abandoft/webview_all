@@ -47,6 +47,12 @@ void main() {
       void Function(
         android_webview.WebChromeClient,
         android_webview.WebView,
+        String,
+      )?
+      onReceivedTitle,
+      void Function(
+        android_webview.WebChromeClient,
+        android_webview.WebView,
         int,
       )?
       onProgressChanged,
@@ -133,6 +139,12 @@ void main() {
             int,
           )?
           onProgressChanged,
+          void Function(
+            android_webview.WebChromeClient,
+            android_webview.WebView,
+            String,
+          )?
+          onReceivedTitle,
           Future<List<String>> Function(
             android_webview.WebChromeClient,
             android_webview.WebView,
@@ -1128,6 +1140,7 @@ void main() {
         createWebChromeClient:
             ({
               dynamic onProgressChanged,
+              dynamic onReceivedTitle,
               Future<List<String>> Function(
                 android_webview.WebChromeClient,
                 android_webview.WebView webView,
@@ -1203,6 +1216,7 @@ void main() {
         createWebChromeClient:
             ({
               dynamic onProgressChanged,
+              dynamic onReceivedTitle,
               dynamic onShowFileChooser,
               void Function(
                 android_webview.WebChromeClient,
@@ -1282,6 +1296,7 @@ void main() {
         createWebChromeClient:
             ({
               dynamic onProgressChanged,
+              dynamic onReceivedTitle,
               dynamic onShowFileChooser,
               dynamic onGeolocationPermissionsShowPrompt,
               dynamic onGeolocationPermissionsHidePrompt,
@@ -1343,6 +1358,7 @@ void main() {
         createWebChromeClient:
             ({
               dynamic onProgressChanged,
+              dynamic onReceivedTitle,
               dynamic onShowFileChooser,
               dynamic onGeolocationPermissionsShowPrompt,
               dynamic onGeolocationPermissionsHidePrompt,
@@ -1404,6 +1420,7 @@ void main() {
           createWebChromeClient:
               ({
                 dynamic onProgressChanged,
+                dynamic onReceivedTitle,
                 dynamic onShowFileChooser,
                 dynamic onGeolocationPermissionsShowPrompt,
                 dynamic onGeolocationPermissionsHidePrompt,
@@ -1464,6 +1481,7 @@ void main() {
           createWebChromeClient:
               ({
                 dynamic onProgressChanged,
+                dynamic onReceivedTitle,
                 dynamic onShowFileChooser,
                 dynamic onGeolocationPermissionsShowPrompt,
                 dynamic onGeolocationPermissionsHidePrompt,
@@ -1519,6 +1537,7 @@ void main() {
           createWebChromeClient:
               ({
                 dynamic onProgressChanged,
+                dynamic onReceivedTitle,
                 dynamic onShowFileChooser,
                 dynamic onGeolocationPermissionsShowPrompt,
                 dynamic onGeolocationPermissionsHidePrompt,
@@ -1577,6 +1596,7 @@ void main() {
           createWebChromeClient:
               ({
                 dynamic onProgressChanged,
+                dynamic onReceivedTitle,
                 dynamic onShowFileChooser,
                 dynamic onGeolocationPermissionsShowPrompt,
                 dynamic onGeolocationPermissionsHidePrompt,
@@ -1640,6 +1660,7 @@ void main() {
         createWebChromeClient:
             ({
               dynamic onProgressChanged,
+              dynamic onReceivedTitle,
               dynamic onShowFileChooser,
               dynamic onGeolocationPermissionsShowPrompt,
               dynamic onGeolocationPermissionsHidePrompt,
@@ -2762,6 +2783,7 @@ void main() {
         createWebChromeClient:
             ({
               dynamic onProgressChanged,
+              dynamic onReceivedTitle,
               dynamic onShowFileChooser,
               dynamic onGeolocationPermissionsShowPrompt,
               dynamic onGeolocationPermissionsHidePrompt,
@@ -3078,6 +3100,7 @@ class TestWebViewClient extends android_webview.WebViewClient {
 
 class TestWebChromeClient extends android_webview.WebChromeClient {
   TestWebChromeClient({
+    super.onReceivedTitle,
     super.onProgressChanged,
     required super.onShowFileChooser,
     super.onPermissionRequest,

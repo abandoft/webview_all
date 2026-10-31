@@ -49,6 +49,11 @@ public class WebChromeClientProxyApi extends PigeonApiWebChromeClient {
     }
 
     @Override
+    public void onReceivedTitle(@NonNull WebView view, @Nullable String title) {
+      api.onReceivedTitle(this, view, title != null ? title : "", reply -> null);
+    }
+
+    @Override
     public void onProgressChanged(@NonNull WebView view, int progress) {
       api.onProgressChanged(this, view, (long) progress, reply -> null);
     }

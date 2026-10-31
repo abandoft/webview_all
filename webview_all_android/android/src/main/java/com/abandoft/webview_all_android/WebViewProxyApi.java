@@ -83,6 +83,7 @@ public class WebViewProxyApi extends PigeonApiWebView {
     private final WebViewProxyApi api;
 
     private boolean destroyed;
+    boolean limitedIncognito;
 
     private WebViewClient currentWebViewClient;
 
@@ -125,7 +126,14 @@ public class WebViewProxyApi extends PigeonApiWebView {
       destroyed = true;
       api.removeAllDocumentStartJavaScripts(this);
       api.removeAllJavaScriptChannels(this);
-      super.destroy();
+      try {
+        if (limitedIncognito) {
+          clearHistory();
+          clearFormData();
+        }
+      } finally {
+        super.destroy();
+      }
     }
 
     // TODO(bparrishMines): This should be removed once https://github.com/flutter/engine/pull/40771
@@ -549,6 +557,23 @@ public class WebViewProxyApi extends PigeonApiWebView {
   @Override
   public ProxyApiRegistrar getPigeonRegistrar() {
     return (ProxyApiRegistrar) super.getPigeonRegistrar();
+  }
+
+  @SuppressWarnings("deprecation")
+  @Override
+  public void enableLimitedIncognito(@NonNull WebView pigeon_instance) {
+    WebSettings settings = pigeon_instance.getSettings();
+    settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+    settings.setSavePassword(false);
+    settings.setSaveFormData(false);
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      pigeon_instance.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+    }
+    pigeon_instance.clearHistory();
+    pigeon_instance.clearFormData();
+    if (pigeon_instance instanceof WebViewPlatformView) {
+      ((WebViewPlatformView) pigeon_instance).limitedIncognito = true;
+    }
   }
 
   @Override

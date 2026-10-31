@@ -1876,6 +1876,9 @@ abstract class PigeonApiWebView(
   /** Sets the background color for this view. */
   abstract fun setBackgroundColor(pigeon_instance: android.webkit.WebView, color: Long)
 
+  /** Applies limited per-view incognito settings without clearing shared data. */
+  abstract fun enableLimitedIncognito(pigeon_instance: android.webkit.WebView)
+
   /** Destroys the internal state of this WebView. */
   abstract fun destroy(pigeon_instance: android.webkit.WebView)
 
@@ -2497,6 +2500,29 @@ abstract class PigeonApiWebView(
             val wrapped: List<Any?> =
                 try {
                   api.setBackgroundColor(pigeon_instanceArg, colorArg)
+                  listOf(null)
+                } catch (exception: Throwable) {
+                  AndroidWebkitLibraryPigeonUtils.wrapError(exception)
+                }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel =
+            BasicMessageChannel<Any?>(
+                binaryMessenger,
+                "com.abandoft.pigeon.webview_all_android.WebView.enableLimitedIncognito",
+                codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val pigeon_instanceArg = args[0] as android.webkit.WebView
+            val wrapped: List<Any?> =
+                try {
+                  api.enableLimitedIncognito(pigeon_instanceArg)
                   listOf(null)
                 } catch (exception: Throwable) {
                   AndroidWebkitLibraryPigeonUtils.wrapError(exception)
@@ -4504,6 +4530,47 @@ abstract class PigeonApiWebChromeClient(
     val channelName = "com.abandoft.pigeon.webview_all_android.WebChromeClient.onProgressChanged"
     val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
     channel.send(listOf(pigeon_instanceArg, webViewArg, progressArg)) {
+      if (it is List<*>) {
+        if (it.size > 1) {
+          callback(
+              Result.failure(
+                  AndroidWebKitError(it[0] as String, it[1] as String, it[2] as String?)))
+        } else {
+          callback(Result.success(Unit))
+        }
+      } else {
+        callback(Result.failure(AndroidWebkitLibraryPigeonUtils.createConnectionError(channelName)))
+      }
+    }
+  }
+
+  /** Notifies the host of changes to the main document title. */
+  fun onReceivedTitle(
+      pigeon_instanceArg:
+          com.abandoft.webview_all_android.WebChromeClientProxyApi.WebChromeClientImpl,
+      webViewArg: android.webkit.WebView,
+      titleArg: String,
+      callback: (Result<Unit>) -> Unit
+  ) {
+    if (pigeonRegistrar.ignoreCallsToDart) {
+      callback(
+          Result.failure(
+              AndroidWebKitError("ignore-calls-error", "Calls to Dart are being ignored.", "")))
+      return
+    } else if (!pigeonRegistrar.instanceManager.containsInstance(pigeon_instanceArg)) {
+      callback(
+          Result.failure(
+              AndroidWebKitError(
+                  "missing-instance-error",
+                  "Callback to `WebChromeClient.onReceivedTitle` failed because native instance was not in the instance manager.",
+                  "")))
+      return
+    }
+    val binaryMessenger = pigeonRegistrar.binaryMessenger
+    val codec = pigeonRegistrar.codec
+    val channelName = "com.abandoft.pigeon.webview_all_android.WebChromeClient.onReceivedTitle"
+    val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+    channel.send(listOf(pigeon_instanceArg, webViewArg, titleArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
           callback(

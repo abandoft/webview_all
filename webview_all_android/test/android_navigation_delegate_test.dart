@@ -824,6 +824,7 @@ class CapturingWebViewClient extends android_webview.WebViewClient {
 // Records the last created instance of itself.
 class CapturingWebChromeClient extends android_webview.WebChromeClient {
   CapturingWebChromeClient({
+    super.onReceivedTitle,
     super.onProgressChanged,
     required super.onShowFileChooser,
     super.onGeolocationPermissionsShowPrompt,

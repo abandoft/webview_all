@@ -14,6 +14,8 @@ import 'package:flutter/services.dart';
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'android_ssl_auth_error.dart';
+import 'android_webview_cookie_manager.dart';
+import 'android_webview_data_manager.dart';
 import 'android_webkit.g.dart' as android_webview;
 import 'android_webkit_constants.dart';
 import 'platform_views_service_proxy.dart';
@@ -150,10 +152,20 @@ class AndroidWebViewControllerCreationParams
     extends PlatformWebViewControllerCreationParams {
   /// Creates a new [AndroidWebViewControllerCreationParams] instance.
   AndroidWebViewControllerCreationParams({
+    WebViewSessionMode sessionMode = WebViewSessionMode.shared,
     @visibleForTesting android_webview.WebStorage? androidWebStorage,
   }) : androidWebStorage =
            androidWebStorage ?? android_webview.WebStorage.instance,
-       super();
+       super(sessionMode: sessionMode) {
+    if (sessionMode == WebViewSessionMode.isolatedIncognito) {
+      debugPrint(
+        'webview_all_android: independent private stores are unavailable; incognito supports limited per-view handling without data isolation.',
+      );
+      throw UnsupportedError(
+        'Independent private stores are not supported on Android.',
+      );
+    }
+  }
 
   /// Creates a [AndroidWebViewControllerCreationParams] instance based on [PlatformWebViewControllerCreationParams].
   factory AndroidWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
@@ -163,6 +175,7 @@ class AndroidWebViewControllerCreationParams
     @visibleForTesting android_webview.WebStorage? androidWebStorage,
   }) {
     return AndroidWebViewControllerCreationParams(
+      sessionMode: params.sessionMode,
       androidWebStorage:
           androidWebStorage ?? android_webview.WebStorage.instance,
     );
@@ -199,6 +212,9 @@ class AndroidWebViewController extends PlatformWebViewController {
                 params,
               ),
       ) {
+    if (params.sessionMode == WebViewSessionMode.incognito) {
+      _limitedIncognitoReady = _webView.enableLimitedIncognito();
+    }
     _webView.settings.setDomStorageEnabled(true);
     _webView.settings.setJavaScriptCanOpenWindowsAutomatically(true);
     _webView.settings.setSupportMultipleWindows(true);
@@ -219,6 +235,13 @@ class AndroidWebViewController extends PlatformWebViewController {
             },
       ),
     );
+  }
+
+  Future<void>? _limitedIncognitoReady;
+
+  @override
+  Future<void> prepareSession() async {
+    await _limitedIncognitoReady;
   }
 
   static const String _asyncJavaScriptChannelName =
@@ -242,6 +265,13 @@ class AndroidWebViewController extends PlatformWebViewController {
 
   late final android_webview.WebChromeClient
   _webChromeClient = android_webview.WebChromeClient(
+    onReceivedTitle: withWeakReferenceTo(this, (weakThis) {
+      return (_, android_webview.WebView webView, String title) {
+        final target = weakThis.target;
+        if (target == null || target._offscreenCloseFuture != null) return;
+        target._currentNavigationDelegate?._onTitleChange?.call(title);
+      };
+    }),
     onProgressChanged: withWeakReferenceTo(this, (
       WeakReference<AndroidWebViewController> weakReference,
     ) {
@@ -864,6 +894,18 @@ class AndroidWebViewController extends PlatformWebViewController {
   }
 
   @override
+  PlatformWebViewCookieManager createSessionCookieManager() =>
+      AndroidWebViewCookieManager(
+        const PlatformWebViewCookieManagerCreationParams(),
+      );
+
+  @override
+  PlatformWebViewDataManager createSessionDataManager() =>
+      AndroidWebViewDataManager(
+        const PlatformWebViewDataManagerCreationParams(),
+      );
+
+  @override
   Future<bool> isOffscreenWebViewSupported() async => true;
 
   @override
@@ -890,6 +932,7 @@ class AndroidWebViewController extends PlatformWebViewController {
       ),
     );
     try {
+      await _limitedIncognitoReady;
       await _asyncJavaScriptBridgeReady;
     } catch (_) {
       // Continue releasing a partially initialized native WebView.
@@ -2255,6 +2298,7 @@ class AndroidNavigationDelegate extends PlatformNavigationDelegate {
   NavigationRequestCallback? _onNavigationRequest;
   LoadRequestCallback? _onLoadRequest;
   UrlChangeCallback? _onUrlChange;
+  TitleChangeCallback? _onTitleChange;
   HttpAuthRequestCallback? _onHttpAuthRequest;
   SslAuthErrorCallback? _onSslAuthError;
 
@@ -2349,6 +2393,11 @@ class AndroidNavigationDelegate extends PlatformNavigationDelegate {
     WebResourceErrorCallback onWebResourceError,
   ) async {
     _onWebResourceError = onWebResourceError;
+  }
+
+  @override
+  Future<void> setOnTitleChange(TitleChangeCallback onTitleChange) async {
+    _onTitleChange = onTitleChange;
   }
 
   @override

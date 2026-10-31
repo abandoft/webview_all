@@ -8,6 +8,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -20,6 +21,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.webkit.DownloadListener;
 import android.webkit.ValueCallback;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.webkit.WebViewFeature;
@@ -31,6 +33,22 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 
 public class WebViewTest {
+  @SuppressWarnings("deprecation")
+  @Test
+  public void limitedIncognitoUsesPerViewSettingsWithoutClearingSharedCache() {
+    final PigeonApiWebView api = new TestProxyApiRegistrar().getPigeonApiWebView();
+    final WebView view = mock(WebView.class);
+    final WebSettings settings = mock(WebSettings.class);
+    when(view.getSettings()).thenReturn(settings);
+    api.enableLimitedIncognito(view);
+    verify(settings).setCacheMode(WebSettings.LOAD_NO_CACHE);
+    verify(settings).setSavePassword(false);
+    verify(settings).setSaveFormData(false);
+    verify(view).clearHistory();
+    verify(view).clearFormData();
+    verify(view, never()).clearCache(anyBoolean());
+  }
+
   @Test
   public void pigeon_defaultConstructor() {
     final PigeonApiWebView api = new TestProxyApiRegistrar().getPigeonApiWebView();

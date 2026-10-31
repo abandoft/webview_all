@@ -11,7 +11,25 @@ import 'android_webview_data_manager.dart';
 /// Implementation of [WebViewPlatform] using the WebKit API.
 class AndroidWebViewPlatform extends WebViewPlatform {
   @override
+  Set<WebViewSessionMode> get supportedSessionModes => const {
+    WebViewSessionMode.shared,
+    WebViewSessionMode.incognito,
+  };
+
+  @override
   bool get supportsOffscreenWebViews => true;
+
+  @override
+  Future<WebViewSessionCapabilities>
+  getSessionCapabilities() async => WebViewSessionCapabilities(
+    canClose: true,
+    supportedModes: supportedSessionModes,
+    incognitoSupport: WebViewIncognitoSupport.limited,
+    privateSessionRestriction:
+        "Android disables cache use and form saving and clears this view's history. Cookies and website storage remain shared and persistent; ordinary cookies are not automatically cleared. Independent private stores are unavailable.",
+    scopedCookies: true,
+    scopedWebsiteData: true,
+  );
 
   /// Registers this class as the default instance of [WebViewPlatform].
   static void registerWith() {

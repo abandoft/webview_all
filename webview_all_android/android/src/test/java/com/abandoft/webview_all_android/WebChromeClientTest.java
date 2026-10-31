@@ -32,6 +32,18 @@ import org.mockito.ArgumentCaptor;
 
 public class WebChromeClientTest {
   @Test
+  public void onReceivedTitle() {
+    final WebChromeClientProxyApi api = mock(WebChromeClientProxyApi.class);
+    when(api.getPigeonRegistrar()).thenReturn(new TestProxyApiRegistrar());
+    final WebChromeClientImpl client = new WebChromeClientImpl(api);
+    final WebView view = mock(WebView.class);
+    client.onReceivedTitle(view, "Changed");
+    verify(api).onReceivedTitle(eq(client), eq(view), eq("Changed"), any());
+    client.onReceivedTitle(view, null);
+    verify(api).onReceivedTitle(eq(client), eq(view), eq(""), any());
+  }
+
+  @Test
   public void onProgressChanged() {
     final WebChromeClientProxyApi mockApi = mock(WebChromeClientProxyApi.class);
     when(mockApi.getPigeonRegistrar()).thenReturn(new TestProxyApiRegistrar());

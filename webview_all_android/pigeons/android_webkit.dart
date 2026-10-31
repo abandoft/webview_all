@@ -414,6 +414,9 @@ abstract class WebView extends View {
   /// Sets the background color for this view.
   void setBackgroundColor(int color);
 
+  /// Applies limited per-view incognito settings without clearing shared data.
+  void enableLimitedIncognito();
+
   /// Destroys the internal state of this WebView.
   void destroy();
 }
@@ -651,6 +654,9 @@ abstract class WebChromeClient {
 
   /// Tell the host application the current progress of loading a page.
   late void Function(WebView webView, int progress)? onProgressChanged;
+
+  /// Notifies the host of changes to the main document title.
+  late void Function(WebView webView, String title)? onReceivedTitle;
 
   /// Tell the client to show a file chooser.
   @async
