@@ -27,7 +27,9 @@ enum class WebviewDownloadEventKind {
   DownloadStarted,
   DownloadCompleted,
   DownloadProgress,
-  DownloadCancelled
+  DownloadCancelled,
+  DownloadFailed,
+  DownloadHandedOff
 };
 
 enum class WebviewPermissionKind {
@@ -59,6 +61,26 @@ struct WebviewDownloadEvent {
   std::string resultFilePath;
   INT64 bytesReceived;
   INT64 totalBytesToReceive;
+  std::string id;
+  std::string error_code;
+  std::string description;
+  bool managed = false;
+};
+
+struct WebviewDownloadRequest {
+  std::string id;
+  std::string url;
+  std::string suggested_filename;
+  std::string mime_type;
+  std::string content_disposition;
+  INT64 content_length = -1;
+};
+
+struct WebviewDownloadDecision {
+  std::string action = "cancel";
+  std::string path;
+  std::string error_code;
+  std::string description;
 };
 
 struct WebviewCookie {
@@ -214,6 +236,11 @@ public:
   typedef std::function<void(bool contains_fullscreen_element)>
       ContainsFullScreenElementChangedCallback;
   typedef std::function<void(WebviewDownloadEvent)> DownloadEventCallback;
+  typedef std::function<void(WebviewDownloadDecision)>
+      DownloadRequestedCompleter;
+  typedef std::function<void(const WebviewDownloadRequest &,
+                             DownloadRequestedCompleter)>
+      DownloadRequestedCallback;
   typedef std::function<void(bool success, bool had_cookies)>
       CookiesClearedCallback;
   typedef std::function<void(bool success, std::vector<WebviewCookie> cookies)>
@@ -274,6 +301,7 @@ public:
   HRESULT SetDevToolsEnabled(bool enabled);
   HRESULT SetBrowserAcceleratorKeysEnabled(bool enabled);
   HRESULT SetDownloadsEnabled(bool enabled);
+  HRESULT SetDownloadDelegateEnabled(bool enabled);
   bool OpenDevTools();
   bool SetBackgroundColor(int32_t color);
   bool SetZoomFactor(double factor);
@@ -287,7 +315,9 @@ public:
                                  WebviewHostResourceAccessKind accessKind);
   bool ClearVirtualHostNameMapping(const std::string &hostName);
 
-  void UpdateDownloadProgress(ICoreWebView2DownloadOperation *download);
+  void OnDownloadRequested(DownloadRequestedCallback callback) {
+    download_requested_callback_ = std::move(callback);
+  }
 
   void OnUrlChanged(UrlChangedCallback callback) {
     url_changed_callback_ = std::move(callback);
@@ -366,6 +396,8 @@ private:
   struct LifetimeState {
     Webview *owner = nullptr;
   };
+  struct PendingDownload;
+  struct ActiveDownload;
 
   HWND parent_window_;
   bool is_valid_ = false;
@@ -390,11 +422,23 @@ private:
   bool java_script_prompt_dialog_enabled_ = false;
   bool navigation_request_callbacks_enabled_ = false;
   bool downloads_enabled_ = true;
+  bool download_delegate_enabled_ = false;
+  uint64_t next_download_id_ = 0;
+  std::map<std::string, std::shared_ptr<PendingDownload>> pending_downloads_;
+  std::map<std::string, std::shared_ptr<ActiveDownload>> active_downloads_;
   HRESULT download_handler_result_ = E_NOINTERFACE;
   uint64_t latest_navigation_request_id_ = 0;
   size_t bypass_next_navigation_count_ = 0;
   std::unordered_multiset<std::string> approved_navigation_urls_;
   std::unordered_set<uint64_t> policy_cancelled_navigation_ids_;
+  std::map<uint64_t, std::string> navigation_urls_;
+  std::unordered_set<uint64_t> download_navigation_ids_;
+  struct DeferredDownloadNavigationError {
+    std::string url;
+    UINT_PTR timer = 0;
+  };
+  std::map<uint64_t, DeferredDownloadNavigationError>
+      deferred_download_navigation_errors_;
   double horizontal_scroll_remainder_ = 0.0;
   double vertical_scroll_remainder_ = 0.0;
   std::shared_ptr<LifetimeState> lifetime_state_ =
@@ -408,6 +452,7 @@ private:
   UrlChangedCallback url_changed_callback_;
   LoadingStateChangedCallback loading_state_changed_callback_;
   DownloadEventCallback download_event_callback_;
+  DownloadRequestedCallback download_requested_callback_;
   OnLoadErrorCallback on_load_error_callback_;
   HttpResponseErrorCallback http_response_error_callback_;
   HistoryChangedCallback history_changed_callback_;
@@ -437,6 +482,20 @@ private:
                                                float scale_factor) const;
   bool UpdateControllerBounds(size_t width, size_t height, float scale_factor);
   void RegisterEventHandlers();
+  HRESULT StartDownload(ICoreWebView2DownloadStartingEventArgs *args);
+  void ResolveDownload(std::shared_ptr<PendingDownload> pending,
+                       const WebviewDownloadDecision &decision);
+  void TrackDownload(const std::string &id,
+                     ICoreWebView2DownloadOperation *operation, bool managed,
+                     const std::wstring &temporary_directory = {},
+                     const std::wstring &target = {});
+  void ReportDownloadState(const std::shared_ptr<ActiveDownload> &download);
+  void FinishDownload(const std::shared_ptr<ActiveDownload> &download,
+                      WebviewDownloadEventKind kind,
+                      const std::string &error_code = {},
+                      const std::string &description = {});
+  void CancelPendingDownloads();
+  void DisposeDownloads();
   void InvalidatePendingNavigationRequests();
   void MarkNavigationApproved(const std::string &url);
   bool ConsumeApprovedNavigation(const std::string &url);

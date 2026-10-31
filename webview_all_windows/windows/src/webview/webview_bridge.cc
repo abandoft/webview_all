@@ -143,6 +143,31 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           messenger, channel_name,
           &flutter::StandardMethodCodec::GetInstance());
+  method_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue> &call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() != "setDownloadDelegateEnabled") {
+          result->NotImplemented();
+          return;
+        }
+        const auto enabled = call.arguments() == nullptr
+                                 ? nullptr
+                                 : std::get_if<bool>(call.arguments());
+        if (enabled == nullptr) {
+          result->Error("invalid_argument",
+                        "Expected a download delegate flag.");
+          return;
+        }
+        const HRESULT hr = webview_->SetDownloadDelegateEnabled(*enabled);
+        if (FAILED(hr)) {
+          result->Error(
+              hr == E_NOINTERFACE ? "not_supported" : "method_failed",
+              "The native download delegate could not be configured.");
+        } else {
+          result->Success();
+        }
+      });
 
   const std::string event_channel_name = channel_name + "/events";
   event_channel_ =
@@ -168,6 +193,8 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
 }
 
 WebviewBridge::~WebviewBridge() {
+  if (method_channel_)
+    method_channel_->SetMethodCallHandler(nullptr);
   event_sink_.reset();
   event_channel_.reset();
   method_channel_.reset();
@@ -261,9 +288,23 @@ void WebviewBridge::RegisterEventHandlers() {
              {flutter::EncodableValue("totalBytesToReceive"),
               flutter::EncodableValue(
                   webviewDownloadEvent.totalBytesToReceive)},
+             {flutter::EncodableValue("id"),
+              flutter::EncodableValue(webviewDownloadEvent.id)},
+             {flutter::EncodableValue("errorCode"),
+              flutter::EncodableValue(webviewDownloadEvent.error_code)},
+             {flutter::EncodableValue("description"),
+              flutter::EncodableValue(webviewDownloadEvent.description)},
+             {flutter::EncodableValue("managed"),
+              flutter::EncodableValue(webviewDownloadEvent.managed)},
          })}});
     EmitEvent(event);
   });
+
+  webview_->OnDownloadRequested(
+      [this](const WebviewDownloadRequest &request,
+             Webview::DownloadRequestedCompleter completer) {
+        OnDownloadRequested(request, std::move(completer));
+      });
 
   webview_->OnHistoryChanged([this](WebviewHistoryChanged historyChanged) {
     const auto event = flutter::EncodableValue(flutter::EncodableMap{
@@ -383,6 +424,54 @@ void WebviewBridge::RegisterEventHandlers() {
              contains_fullscreen_element}});
         EmitEvent(event);
       });
+}
+
+void WebviewBridge::OnDownloadRequested(
+    const WebviewDownloadRequest &request,
+    Webview::DownloadRequestedCompleter completer) {
+  auto arguments =
+      std::make_unique<flutter::EncodableValue>(flutter::EncodableMap{
+          {"id", request.id},
+          {"url", request.url},
+          {"suggestedFilename", request.suggested_filename},
+          {"mimeType", request.mime_type},
+          {"contentDisposition", request.content_disposition},
+          {"contentLength", request.content_length},
+      });
+  method_channel_->InvokeMethod(
+      "downloadRequested", std::move(arguments),
+      std::make_unique<flutter::MethodResultFunctions<flutter::EncodableValue>>(
+          [completer](const flutter::EncodableValue *value) {
+            WebviewDownloadDecision decision;
+            const auto map = value == nullptr
+                                 ? nullptr
+                                 : std::get_if<flutter::EncodableMap>(value);
+            if (map == nullptr) {
+              decision.error_code = "invalid_download_decision";
+              completer(decision);
+              return;
+            }
+            const auto read = [map](const char *key) {
+              const auto found = map->find(flutter::EncodableValue(key));
+              if (found == map->end())
+                return std::string();
+              const auto text = std::get_if<std::string>(&found->second);
+              return text ? *text : std::string();
+            };
+            decision.action = read("action");
+            decision.path = read("path");
+            decision.error_code = read("errorCode");
+            decision.description = read("description");
+            completer(decision);
+          },
+          [completer](const std::string &code, const std::string &message,
+                      const flutter::EncodableValue *) {
+            completer({"cancel", "", code, message});
+          },
+          [completer]() {
+            completer({"cancel", "", "download_delegate_unavailable",
+                       "The download delegate is unavailable."});
+          }));
 }
 
 void WebviewBridge::OnNavigationRequested(

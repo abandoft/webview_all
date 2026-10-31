@@ -183,6 +183,10 @@ class WindowsWebViewController extends PlatformWebViewController {
   Future<void>? _initializationFuture;
   Future<void>? _disposeFuture;
   bool _isDisposed = false;
+  WebViewDownloadDelegate? _downloadDelegate;
+  int _downloadDelegateGeneration = 0;
+  final Map<String, WebViewDownloadDelegate> _downloadDelegates = {};
+  final Map<String, Completer<void>> _downloadDecisionCancellations = {};
   WindowsNavigationDelegate? _currentNavigationDelegate;
   Future<void> Function(bool enabled)? _navigationRequestListener;
   final String _fileVirtualHost = _createWindowsVirtualHost('app-file');
@@ -367,6 +371,9 @@ class WindowsWebViewController extends PlatformWebViewController {
     );
     _throwIfDisposed();
     _subscriptions.addAll(<StreamSubscription<dynamic>>[
+      _webviewController.onDownloadEvent.listen((event) {
+        weakThis.target?._handleDownloadEvent(event);
+      }),
       _webviewController.url.listen((String url) {
         weakThis.target?._handleUrlChanged(url);
       }),
@@ -406,6 +413,149 @@ class WindowsWebViewController extends PlatformWebViewController {
     await _initializationFuture!;
     _throwIfDisposed();
     await _applySettings();
+  }
+
+  @override
+  Future<void> setDownloadDelegate(WebViewDownloadDelegate? delegate) async {
+    _throwIfDisposed();
+    await _ensureInitialized();
+    final previous = _downloadDelegate;
+    final generation = ++_downloadDelegateGeneration;
+    _downloadDelegate = delegate;
+    final weakThis = WeakReference<WindowsWebViewController>(this);
+    try {
+      await _webviewController.setDownloadRequestedDelegate(
+        delegate == null
+            ? null
+            : (arguments) =>
+                  weakThis.target?._handleDownloadRequest(arguments) ??
+                  Future<Map<String, Object?>>.value(
+                    const WebViewDownloadDecision.cancel().toMap(),
+                  ),
+      );
+      _throwIfDisposed();
+    } catch (_) {
+      if (!_isDisposed && generation == _downloadDelegateGeneration) {
+        _downloadDelegate = previous;
+      }
+      rethrow;
+    }
+  }
+
+  Future<Map<String, Object?>> _handleDownloadRequest(
+    Map<dynamic, dynamic> args,
+  ) async {
+    final delegate = _downloadDelegate;
+    final id = args['id'] as String?;
+    if (_isDisposed ||
+        delegate == null ||
+        id == null ||
+        _downloadDelegates.containsKey(id)) {
+      return const WebViewDownloadDecision.cancel().toMap();
+    }
+    String? text(String key) {
+      final value = args[key];
+      return value is String && value.isNotEmpty ? value : null;
+    }
+
+    final length = (args['contentLength'] as num?)?.toInt();
+    final request = WebViewDownloadRequest(
+      id: id,
+      url: text('url') ?? '',
+      suggestedFilename: text('suggestedFilename'),
+      mimeType: text('mimeType'),
+      contentDisposition: text('contentDisposition'),
+      contentLength: length != null && length >= 0 ? length : null,
+      supportedActions: WebViewDownloadAction.values.toSet(),
+    );
+    final cancelled = Completer<void>();
+    _downloadDelegates[id] = delegate;
+    _downloadDecisionCancellations[id] = cancelled;
+    try {
+      final decision = await delegate.decide(
+        request,
+        cancelled: cancelled.future,
+      );
+      if (_isDisposed || !_downloadDelegates.containsKey(id)) {
+        return const WebViewDownloadDecision.cancel().toMap();
+      }
+      if (decision.action == WebViewDownloadAction.saveToFile &&
+          !path.windows.isAbsolute(decision.path!)) {
+        throw ArgumentError.value(
+          decision.path,
+          'path',
+          'An absolute Windows file path is required.',
+        );
+      }
+      return decision.toMap();
+    } catch (error) {
+      if (cancelled.isCompleted) {
+        return const WebViewDownloadDecision.cancel().toMap();
+      }
+      return <String, Object?>{
+        'action': 'cancel',
+        'errorCode': 'download_decision_failed',
+        'description': error.toString(),
+      };
+    } finally {
+      _downloadDecisionCancellations.remove(id);
+    }
+  }
+
+  void _handleDownloadEvent(native_webview.WebviewDownloadEvent event) {
+    if (_isDisposed || !event.managed) return;
+    final delegate = _downloadDelegates[event.id] ?? _downloadDelegate;
+    if (delegate == null) return;
+    switch (event.kind) {
+      case native_types.WebviewDownloadEventKind.downloadStarted:
+        return;
+      case native_types.WebviewDownloadEventKind.downloadProgress:
+        delegate.notifyProgress(
+          WebViewDownloadProgress(
+            id: event.id,
+            bytesReceived: event.bytesReceived,
+            totalBytes: event.totalBytesToReceive >= 0
+                ? event.totalBytesToReceive
+                : null,
+          ),
+        );
+        return;
+      case native_types.WebviewDownloadEventKind.downloadCompleted:
+      case native_types.WebviewDownloadEventKind.downloadCancelled:
+      case native_types.WebviewDownloadEventKind.downloadFailed:
+      case native_types.WebviewDownloadEventKind.downloadHandedOff:
+        _downloadDelegates.remove(event.id);
+        final pending = _downloadDecisionCancellations.remove(event.id);
+        if (pending != null && !pending.isCompleted) pending.complete();
+        delegate.notifyResult(
+          WebViewDownloadResult(
+            id: event.id,
+            status: switch (event.kind) {
+              native_types.WebviewDownloadEventKind.downloadCompleted =>
+                WebViewDownloadStatus.completed,
+              native_types.WebviewDownloadEventKind.downloadCancelled =>
+                WebViewDownloadStatus.cancelled,
+              native_types.WebviewDownloadEventKind.downloadHandedOff =>
+                WebViewDownloadStatus.handedOff,
+              _ => WebViewDownloadStatus.failed,
+            },
+            path:
+                event.kind ==
+                        native_types
+                            .WebviewDownloadEventKind
+                            .downloadCompleted &&
+                    event.resultFilePath.isNotEmpty
+                ? event.resultFilePath
+                : null,
+            errorCode: event.errorCode?.isEmpty ?? true
+                ? null
+                : event.errorCode,
+            description: event.description?.isEmpty ?? true
+                ? null
+                : event.description,
+          ),
+        );
+    }
   }
 
   Future<void> _applySettings() async {
@@ -474,6 +624,20 @@ class WindowsWebViewController extends PlatformWebViewController {
     }
 
     _isDisposed = true;
+    for (final entry in _downloadDelegates.entries.toList()) {
+      entry.value.notifyResult(
+        WebViewDownloadResult(
+          id: entry.key,
+          status: WebViewDownloadStatus.cancelled,
+        ),
+      );
+    }
+    _downloadDelegates.clear();
+    for (final pending in _downloadDecisionCancellations.values) {
+      if (!pending.isCompleted) pending.complete();
+    }
+    _downloadDecisionCancellations.clear();
+    _downloadDelegate = null;
     _cancelPendingAsyncJavaScriptInvocations(
       const JavaScriptExecutionException(
         name: 'AbortError',

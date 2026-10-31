@@ -44,6 +44,194 @@ void main() {
     expect(WebViewPlatform.instance, isA<WindowsWebViewPlatform>());
   });
 
+  test(
+    'download delegate preserves native request and reports saved result',
+    () async {
+      final controller = _createWindowsController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final requests = <WebViewDownloadRequest>[];
+      final progress = <WebViewDownloadProgress>[];
+      final results = <WebViewDownloadResult>[];
+      await controller.setDownloadDelegate(
+        WebViewDownloadDelegate(
+          onDownloadRequest: (request) {
+            requests.add(request);
+            return const WebViewDownloadDecision.saveToFile(
+              r'C:\chosen\saved.txt',
+            );
+          },
+          onDownloadProgress: progress.add,
+          onDownloadResult: results.add,
+        ),
+      );
+      expect(
+        await _invokeWindowsWebViewMethod(
+          'downloadRequested',
+          <String, Object?>{
+            'id': 'one',
+            'url': 'blob:https://example.test/resource',
+            'suggestedFilename': 'source.txt',
+            'mimeType': 'text/plain',
+            'contentDisposition': 'attachment',
+            'contentLength': -1,
+          },
+        ),
+        <String, Object?>{
+          'action': 'saveToFile',
+          'path': r'C:\chosen\saved.txt',
+        },
+      );
+      expect(requests.single.contentLength, isNull);
+      expect(requests.single.url, 'blob:https://example.test/resource');
+      await _emitWindowsWebViewEvent(<String, Object?>{
+        'type': 'downloadEvent',
+        'value': <String, Object?>{
+          'id': 'one',
+          'managed': true,
+          'kind': 2,
+          'url': requests.single.url,
+          'resultFilePath': '',
+          'bytesReceived': 42,
+          'totalBytesToReceive': -1,
+        },
+      });
+      await _emitWindowsWebViewEvent(<String, Object?>{
+        'type': 'downloadEvent',
+        'value': <String, Object?>{
+          'id': 'one',
+          'managed': true,
+          'kind': 1,
+          'url': requests.single.url,
+          'resultFilePath': r'C:\chosen\saved.txt',
+          'bytesReceived': 42,
+          'totalBytesToReceive': 42,
+        },
+      });
+      expect(progress.single.bytesReceived, 42);
+      expect(progress.single.totalBytes, isNull);
+      expect(results.single.status, WebViewDownloadStatus.completed);
+      expect(results.single.path, r'C:\chosen\saved.txt');
+    },
+  );
+
+  test(
+    'download handler failures cancel instead of replaying navigation',
+    () async {
+      final loaded = <String>[];
+      _mockWindowsWebViewCreation(onLoadUrl: loaded.add);
+      final controller = _createWindowsController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final results = <WebViewDownloadResult>[];
+      await controller.setDownloadDelegate(
+        WebViewDownloadDelegate(
+          onDownloadRequest: (_) => throw StateError('host refused'),
+          onDownloadResult: results.add,
+        ),
+      );
+      final decision =
+          await _invokeWindowsWebViewMethod(
+                'downloadRequested',
+                <String, Object?>{
+                  'id': 'bad',
+                  'url': 'https://example.test/attachment',
+                },
+              )
+              as Map;
+      expect(decision['action'], 'cancel');
+      expect(decision['errorCode'], 'download_decision_failed');
+      await _emitWindowsWebViewEvent(<String, Object?>{
+        'type': 'downloadEvent',
+        'value': <String, Object?>{
+          'id': 'bad',
+          'managed': true,
+          'kind': 4,
+          'url': 'https://example.test/attachment',
+          'resultFilePath': '',
+          'bytesReceived': 0,
+          'totalBytesToReceive': -1,
+          'errorCode': 'download_decision_failed',
+          'description': 'host refused',
+        },
+      });
+      expect(results.single.status, WebViewDownloadStatus.failed);
+      expect(loaded, isEmpty);
+    },
+  );
+
+  test(
+    'removing delegate cancels pending native decisions without losing owner',
+    () async {
+      final controller = _createWindowsController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final ready = Completer<void>();
+      final choice = Completer<WebViewDownloadDecision>();
+      final results = <WebViewDownloadResult>[];
+      await controller.setDownloadDelegate(
+        WebViewDownloadDelegate(
+          onDownloadRequest: (_) {
+            ready.complete();
+            return choice.future;
+          },
+          onDownloadResult: results.add,
+        ),
+      );
+      final response = _invokeWindowsWebViewMethod(
+        'downloadRequested',
+        <String, Object?>{'id': 'pending', 'url': 'https://example.test/file'},
+      );
+      await ready.future;
+      await controller.setDownloadDelegate(null);
+      await _emitWindowsWebViewEvent(<String, Object?>{
+        'type': 'downloadEvent',
+        'value': <String, Object?>{
+          'id': 'pending',
+          'managed': true,
+          'kind': 3,
+          'url': 'https://example.test/file',
+          'resultFilePath': '',
+          'bytesReceived': 0,
+          'totalBytesToReceive': -1,
+        },
+      });
+      expect((await response as Map)['action'], 'cancel');
+      expect(results.single.status, WebViewDownloadStatus.cancelled);
+      choice.complete(const WebViewDownloadDecision.platformDefault());
+    },
+  );
+
+  test(
+    'dispose cancels a pending download without waiting for host UI',
+    () async {
+      final controller = _createWindowsController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final ready = Completer<void>();
+      final choice = Completer<WebViewDownloadDecision>();
+      final results = <WebViewDownloadResult>[];
+      await controller.setDownloadDelegate(
+        WebViewDownloadDelegate(
+          onDownloadRequest: (_) {
+            ready.complete();
+            return choice.future;
+          },
+          onDownloadResult: results.add,
+        ),
+      );
+      final response = _invokeWindowsWebViewMethod(
+        'downloadRequested',
+        <String, Object?>{'id': 'dispose', 'url': 'https://example.test/file'},
+      );
+      await ready.future;
+      await controller.dispose();
+      expect((await response as Map)['action'], 'cancel');
+      expect(results.single.status, WebViewDownloadStatus.cancelled);
+      choice.complete(const WebViewDownloadDecision.platformDefault());
+    },
+  );
+
   _widgetTest('synchronizes native focus without refocusing the page', (
     tester,
   ) async {
@@ -3227,6 +3415,12 @@ void _mockWindowsWebViewCreation({
   });
 
   messenger.setMockMethodCallHandler(
+    MethodChannel('$windowsWebViewChannelPrefix/$_activeMockTextureId'),
+    (MethodCall call) async => call.method == 'setDownloadDelegateEnabled'
+        ? null
+        : throw MissingPluginException(),
+  );
+  messenger.setMockMethodCallHandler(
     MethodChannel('$windowsWebViewChannelPrefix/$_activeMockTextureId/events'),
     (MethodCall methodCall) async => null,
   );
@@ -3304,6 +3498,10 @@ void _clearWindowsWebViewCreationMock() {
   messenger.setMockMessageHandler(_hostApiChannel('setSurfaceAttached'), null);
   messenger.setMockMessageHandler(_hostApiChannel('setFocus'), null);
   messenger.setMockMessageHandler(_hostApiChannel('disposeWebView'), null);
+  messenger.setMockMethodCallHandler(
+    MethodChannel('$windowsWebViewChannelPrefix/$_activeMockTextureId'),
+    null,
+  );
   messenger.setMockMethodCallHandler(
     MethodChannel('$windowsWebViewChannelPrefix/$_activeMockTextureId/events'),
     null,

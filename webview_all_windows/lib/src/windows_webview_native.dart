@@ -29,13 +29,21 @@ class WebviewDownloadEvent {
   final String resultFilePath;
   final int bytesReceived;
   final int totalBytesToReceive;
+  final String id;
+  final String? errorCode;
+  final String? description;
+  final bool managed;
   const WebviewDownloadEvent(
     this.kind,
     this.url,
     this.resultFilePath,
     this.bytesReceived,
-    this.totalBytesToReceive,
-  );
+    this.totalBytesToReceive, {
+    this.id = '',
+    this.errorCode,
+    this.description,
+    this.managed = false,
+  });
 }
 
 class WebviewHttpResponseError {
@@ -79,6 +87,9 @@ typedef NavigationRequestedDelegate =
       bool isUserInitiated,
       bool isRedirected,
     );
+
+typedef DownloadRequestedDelegate =
+    Future<Map<String, Object?>> Function(Map<dynamic, dynamic> request);
 
 typedef JavaScriptDialogRequestedDelegate =
     FutureOr<Map<String, Object?>?> Function(
@@ -217,6 +228,29 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   JavaScriptDialogRequestedDelegate? _javaScriptDialogRequested;
   HttpAuthRequestedDelegate? _httpAuthRequested;
   SslAuthErrorRequestedDelegate? _sslAuthErrorRequested;
+  DownloadRequestedDelegate? _downloadRequested;
+  int _downloadDelegateGeneration = 0;
+
+  Future<void> setDownloadRequestedDelegate(
+    DownloadRequestedDelegate? delegate,
+  ) async {
+    if (_isDisposed) throw StateError('The Windows WebView is disposed.');
+    final previous = _downloadRequested;
+    final generation = ++_downloadDelegateGeneration;
+    _downloadRequested = delegate;
+    try {
+      await ready;
+      await _methodChannel.invokeMethod<void>(
+        'setDownloadDelegateEnabled',
+        delegate != null,
+      );
+    } catch (_) {
+      if (!_isDisposed && generation == _downloadDelegateGeneration) {
+        _downloadRequested = previous;
+      }
+      rethrow;
+    }
+  }
 
   void setPermissionRequestedDelegate(
     PermissionRequestedDelegate? permissionRequested,
@@ -400,6 +434,10 @@ class WebviewController extends ValueNotifier<WebviewValue> {
               map['value']['resultFilePath'],
               map['value']['bytesReceived'],
               map['value']['totalBytesToReceive'],
+              id: map['value']['id'] as String? ?? '',
+              errorCode: map['value']['errorCode'] as String?,
+              description: map['value']['description'] as String?,
+              managed: map['value']['managed'] == true,
             );
             _downloadEventStreamController.add(value);
             break;
@@ -465,6 +503,14 @@ class WebviewController extends ValueNotifier<WebviewValue> {
       });
 
       _methodChannel.setMethodCallHandler((call) {
+        if (call.method == 'downloadRequested') {
+          return _downloadRequested?.call(
+                call.arguments as Map<dynamic, dynamic>,
+              ) ??
+              Future<Map<String, Object?>>.value(<String, Object?>{
+                'action': 'cancel',
+              });
+        }
         if (call.method == 'permissionRequested') {
           return _onPermissionRequested(
             call.arguments as Map<dynamic, dynamic>,
@@ -653,6 +699,7 @@ class WebviewController extends ValueNotifier<WebviewValue> {
     _javaScriptDialogRequested = null;
     _httpAuthRequested = null;
     _sslAuthErrorRequested = null;
+    _downloadRequested = null;
     _closeStreams();
     if (disposalError != null) {
       Error.throwWithStackTrace(

@@ -119,6 +119,8 @@ private:
   std::optional<WindowsRenderingError> initialization_error_;
 
   void RegisterEventHandlers();
+  void OnDownloadRequested(const WebviewDownloadRequest &request,
+                           Webview::DownloadRequestedCompleter completer);
   std::optional<WindowsRenderingError> UpdateRenderingState();
 
   template <typename T> void EmitEvent(const T &value) {
