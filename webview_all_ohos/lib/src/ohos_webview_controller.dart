@@ -224,6 +224,154 @@ class OhosWebViewPermissionResourceType extends WebViewPermissionResourceType {
 
 /// Implementation of the [PlatformWebViewController] with the Ohos WebView API.
 class OhosWebViewController extends PlatformWebViewController {
+  WebViewDownloadDelegate? _downloadDelegate;
+  MethodChannel? _downloadChannel;
+  bool _downloadViewDisposed = false;
+  int _downloadDelegateGeneration = 0;
+  final Map<String, WebViewDownloadDelegate> _downloadDelegates =
+      <String, WebViewDownloadDelegate>{};
+  final Set<String> _finishedDownloads = <String>{};
+  final Map<String, Completer<void>> _downloadDecisionCancels =
+      <String, Completer<void>>{};
+
+  @override
+  Future<void> setDownloadDelegate(WebViewDownloadDelegate? delegate) async {
+    if (_downloadViewDisposed) {
+      throw StateError('The OHOS WebView has been disposed.');
+    }
+    if (identical(delegate, _downloadDelegate)) {
+      return;
+    }
+    for (final cancel in _downloadDecisionCancels.values) {
+      if (!cancel.isCompleted) cancel.complete();
+    }
+    if (_downloadChannel == null) {
+      _downloadChannel = MethodChannel(
+        'com.abandoft.webview_all_ohos/download/$webViewIdentifier',
+      );
+      final weak = WeakReference<OhosWebViewController>(this);
+      _downloadChannel!.setMethodCallHandler((call) async {
+        final target = weak.target;
+        if (target == null) {
+          return const WebViewDownloadDecision.cancel().toMap();
+        }
+        return target._handleDownloadCall(call);
+      });
+    }
+    final previous = _downloadDelegate;
+    final generation = ++_downloadDelegateGeneration;
+    _downloadDelegate = delegate;
+    try {
+      await const MethodChannel(
+        'com.abandoft.webview_all_ohos/host_api',
+      ).invokeMethod<void>('WebView.setDownloadDelegate', <String, Object?>{
+        'instanceId': webViewIdentifier,
+        'enabled': delegate != null,
+      });
+    } catch (_) {
+      if (!_downloadViewDisposed && generation == _downloadDelegateGeneration) {
+        _downloadDelegate = previous;
+      }
+      rethrow;
+    }
+  }
+
+  Future<Object?> _handleDownloadCall(MethodCall call) async {
+    final event =
+        (call.arguments as Map<Object?, Object?>?) ?? <Object?, Object?>{};
+    final id = '${event['id'] ?? ''}';
+    switch (call.method) {
+      case 'request':
+        final delegate = _downloadDelegate;
+        if (delegate == null ||
+            _downloadViewDisposed ||
+            _finishedDownloads.contains(id)) {
+          return const WebViewDownloadDecision.cancel().toMap();
+        }
+        _downloadDelegates[id] = delegate;
+        final cancel = Completer<void>();
+        _downloadDecisionCancels[id] = cancel;
+        try {
+          final decision = await delegate.decide(
+            WebViewDownloadRequest(
+              id: id,
+              url: '${event['url'] ?? ''}',
+              suggestedFilename: event['suggestedFilename'] as String?,
+              mimeType: event['mimeType'] as String?,
+              contentLength: (event['totalBytes'] as num?)?.toInt(),
+              supportedActions: WebViewDownloadAction.values.toSet(),
+            ),
+            cancelled: cancel.future,
+          );
+          if (_downloadViewDisposed || !_downloadDelegates.containsKey(id)) {
+            return const WebViewDownloadDecision.cancel().toMap();
+          }
+          return decision.toMap();
+        } catch (error) {
+          if (cancel.isCompleted) {
+            return const WebViewDownloadDecision.cancel().toMap();
+          }
+          return <String, Object?>{
+            ...const WebViewDownloadDecision.cancel().toMap(),
+            'error': error.toString(),
+          };
+        } finally {
+          _downloadDecisionCancels.remove(id);
+        }
+      case 'progress':
+        _downloadDelegates[id]?.notifyProgress(
+          WebViewDownloadProgress(
+            id: id,
+            bytesReceived: (event['bytesReceived'] as num?)?.toInt() ?? 0,
+            totalBytes: (event['totalBytes'] as num?)?.toInt(),
+          ),
+        );
+        return null;
+      case 'result':
+        if (!_finishedDownloads.add(id)) return null;
+        if (_finishedDownloads.length > 256) {
+          _finishedDownloads.remove(_finishedDownloads.first);
+        }
+        final cancel = _downloadDecisionCancels.remove(id);
+        if (cancel != null && !cancel.isCompleted) cancel.complete();
+        final delegate = _downloadDelegates.remove(id) ?? _downloadDelegate;
+        delegate?.notifyResult(
+          WebViewDownloadResult(
+            id: id,
+            status: WebViewDownloadStatus.values.byName('${event['status']}'),
+            path: event['path'] as String?,
+            errorCode: event['errorCode'] as String?,
+            description: event['description'] as String?,
+          ),
+        );
+        return null;
+      case 'disposed':
+        _downloadViewDisposed = true;
+        _downloadDelegate = null;
+        for (final cancel in _downloadDecisionCancels.values) {
+          if (!cancel.isCompleted) cancel.complete();
+        }
+        _downloadDecisionCancels.clear();
+        final pending = Map<String, WebViewDownloadDelegate>.of(
+          _downloadDelegates,
+        );
+        _downloadDelegates.clear();
+        _finishedDownloads.clear();
+        for (final entry in pending.entries) {
+          entry.value.notifyResult(
+            WebViewDownloadResult(
+              id: entry.key,
+              status: WebViewDownloadStatus.cancelled,
+              description: 'The WebView was disposed.',
+            ),
+          );
+        }
+        _downloadChannel?.setMethodCallHandler(null);
+        return null;
+    }
+    throw MissingPluginException('Unknown download callback: ${call.method}');
+  }
+
   /// Creates a new [OhosWebViewController].
   OhosWebViewController(PlatformWebViewControllerCreationParams params)
     : super.implementation(

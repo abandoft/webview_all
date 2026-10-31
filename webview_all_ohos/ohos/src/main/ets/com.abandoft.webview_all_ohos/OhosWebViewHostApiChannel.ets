@@ -260,6 +260,10 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
           this.webViewApi.setDownloadListener(call.argument('instanceId'), call.argument('listenerInstanceId'));
           result.success(null);
           return;
+        case 'WebView.setDownloadDelegate':
+          this.webViewApi.setDownloadDelegate(call.argument('instanceId'), call.argument('enabled'));
+          result.success(null);
+          return;
         case 'WebView.setWebChromeClient':
           this.webViewApi.setWebChromeClient(call.argument('instanceId'), call.argument('clientInstanceId'));
           result.success(null);

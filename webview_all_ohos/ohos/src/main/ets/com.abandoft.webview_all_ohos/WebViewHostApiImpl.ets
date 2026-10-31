@@ -251,6 +251,11 @@ export class WebViewHostApiImpl {
     this.webView(instanceId).setDownloadListener(this.instanceManager.getInstance<DownloadListener>(listenerInstanceId));
   }
 
+  setDownloadDelegate(instanceId: number, enabled: boolean): void {
+    if (typeof enabled !== 'boolean') throw new Error('enabled must be a boolean.');
+    this.webView(instanceId).setDownloadDelegate(enabled, this.binaryMessenger, instanceId, this.context);
+  }
+
   setWebChromeClient(instanceId: number, clientInstanceId: number): void {
     this.webView(instanceId).setWebChromeClient(this.instanceManager.getInstance<WebChromeClient>(clientInstanceId));
   }

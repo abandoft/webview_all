@@ -16,6 +16,7 @@ import { WebSettings } from './WebSettingsHostApiImpl';
 import { WebViewClient } from './WebViewClientHostApiImpl';
 import { WebViewFlutterApiImpl } from './WebViewFlutterApiImpl';
 import { WebViewSettings } from './WebViewSettings';
+import { WebDownloadCoordinator } from './WebDownloadCoordinator';
 
 const TAG: string = 'WebViewPlatformView';
 
@@ -84,6 +85,7 @@ export class WebViewPlatformView extends PlatformView {
 
   private url: string = '';
   private downloadListener: DownloadListener | null = null;
+  private downloadCoordinator?: WebDownloadCoordinator;
   private webChromeClient: WebChromeClient | null = null;
   private webViewClient: WebViewClient | null = null;
   private webSettings: WebSettings | null = null;
@@ -109,6 +111,7 @@ export class WebViewPlatformView extends PlatformView {
   }
 
   onDownloadStart = (event: ESObject): void => {
+    if (this.downloadCoordinator?.ownsNotifications()) return;
     if (!this.documentStartScripts.isDisposed() && this.downloadListener) {
       this.downloadListener.onDownloadStart(
         event.url,
@@ -294,6 +297,7 @@ export class WebViewPlatformView extends PlatformView {
         this.setCustomUserAgent(this.userAgentString);
       }
       this.reRegisterJavaScriptChannels();
+      this.downloadCoordinator?.onAttached();
       this.documentStartScripts.markControllerAttached();
     } catch (error) {
       const failure = error instanceof Error ? error : new Error(String(error));
@@ -370,6 +374,7 @@ export class WebViewPlatformView extends PlatformView {
       return;
     }
     const attached = this.documentStartScripts.isControllerAttached();
+    this.downloadCoordinator?.dispose();
     this.documentStartScripts.dispose();
     this.isWebviewBinding = false;
     this.webSettings?.onSettingsChanged(undefined);
@@ -456,6 +461,19 @@ export class WebViewPlatformView extends PlatformView {
 
   setDownloadListener(listener: DownloadListener): void {
     this.downloadListener = listener;
+  }
+
+  setDownloadDelegate(enabled: boolean, messenger: BinaryMessenger, identifier: number,
+    context: common.Context): void {
+    this.ensureNotDisposed();
+    if (!this.downloadCoordinator && !enabled) return;
+    if (!this.downloadCoordinator) {
+      this.downloadCoordinator = new WebDownloadCoordinator(messenger, identifier,
+        this.controller, context, (item: web_webview.WebDownloadItem): void => {
+          this.downloadListener?.onDownloadStart(item.getUrl(), '', '', item.getMimeType(), item.getTotalBytes());
+        });
+    }
+    this.downloadCoordinator.setEnabled(enabled, this.documentStartScripts.isControllerAttached());
   }
 
   setWebViewClient(webViewClient: WebViewClient): void {

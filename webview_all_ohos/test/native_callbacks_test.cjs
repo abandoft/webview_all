@@ -35,6 +35,7 @@ function loadSource(name) {
       if (specifier.endsWith('/MethodChannel')) return { default: MethodChannel };
       if (specifier.endsWith('/Log')) return { default: { e: (...args) => logs.push(args) } };
       if (specifier === '@ohos.web.webview') return { default: {} };
+      if (specifier === '@ohos.file.fs') return { default: {} };
       assert.ok(specifier.startsWith('./'), 'Unexpected import: ' + specifier);
       return loadSource(specifier.substring(2));
     },

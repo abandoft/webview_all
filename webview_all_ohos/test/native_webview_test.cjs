@@ -19,6 +19,7 @@ class NativeController {
 }
 const nativeWeb = { WebviewController: NativeController, WebCookieManager: class {} };
 const overrides = {
+  '@ohos.file.fs': { default: {} },
   '@ohos.web.webview': { default: nativeWeb },
   '@ohos/flutter_ohos/src/main/ets/plugin/platform/PlatformView': { default: class {} },
   '@ohos/flutter_ohos/src/main/ets/util/Log': { default: { e() {}, d() {} } },
