@@ -1,3 +1,10 @@
+## 1.4.8
+
+* Add download delegates with platform-supported save targets, progress updates, and results.
+* Preserve existing files during same-name Linux downloads and prevent false page loading errors.
+* Fix WebView alignment with custom application scaling and hide covered WebViews during page navigation on Linux.
+* Fix failed attachment downloads for custom-header and POST requests on Linux and Web.
+
 ## 1.4.7
 
 * Support custom website data and cache directories on Linux.
