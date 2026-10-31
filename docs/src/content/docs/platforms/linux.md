@@ -43,7 +43,7 @@ await LinuxWebViewController.ensureEnvironment(
 );
 ```
 
-All WebViews, cookies, and website-data cleanup share this environment.
+Normal WebViews, cookies, and website-data cleanup share this environment.
 `userDataPath` selects persistent website data; `cachePath` selects caches.
 Leaving both options null reuses the selected environment, or uses WebKitGTK's
 default directories when none has been selected. Relative paths are resolved
@@ -65,10 +65,22 @@ Existing website data is not migrated to a new directory. Keep the same paths
 across app launches to retain access to that data. Cookie lifetime and
 persistence behavior are unchanged.
 
+## Incognito Sessions
+
+Set `LinuxWebViewControllerCreationParams(incognito: true)` when creating a
+controller to use a separate ephemeral WebKitGTK context. Each such controller
+has its own cookies and website storage, independent of normal WebViews and
+other incognito controllers. Its data is not persisted to the shared profile.
+
+Shared cookie and website-data managers do not access these sessions. Creating
+an incognito controller does not select or lock the shared environment's data
+directories. Dispose the controller when the session ends.
+
 ## Creation Params
 
 ```dart
 final params = const LinuxWebViewControllerCreationParams(
+  incognito: false,
   developerExtrasEnabled: true,
   downloadsEnabled: false,
   javascriptCanOpenWindowsAutomatically: true,
@@ -85,7 +97,8 @@ final params = const LinuxWebViewControllerCreationParams(
 );
 ```
 
-Each field is nullable. `null` leaves the WebKitGTK default unchanged.
+`incognito` defaults to `false`. Other fields are nullable; `null` leaves the
+WebKitGTK default unchanged.
 
 Downloads are allowed by default. Set `downloadsEnabled: false` at creation, or
 await `setDownloadsEnabled(false)` before loading content, to cancel new

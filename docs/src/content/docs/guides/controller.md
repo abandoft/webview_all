@@ -187,3 +187,53 @@ switch (controller.platform) {
 ```
 
 Always guard casts by platform type. Flutter tests, desktop runners, and web builds can register different platform implementations.
+
+
+## Private sessions (1.4.9)
+
+Use `WebViewSession` to choose the website-data store before creating a page and own its lifecycle:
+
+```dart
+final capabilities = await WebViewSession.getCapabilities();
+final session = await WebViewSession.create(
+  mode: WebViewSessionMode.incognito,
+);
+if (session == null) return; // A diagnostic explains the limitation or failure.
+
+final controller = session.controller;
+await session.cookieManager.setCookie(
+  const WebViewCookie(name: 'account', value: 'temporary', domain: 'example.com'),
+);
+// Display controller with WebViewWidget if needed. Remove the widget before closing.
+await session.close();
+```
+
+`shared` selects the ordinary shared store; `incognito` (the default) selects platform private browsing handling;
+`incognitoSupport` distinguishes limited handling from a native private store.
+`isolatedIncognito` requires an independent native nonpersistent store.
+Choose the mode at creation; it cannot be changed later. Unsupported modes and creation
+failures print a diagnostic and return `null`, so the app can continue. They never fall
+back to ordinary browsing or clear shared cookies to simulate private browsing.
+
+| Platform | Private sessions |
+| --- | --- |
+| iOS / macOS, Linux | Independent nonpersistent stores. |
+| Windows | Requires WebView2 Runtime support for InPrivate controller options; each session uses its own profile. |
+| OHOS | Supports `incognito`. Native private views share one private store; `isolatedIncognito` is unavailable. |
+| Android | Limited: disables cache use and available form saving and clears this view’s history. Cookies and website storage remain shared and may persist. |
+| Web | Browsers do not expose independent private stores to iframes. |
+
+`session.cookieManager` and `session.dataManager` address the selected store. Default
+global managers address ordinary data, although OHOS cache clearing is global.
+Android limited-incognito managers also address ordinary shared data; opening and
+closing a limited session never automatically clear shared cookies. On OHOS, private clearing also
+affects other native private views; ordinary data remains separate. Session cache
+clearing is unsupported because ArkWeb only exposes a global cache operation. Inspect
+`WebViewDataClearingResult` for individual data categories. Unsupported Web session data
+operations print diagnostics and return empty results or unsupported categories.
+
+Remove `WebViewWidget` before calling `close()`. Closing is idempotent; the controller
+and session managers cannot be reused afterward. `OffscreenWebViewSession` manages
+an offscreen controller's lifetime and uses ordinary storage by default.
+Private mode does not promise zero OS temporary files, hide network identity, or remove
+data saved separately by the app.

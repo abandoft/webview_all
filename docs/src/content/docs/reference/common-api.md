@@ -35,6 +35,16 @@ Loading:
 | `loadHtmlString(String html, {String? baseUrl})` | `Future<void>` | Loads in-memory HTML. |
 | `isOffscreenWebViewSupported()` | `Future<bool>` | Whether controller operations can run without `WebViewWidget`. |
 
+## `WebViewSession` (1.4.9)
+
+| API | Use |
+| --- | --- |
+| `getCapabilities()` | Returns supported session modes, close support, and scoped data-management support. |
+| `create({mode, onPermissionRequest})` | Returns an owned session, or logs the reason and returns `null`. Defaults to `incognito`; inspect `incognitoSupport` for the support level. |
+| `controller`, `cookieManager`, `dataManager` | The owned page and managers for its selected data store. |
+| `mode`, `capabilities`, `isClosed` | Session mode, runtime support, and lifecycle state. |
+| `close()` | Idempotently closes the session; remove its widget first. |
+
 ## `OffscreenWebViewSession`
 
 | API | Use |
@@ -121,6 +131,7 @@ Callbacks:
 | `onProgress` | `void Function(int progress)` | Load progress. |
 | `onWebResourceError` | `void Function(WebResourceError error)` | Resource load error. |
 | `onUrlChange` | `void Function(UrlChange change)` | URL changed. |
+| `onTitleChange` | `void Function(String title)` | Main document title changed; empty titles follow engine defaults. |
 | `onHttpAuthRequest` | `void Function(HttpAuthRequest request)` | HTTP auth challenge. |
 | `onHttpError` | `void Function(HttpResponseError error)` | HTTP status error. |
 | `onSslAuthError` | `void Function(SslAuthError request)` | Recoverable SSL certificate error. |
@@ -208,5 +219,6 @@ Methods:
 - `WebViewPlatform`
 - `WebViewUserScript`
 - `WebViewUserScriptInjectionTime`
+- `WebViewSession`, `WebViewSessionMode`, `WebViewSessionCapabilities`, `WebViewIncognitoSupport`
 - `OffscreenWebViewSession`
 - platform creation params for controller, delegate, widget, cookie manager, and data manager

@@ -70,3 +70,14 @@ description: webview_all latest 路由的跨平台能力覆盖。
 | 缩放 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | touch-action 限制 |
 | UA override | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 非空 override 不支持 |
 | Overscroll | 完整 | 有限制 | 不支持，打印信息并忽略 | CSS 实现 | 完整 | CSS 实现 | iframe CSS |
+
+
+## 会话模式（1.4.9）
+
+| 模式 | Android | iOS | macOS | Windows | Linux | OHOS | Web |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `shared` | 支持 | 支持 | 支持 | 支持 | 支持 | 支持 | 支持，需挂载 iframe |
+| `incognito` | 有限，不隔离网站数据 | 支持 | 支持 | 依赖 Runtime | 支持 | 支持，无痕页面共享存储 | 不支持 |
+| `isolatedIncognito` | 不支持 | 支持 | 支持 | 依赖 Runtime | 支持 | 不支持 | 不支持 |
+
+使用 `WebViewSession.getCapabilities()` 查询当前运行环境；不支持的创建请求会打印原因并返回 `null`。

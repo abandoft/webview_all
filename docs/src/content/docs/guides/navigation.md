@@ -17,6 +17,7 @@ await controller.setNavigationDelegate(
     onPageStarted: (String url) {},
     onProgress: (int progress) {},
     onPageFinished: (String url) {},
+    onTitleChange: (title) {},
     onUrlChange: (UrlChange change) {},
     onWebResourceError: (WebResourceError error) {},
     onHttpError: (HttpResponseError error) {},
@@ -131,3 +132,12 @@ The web platform cannot expose recoverable TLS decisions. Browser iframe APIs do
 | Linux | WebKitGTK reports navigation requests, HTTP auth, SSL auth, permission requests, and JavaScript dialogs through an event channel. |
 | OHOS | ArkWeb reports HTTP errors, HTTP auth, SSL auth, visited history updates, and request details including method and headers where available. |
 | Web | Navigation decisions are enforced for controller-initiated loads. Browser iframe navigations inside cross-origin pages are not fully observable. |
+
+
+## Dynamic titles (1.4.9)
+
+`NavigationDelegate.onTitleChange` reports changes to the main document title.
+Empty titles follow the engine's fallback behavior, which may report a URL. Use it to update window or tab titles; `getTitle()` remains
+available for explicit reads. On Web, notifications require same-origin content or
+plugin-managed isolated HTML. Ordinary cross-origin iframes print a limitation and
+cannot expose title changes.

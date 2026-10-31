@@ -39,6 +39,7 @@ Legend:
 | `onPageStarted`/`onPageFinished` | Full | Full | Full | Full | Full | Full | Limited, iframe load events |
 | `onProgress` | Full | Full | Full | Full | Full | Full | Limited, synthetic `0`/`100` plus load event |
 | `onUrlChange` | Full | Full | Full | Full | Full | Full | Limited, logical URL where needed |
+| `onTitleChange` | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
 | `onWebResourceError` | Full | Full | Full | Full | Full | Full | Limited, fetch failures only for custom request path |
 | `onHttpError` | Full | Full | Full | Full | Full | Full | Limited, fetch-backed loads expose response |
 | HTTP auth callback | Full | Full | Full | Full | Full | Full | No browser iframe event |
@@ -88,3 +89,15 @@ Legend:
 | Linux | WebKitGTK developer extras, inspector, media settings, page cache, file URL access, font sizes, zoom factor, JavaScript dialogs, HTTP/SSL auth, permission requests. |
 | OHOS | ArkWeb settings, debugging, file selector, geolocation prompts, custom fullscreen widget, third-party cookies, OHOS permission resource types. |
 | Web | iframe attributes, sandbox/referrer/permissions policy, fetch-backed requests, isolated managed-HTML bridge, media permission mediation. |
+
+
+## Session modes (1.4.9)
+
+| Mode | Android | iOS | macOS | Windows | Linux | OHOS | Web |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `shared` | Full | Full | Full | Full | Full | Full | Full, iframe must be attached |
+| `incognito` | Limited, shared website data | Full | Full | Runtime capability | Full | Shared native private store | No |
+| `isolatedIncognito` | No | Full | Full | Runtime capability | Full | No | No |
+
+Query `WebViewSession.getCapabilities()` for the running environment. Unsupported
+creation requests print a diagnostic and return `null`.

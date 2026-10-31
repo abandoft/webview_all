@@ -37,7 +37,7 @@ await LinuxWebViewController.ensureEnvironment(
 );
 ```
 
-所有 WebView、Cookie 和网站数据清理共用该环境。`userDataPath` 指定持久化网站
+普通 WebView、Cookie 和网站数据清理共用该环境。`userDataPath` 指定持久化网站
 数据目录，`cachePath` 指定缓存目录。两项都为 `null` 时，复用已选环境；尚未选择
 时沿用 WebKitGTK 默认目录。相对路径按当前工作目录解析。
 
@@ -54,10 +54,20 @@ await LinuxWebViewController.ensureEnvironment(
 切换目录不会自动迁移旧网站数据。应用后续启动应继续使用相同路径，才能访问该
 数据。Cookie 的有效期和持久化行为保持原样。
 
+## 无痕会话
+
+创建 controller 时设置 `LinuxWebViewControllerCreationParams(incognito: true)`，
+即可使用独立的临时 WebKitGTK context。每个无痕 controller 的 Cookie 和网站存储
+彼此隔离，也不与普通 WebView 共用；数据不会写入共享配置的持久化目录。
+
+共享 Cookie 和网站数据管理器不访问这些会话。创建无痕 controller 不会选择或锁定
+共享环境的数据目录。会话结束时调用 controller 的 `dispose()`。
+
 ## 创建参数
 
 ```dart
 final params = const LinuxWebViewControllerCreationParams(
+  incognito: false,
   developerExtrasEnabled: true,
   downloadsEnabled: false,
   mediaPlaybackRequiresUserGesture: false,
@@ -68,7 +78,7 @@ final params = const LinuxWebViewControllerCreationParams(
 );
 ```
 
-所有字段都可为 `null`，表示保留 WebKitGTK 默认值。
+`incognito` 默认为 `false`；其他字段可为 `null`，表示保留 WebKitGTK 默认值。
 
 下载默认允许。可在创建时设置 `downloadsEnabled: false`，或在加载内容前等待
 `setDownloadsEnabled(false)` 完成，取消新下载并阻止保存文件。已开始的下载和

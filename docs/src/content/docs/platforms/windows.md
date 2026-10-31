@@ -20,7 +20,8 @@ Windows is provided by `webview_all_windows` and uses Microsoft Edge WebView2.
 
 ## Environment
 
-Ensure WebView2 is configured before constructing controllers when you need custom paths or arguments:
+Configure custom paths or arguments before the first controller or session capability query.
+`WebViewSession.getCapabilities()` initializes the shared environment when needed to query native InPrivate support:
 
 ```dart
 await WindowsWebViewController.ensureEnvironment(

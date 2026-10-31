@@ -17,6 +17,7 @@ await controller.setNavigationDelegate(
     onPageStarted: (url) {},
     onProgress: (progress) {},
     onPageFinished: (url) {},
+    onTitleChange: (title) {},
     onUrlChange: (change) {},
     onWebResourceError: (error) {},
     onHttpError: (error) {},
@@ -98,3 +99,10 @@ onSslAuthError: (SslAuthError error) async {
 生产环境默认应取消。`proceed()` 只适合受控测试环境。
 
 Web 平台无法暴露可恢复 TLS 决策，浏览器 iframe API 不允许嵌入页面接管证书错误。
+
+
+## 动态标题（1.4.9）
+
+`NavigationDelegate.onTitleChange` 通知主文档标题变化，空标题可能返回空字符串或引擎默认标题（如网址）。
+桌面端可据此更新窗口或标签页标题；需要主动读取时仍可调用 `getTitle()`。
+Web 仅能观测同源页面或插件管理的隔离 HTML；普通跨域 iframe 会打印平台限制，不能持续读取标题。

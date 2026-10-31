@@ -24,8 +24,8 @@ await WindowsWebViewController.ensureEnvironment(
 final version = await WindowsWebViewController.getWebViewVersion();
 ```
 
-需要自定义用户数据目录、浏览器路径或启动参数时，应在首次创建 controller、操作
-Cookie 或清理网站数据前调用。从 1.4.7 起，所有参数均为 `null` 时复用已选环境，
+需要自定义用户数据目录、浏览器路径或启动参数时，应在首次查询会话能力、创建 controller、操作
+Cookie 或清理网站数据前调用。`WebViewSession.getCapabilities()` 为检测原生 InPrivate 能力会按需初始化共享环境。从 1.4.7 起，所有参数均为 `null` 时复用已选环境，
 包括仍在创建中的环境；尚无环境时才初始化默认配置。显式传参代表完整配置，其中
 省略或空字符串路径表示平台默认目录。相同配置可重复调用，配置冲突时返回
 `environment_configuration_conflict`。旧的 `initializeEnvironment` 保留用于严格的

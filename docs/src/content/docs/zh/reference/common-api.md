@@ -29,6 +29,16 @@ import 'package:webview_all/webview_all.dart';
 | `loadHtmlString` | `Future<void>` | 加载内存 HTML。 |
 | `isOffscreenWebViewSupported` | `Future<bool>` | controller 是否可在没有 `WebViewWidget` 时运行。 |
 
+## `WebViewSession`（1.4.9）
+
+| API | 用途 |
+| --- | --- |
+| `getCapabilities()` | 查询会话模式、关闭能力及会话数据管理能力。 |
+| `create({mode, onPermissionRequest})` | 创建会话；不支持或失败时打印原因并返回 `null`，默认 `incognito`，通过 `incognitoSupport` 区分支持程度。 |
+| `controller`、`cookieManager`、`dataManager` | 会话页面及所选存储的数据管理器。 |
+| `mode`、`capabilities`、`isClosed` | 模式、能力和关闭状态。 |
+| `close()` | 可重复关闭，关闭前先移除组件。 |
+
 ## `OffscreenWebViewSession`
 
 | API | 作用 |
@@ -94,6 +104,7 @@ JavaScript：
 | `onProgress` | 加载进度。 |
 | `onWebResourceError` | 资源错误。 |
 | `onUrlChange` | URL 变化。 |
+| `onTitleChange` | 主文档标题变化；空标题遵循引擎默认行为。 |
 | `onHttpAuthRequest` | HTTP 鉴权。 |
 | `onHttpError` | HTTP 状态错误。 |
 | `onSslAuthError` | 可恢复 SSL 证书错误。 |
@@ -120,4 +131,4 @@ JavaScript：
 
 ## 导出的类型
 
-`webview_all.dart` 导出 `OffscreenWebViewSession`、`LoadRequestMethod`、`NavigationDecision`、`NavigationRequest`、`WebResourceError`、`HttpResponseError`、`HttpAuthRequest`、`WebViewCredential`、`JavaScriptMode`、`JavaScriptMessage`、`JavaScriptConsoleMessage`、`JavaScriptExecutionException`、`JavaScriptInvocationParams`、JS dialog request、`ScrollPositionChange`、`WebViewCookie`、`WebViewDataClearingResult`、`WebViewDataType`、`WebViewUserScript`、`WebViewUserScriptInjectionTime`、`WebViewOverScrollMode`、`WebViewPermissionResourceType` 和 `WebViewPlatform` 等类型。
+`webview_all.dart` 导出 `WebViewSession`、`WebViewSessionMode`、`WebViewSessionCapabilities`、`WebViewIncognitoSupport`、`OffscreenWebViewSession`、`LoadRequestMethod`、`NavigationDecision`、`NavigationRequest`、`WebResourceError`、`HttpResponseError`、`HttpAuthRequest`、`WebViewCredential`、`JavaScriptMode`、`JavaScriptMessage`、`JavaScriptConsoleMessage`、`JavaScriptExecutionException`、`JavaScriptInvocationParams`、JS dialog request、`ScrollPositionChange`、`WebViewCookie`、`WebViewDataClearingResult`、`WebViewDataType`、`WebViewUserScript`、`WebViewUserScriptInjectionTime`、`WebViewOverScrollMode`、`WebViewPermissionResourceType` 和 `WebViewPlatform` 等类型。

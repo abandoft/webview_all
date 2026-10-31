@@ -167,3 +167,46 @@ switch (controller.platform) {
     await web.setIFrameReferrerPolicy('no-referrer');
 }
 ```
+
+
+## 无痕会话（1.4.9）
+
+使用 `WebViewSession` 在创建页面前选择数据存储，并管理该页面的生命周期：
+
+```dart
+final capabilities = await WebViewSession.getCapabilities();
+final session = await WebViewSession.create(
+  mode: WebViewSessionMode.incognito,
+);
+if (session == null) return; // 已打印平台限制或创建失败的原因。
+
+final controller = session.controller;
+await session.cookieManager.setCookie(
+  const WebViewCookie(name: 'account', value: 'temporary', domain: 'example.com'),
+);
+// 可把 controller 交给 WebViewWidget。移除组件后关闭会话。
+await session.close();
+```
+
+`shared` 使用普通共享存储；`incognito`（默认）使用平台提供的无痕处理，能力等级由 `incognitoSupport` 区分；
+`isolatedIncognito` 要求独立的原生临时存储。模式在创建时确定，不能动态切换。
+`create()` 不支持所请求的模式或创建失败时会打印具体原因并返回 `null`，应用可以继续运行。
+它不会自动降级为普通会话，也不会通过清空共享 Cookie 模拟无痕。
+
+| 平台 | 无痕能力 |
+| --- | --- |
+| iOS / macOS、Linux | 支持独立的临时数据存储。 |
+| Windows | WebView2 Runtime 支持 InPrivate 创建选项时可用，每个会话使用独立 Profile。 |
+| OHOS | 支持 `incognito`；原生无痕页面共享一组临时数据，不支持 `isolatedIncognito`。 |
+| Android | 有限无痕：禁用缓存使用和可用的表单保存，清理当前页面的历史。Cookie、网站存储仍共享且可能持久化。 |
+| Web | 浏览器未向 iframe 开放独立无痕存储。 |
+
+`session.cookieManager` 和 `session.dataManager` 操作该会话所选的存储。
+Android 的有限无痕管理器也操作普通共享数据，开启和关闭时不会自动清空共享 Cookie。
+默认管理器操作普通数据，但 OHOS 的缓存清理仍是全局操作；OHOS 无痕数据清理会影响其他原生无痕页面，
+不会清理普通页面。OHOS 会话管理器的缓存清理因只有全局接口而报告不支持。各数据类别的结果以
+`WebViewDataClearingResult` 为准。Web 不支持会话数据管理时会打印提示并返回空结果或不支持的类别。
+
+关闭会话前先从组件树移除其 `WebViewWidget`；`close()` 可重复调用，关闭后不能复用 controller 或会话管理器。
+`WebViewSession` 与 `OffscreenWebViewSession` 的职责不同：后者管理离屏 controller 的释放，默认使用普通存储。
+无痕模式也不保证不产生任何系统临时文件，不会隐藏网络身份或清除应用自行保存的数据。
