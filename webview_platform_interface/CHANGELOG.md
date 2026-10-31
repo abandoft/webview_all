@@ -1,3 +1,8 @@
+## 1.4.9
+
+* Add private WebView sessions and session data management APIs.
+* Add an `onTitleChange` callback for page title changes.
+
 ## 1.4.8
 
 * Add download delegates with platform-supported save targets, progress updates, and results.
