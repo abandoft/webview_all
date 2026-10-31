@@ -82,8 +82,12 @@ private:
   void
   CompleteEnvironmentCreation(const EnvironmentConfiguration &configuration,
                               WebviewHostCreationResult creation_result);
+  void CreateWebViewForMode(
+      std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result,
+      bool incognito);
   void CreateWebViewWithEnvironment(
-      std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result);
+      std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result,
+      bool incognito = false);
   void NotifyParentWindowPositionChanged();
   std::optional<LRESULT> HandleWindowMessage(HWND hwnd, UINT message,
                                              WPARAM wparam, LPARAM lparam);
@@ -101,6 +105,11 @@ private:
   void CreateWebView(
       std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result)
       override;
+  void CreatePrivateWebView(
+      std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result)
+      override;
+  void IsIncognitoSupported(
+      std::function<void(ErrorOr<bool> reply)> result) override;
   std::optional<FlutterError> DisposeWebView(int64_t texture_id) override;
   std::optional<FlutterError> LoadUrl(int64_t texture_id,
                                       const std::string &url) override;

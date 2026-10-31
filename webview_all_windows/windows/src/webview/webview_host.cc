@@ -174,7 +174,7 @@ WebviewHost::WebviewHost(wil::com_ptr<ICoreWebView2Environment3> webview_env)
 void WebviewHost::CreateWebview(
     HWND parent_window,
     winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor,
-    WebviewCreationCallback callback) {
+    WebviewCreationCallback callback, bool incognito) {
   CreateWebViewCompositionController(
       parent_window,
       [callback = std::move(callback), parent_window,
@@ -196,7 +196,8 @@ void WebviewHost::CreateWebview(
         } else {
           callback(nullptr, std::move(error));
         }
-      });
+      },
+      incognito);
 }
 
 void WebviewHost::CreateWebViewPointerInfo(
@@ -357,36 +358,68 @@ WebviewHost::CreateWebResourceRequest(const std::string &url,
   return request;
 }
 
+bool WebviewHost::SupportsIncognito() const {
+  return !!webview_env_.try_query<ICoreWebView2Environment10>();
+}
+
 void WebviewHost::CreateWebViewCompositionController(
-    HWND hwnd, CompositionControllerCreationCallback callback) {
-  auto hr = webview_env_->CreateCoreWebView2CompositionController(
-      hwnd,
-      Callback<
-          ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler>(
-          [callback](HRESULT hr,
-                     ICoreWebView2CompositionController *compositionController)
-              -> HRESULT {
-            if (SUCCEEDED(hr)) {
-              callback(
-                  std::move(wil::com_ptr<ICoreWebView2CompositionController>(
-                      compositionController)),
-                  nullptr);
-            } else {
-              callback(nullptr,
-                       WebviewCreationError::create(
-                           hr, "CreateCoreWebView2CompositionController "
-                               "completion handler failed."));
-            }
-
-            return S_OK;
-          })
-          .Get());
-
-  if (FAILED(hr)) {
+    HWND hwnd, CompositionControllerCreationCallback callback, bool incognito) {
+  auto completion = Callback<
+      ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler>(
+      [callback](HRESULT hr,
+                 ICoreWebView2CompositionController *controller) -> HRESULT {
+        if (SUCCEEDED(hr) && controller) {
+          callback(wil::com_ptr<ICoreWebView2CompositionController>(controller),
+                   nullptr);
+        } else {
+          callback(nullptr,
+                   WebviewCreationError::create(
+                       FAILED(hr) ? hr : E_FAIL,
+                       "Creating the WebView2 composition controller failed."));
+        }
+        return S_OK;
+      });
+  HRESULT hr;
+  if (incognito) {
+    auto environment = webview_env_.try_query<ICoreWebView2Environment10>();
+    if (!environment) {
+      callback(nullptr,
+               WebviewCreationError::create(
+                   E_NOINTERFACE,
+                   "This WebView2 Runtime does not support private sessions."));
+      return;
+    }
+    wil::com_ptr<ICoreWebView2ControllerOptions> options;
+    hr = environment->CreateCoreWebView2ControllerOptions(&options);
+    GUID guid;
+    wchar_t guid_text[40] = {};
+    std::wstring profile_name = L"webview_all_private_";
+    if (SUCCEEDED(hr))
+      hr = CoCreateGuid(&guid);
+    if (SUCCEEDED(hr) && StringFromGUID2(guid, guid_text, 40) == 0)
+      hr = E_FAIL;
+    if (SUCCEEDED(hr)) {
+      for (wchar_t value : guid_text) {
+        if ((value >= L'0' && value <= L'9') ||
+            (value >= L'A' && value <= L'F') ||
+            (value >= L'a' && value <= L'f'))
+          profile_name += value;
+      }
+      hr = options->put_ProfileName(profile_name.c_str());
+    }
+    if (SUCCEEDED(hr))
+      hr = options->put_IsInPrivateModeEnabled(TRUE);
+    if (SUCCEEDED(hr))
+      hr = environment->CreateCoreWebView2CompositionControllerWithOptions(
+          hwnd, options.get(), completion.Get());
+  } else {
+    hr = webview_env_->CreateCoreWebView2CompositionController(
+        hwnd, completion.Get());
+  }
+  if (FAILED(hr))
     callback(nullptr,
              WebviewCreationError::create(
-                 hr, "CreateCoreWebView2CompositionController failed."));
-  }
+                 hr, "Creating the WebView2 composition controller failed."));
 }
 
 } // namespace webview_all_windows

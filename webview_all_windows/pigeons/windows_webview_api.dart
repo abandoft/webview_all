@@ -139,6 +139,12 @@ abstract class WindowsWebViewHostApi {
   @async
   WindowsCreateWebViewResult createWebView();
 
+  @async
+  WindowsCreateWebViewResult createPrivateWebView();
+
+  @async
+  bool isIncognitoSupported();
+
   void disposeWebView(int textureId);
 
   void loadUrl(int textureId, String url);

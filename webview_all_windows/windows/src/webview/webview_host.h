@@ -70,7 +70,9 @@ public:
   void CreateWebview(
       HWND parent_window,
       winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor,
-      WebviewCreationCallback callback);
+      WebviewCreationCallback callback, bool incognito = false);
+
+  bool SupportsIncognito() const;
 
   void CreateWebViewPointerInfo(PointerInfoCreationCallback cb);
 
@@ -89,7 +91,8 @@ private:
   explicit WebviewHost(wil::com_ptr<ICoreWebView2Environment3> webview_env);
   void
   CreateWebViewCompositionController(HWND hwnd,
-                                     CompositionControllerCreationCallback cb);
+                                     CompositionControllerCreationCallback cb,
+                                     bool incognito = false);
 };
 
 } // namespace webview_all_windows

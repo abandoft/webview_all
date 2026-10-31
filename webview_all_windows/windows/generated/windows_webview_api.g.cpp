@@ -1581,6 +1581,65 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
   {
     BasicMessageChannel<> channel(binary_messenger,
                                   "com.abandoft.pigeon.webview_all_windows."
+                                  "WindowsWebViewHostApi.createPrivateWebView" +
+                                      prepended_suffix,
+                                  &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler(
+          [api](const EncodableValue &message,
+                const ::flutter::MessageReply<EncodableValue> &reply) {
+            try {
+              api->CreatePrivateWebView(
+                  [reply](ErrorOr<WindowsCreateWebViewResult> &&output) {
+                    if (output.has_error()) {
+                      reply(WrapError(output.error()));
+                      return;
+                    }
+                    EncodableList wrapped;
+                    wrapped.push_back(
+                        CustomEncodableValue(std::move(output).TakeValue()));
+                    reply(EncodableValue(std::move(wrapped)));
+                  });
+            } catch (const std::exception &exception) {
+              reply(WrapError(exception.what()));
+            }
+          });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger,
+                                  "com.abandoft.pigeon.webview_all_windows."
+                                  "WindowsWebViewHostApi.isIncognitoSupported" +
+                                      prepended_suffix,
+                                  &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler(
+          [api](const EncodableValue &message,
+                const ::flutter::MessageReply<EncodableValue> &reply) {
+            try {
+              api->IsIncognitoSupported([reply](ErrorOr<bool> &&output) {
+                if (output.has_error()) {
+                  reply(WrapError(output.error()));
+                  return;
+                }
+                EncodableList wrapped;
+                wrapped.push_back(
+                    EncodableValue(std::move(output).TakeValue()));
+                reply(EncodableValue(std::move(wrapped)));
+              });
+            } catch (const std::exception &exception) {
+              reply(WrapError(exception.what()));
+            }
+          });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger,
+                                  "com.abandoft.pigeon.webview_all_windows."
                                   "WindowsWebViewHostApi.disposeWebView" +
                                       prepended_suffix,
                                   &GetCodec());
@@ -1615,11 +1674,11 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.loadUrl" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger,
+                                  "com.abandoft.pigeon.webview_all_windows."
+                                  "WindowsWebViewHostApi.loadUrl" +
+                                      prepended_suffix,
+                                  &GetCodec());
     if (api != nullptr) {
       channel.SetMessageHandler(
           [api](const EncodableValue &message,
@@ -3056,11 +3115,11 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.suspend" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger,
+                                  "com.abandoft.pigeon.webview_all_windows."
+                                  "WindowsWebViewHostApi.suspend" +
+                                      prepended_suffix,
+                                  &GetCodec());
     if (api != nullptr) {
       channel.SetMessageHandler(
           [api](const EncodableValue &message,
@@ -3433,11 +3492,11 @@ void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setSize" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger,
+                                  "com.abandoft.pigeon.webview_all_windows."
+                                  "WindowsWebViewHostApi.setSize" +
+                                      prepended_suffix,
+                                  &GetCodec());
     if (api != nullptr) {
       channel.SetMessageHandler(
           [api](const EncodableValue &message,

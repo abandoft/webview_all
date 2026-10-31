@@ -373,7 +373,12 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   Stream<bool> get containsFullScreenElementChanged =>
       _containsFullScreenElementChangedStreamController.stream;
 
-  WebviewController() : super(WebviewValue.uninitialized());
+  WebviewController({this.incognito = false})
+    : super(WebviewValue.uninitialized());
+
+  final bool incognito;
+
+  static Future<bool> isIncognitoSupported() => _hostApi.isIncognitoSupported();
 
   /// Initializes the underlying platform view.
   Future<void> initialize() {
@@ -387,7 +392,9 @@ class WebviewController extends ValueNotifier<WebviewValue> {
 
   Future<void> _initialize() async {
     try {
-      final reply = await _hostApi.createWebView();
+      final reply = await (incognito
+          ? _hostApi.createPrivateWebView()
+          : _hostApi.createWebView());
       _textureId = reply.textureId;
       _nativeWebViewCreated = true;
       _methodChannel = MethodChannel(

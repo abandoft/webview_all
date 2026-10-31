@@ -12,6 +12,9 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:path/path.dart' as path;
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
+import 'windows_webview_cookie_manager.dart';
+import 'windows_webview_data_manager.dart';
+
 import 'windows_webview_types.dart' as native_types;
 import 'windows_webview_native.dart' as native_webview;
 
@@ -60,6 +63,7 @@ class WindowsWebViewControllerCreationParams
     extends PlatformWebViewControllerCreationParams {
   /// Creates a new [WindowsWebViewControllerCreationParams].
   const WindowsWebViewControllerCreationParams({
+    super.sessionMode,
     this.popupWindowPolicy = WindowsPopupWindowPolicy.sameWindow,
     this.devToolsEnabled = false,
     this.browserAcceleratorKeysEnabled,
@@ -73,7 +77,7 @@ class WindowsWebViewControllerCreationParams
     this.devToolsEnabled = false,
     this.browserAcceleratorKeysEnabled,
     this.downloadsEnabled,
-  });
+  }) : super.fromPlatformWebViewControllerCreationParams(params);
 
   /// How popup windows should be handled.
   final WindowsPopupWindowPolicy popupWindowPolicy;
@@ -148,7 +152,9 @@ class WindowsNavigationDelegateCreationParams
 class WindowsWebViewController extends PlatformWebViewController {
   /// Creates a [WindowsWebViewController].
   WindowsWebViewController(PlatformWebViewControllerCreationParams params)
-    : _webviewController = native_webview.WebviewController(),
+    : _webviewController = native_webview.WebviewController(
+        incognito: params.sessionMode != WebViewSessionMode.shared,
+      ),
       super.implementation(
         params is WindowsWebViewControllerCreationParams
             ? params
@@ -161,6 +167,17 @@ class WindowsWebViewController extends PlatformWebViewController {
     _setInitializationFuture(_initialize(weakThis));
     _finalizer.attach(this, _webviewController, detach: this);
   }
+
+  @override
+  Future<void> prepareSession() => _ensureInitialized();
+
+  @override
+  PlatformWebViewCookieManager createSessionCookieManager() =>
+      WindowsWebViewCookieManager.forController(_webviewController);
+
+  @override
+  PlatformWebViewDataManager createSessionDataManager() =>
+      WindowsWebViewDataManager.forController(_webviewController);
 
   static final Finalizer<native_webview.WebviewController> _finalizer =
       Finalizer<native_webview.WebviewController>((
@@ -303,8 +320,8 @@ class WindowsWebViewController extends PlatformWebViewController {
   /// Supplying any option, including an empty string, requests a complete
   /// configuration, with omitted or empty options resolved to platform defaults.
   /// Equivalent configurations reuse the environment; conflicting ones fail
-  /// without replacing it. Configure custom options before the first WebView,
-  /// cookie operation, or website-data clearing operation.
+  /// without replacing it. Configure custom options before the first session
+  /// capability query, WebView, cookie operation, or website-data clearing operation.
   static Future<void> ensureEnvironment({
     String? userDataPath,
     String? browserExePath,
@@ -378,7 +395,10 @@ class WindowsWebViewController extends PlatformWebViewController {
         weakThis.target?._handleUrlChanged(url);
       }),
       _webviewController.title.listen((String title) {
-        weakThis.target?._title = title;
+        final target = weakThis.target;
+        if (target == null || target._isDisposed) return;
+        target._title = title;
+        target._currentNavigationDelegate?._onTitleChange?.call(title);
       }),
       _webviewController.historyChanged.listen((
         native_webview.HistoryChanged value,
@@ -2284,6 +2304,7 @@ class WindowsNavigationDelegate extends PlatformNavigationDelegate {
   SslAuthErrorCallback? _onSslAuthError;
   NavigationRequestCallback? _onNavigationRequest;
   UrlChangeCallback? _onUrlChange;
+  TitleChangeCallback? _onTitleChange;
   final Set<Future<void> Function(bool enabled)> _navigationRequestListeners =
       <Future<void> Function(bool enabled)>{};
 
@@ -2336,6 +2357,11 @@ class WindowsNavigationDelegate extends PlatformNavigationDelegate {
     WebResourceErrorCallback onWebResourceError,
   ) async {
     _onWebResourceError = onWebResourceError;
+  }
+
+  @override
+  Future<void> setOnTitleChange(TitleChangeCallback onTitleChange) async {
+    _onTitleChange = onTitleChange;
   }
 
   @override

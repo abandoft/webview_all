@@ -465,6 +465,11 @@ public:
   virtual void
   CreateWebView(std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)>
                     result) = 0;
+  virtual void CreatePrivateWebView(
+      std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)>
+          result) = 0;
+  virtual void
+  IsIncognitoSupported(std::function<void(ErrorOr<bool> reply)> result) = 0;
   virtual std::optional<FlutterError> DisposeWebView(int64_t texture_id) = 0;
   virtual std::optional<FlutterError> LoadUrl(int64_t texture_id,
                                               const std::string &url) = 0;

@@ -36,14 +36,22 @@ class WindowsWebViewCookieManager extends PlatformWebViewCookieManager {
               ),
       );
 
+  /// Uses the profile selected when this controller was created.
+  WindowsWebViewCookieManager.forController(
+    native_webview.WebviewController controller,
+  ) : _sessionController = controller,
+      super.implementation(const WindowsWebViewCookieManagerCreationParams());
+
+  native_webview.WebviewController? _sessionController;
+
   @override
   Future<bool> clearCookies() async {
-    final controller = native_webview.WebviewController();
+    final controller = _sessionController ?? native_webview.WebviewController();
     await controller.initialize();
     try {
       return await controller.clearCookiesWithResult();
     } finally {
-      await controller.dispose();
+      if (_sessionController == null) await controller.dispose();
     }
   }
 
@@ -88,7 +96,7 @@ class WindowsWebViewCookieManager extends PlatformWebViewCookieManager {
       path: cookie.path,
     );
 
-    final controller = native_webview.WebviewController();
+    final controller = _sessionController ?? native_webview.WebviewController();
     await controller.initialize();
     try {
       await controller.setCookie(
@@ -102,30 +110,30 @@ class WindowsWebViewCookieManager extends PlatformWebViewCookieManager {
         sameSite: cookie.sameSite?.index,
       );
     } finally {
-      await controller.dispose();
+      if (_sessionController == null) await controller.dispose();
     }
   }
 
   /// Returns full Windows WebView2 cookies visible for [url].
   Future<List<WindowsWebViewCookie>> getWindowsCookies(Uri url) async {
-    final controller = native_webview.WebviewController();
+    final controller = _sessionController ?? native_webview.WebviewController();
     await controller.initialize();
     try {
       final cookies = await controller.getCookies(url.toString());
       return cookies;
     } finally {
-      await controller.dispose();
+      if (_sessionController == null) await controller.dispose();
     }
   }
 
   /// Deletes a cookie by its native WebView2 cookie identity.
   Future<void> deleteWindowsCookie(WindowsWebViewCookie cookie) async {
-    final controller = native_webview.WebviewController();
+    final controller = _sessionController ?? native_webview.WebviewController();
     await controller.initialize();
     try {
       await controller.deleteCookie(cookie);
     } finally {
-      await controller.dispose();
+      if (_sessionController == null) await controller.dispose();
     }
   }
 
@@ -134,12 +142,12 @@ class WindowsWebViewCookieManager extends PlatformWebViewCookieManager {
     required String name,
     required Uri url,
   }) async {
-    final controller = native_webview.WebviewController();
+    final controller = _sessionController ?? native_webview.WebviewController();
     await controller.initialize();
     try {
       await controller.deleteCookiesWithNameAndUrl(name, url.toString());
     } finally {
-      await controller.dispose();
+      if (_sessionController == null) await controller.dispose();
     }
   }
 
@@ -149,12 +157,12 @@ class WindowsWebViewCookieManager extends PlatformWebViewCookieManager {
     required String domain,
     required String path,
   }) async {
-    final controller = native_webview.WebviewController();
+    final controller = _sessionController ?? native_webview.WebviewController();
     await controller.initialize();
     try {
       await controller.deleteCookiesWithNameDomainAndPath(name, domain, path);
     } finally {
-      await controller.dispose();
+      if (_sessionController == null) await controller.dispose();
     }
   }
 

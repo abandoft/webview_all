@@ -49,6 +49,14 @@ class WindowsWebViewDataManager extends PlatformWebViewDataManager {
               ),
       );
 
+  /// Uses the profile selected when this controller was created.
+  WindowsWebViewDataManager.forController(
+    native_webview.WebviewController controller,
+  ) : _sessionController = controller,
+      super.implementation(const WindowsWebViewDataManagerCreationParams());
+
+  native_webview.WebviewController? _sessionController;
+
   @override
   Future<WebViewDataClearingResult> clearAllWebsiteData() async {
     final WindowsWebViewDataManagerCreationParams windowsParams =
@@ -56,13 +64,17 @@ class WindowsWebViewDataManager extends PlatformWebViewDataManager {
     Object? failure;
     var supported = false;
     try {
-      await native_webview.WebviewController.ensureEnvironment(
-        userDataPath: windowsParams.userDataPath,
-        browserExePath: windowsParams.browserExePath,
-        additionalArguments: windowsParams.additionalArguments,
-      );
-      supported = await native_webview
-          .WebviewController.clearAllWebsiteDataForEnvironment();
+      if (_sessionController != null) {
+        supported = await _sessionController!.clearAllWebsiteData();
+      } else {
+        await native_webview.WebviewController.ensureEnvironment(
+          userDataPath: windowsParams.userDataPath,
+          browserExePath: windowsParams.browserExePath,
+          additionalArguments: windowsParams.additionalArguments,
+        );
+        supported = await native_webview
+            .WebviewController.clearAllWebsiteDataForEnvironment();
+      }
     } catch (error) {
       failure = error;
     }

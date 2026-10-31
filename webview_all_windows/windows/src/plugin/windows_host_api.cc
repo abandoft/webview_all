@@ -48,15 +48,16 @@ std::optional<FlutterError> SettingResult(const char *setting, HRESULT result) {
   if (SUCCEEDED(result)) {
     return std::nullopt;
   }
-  return FlutterError(
-      result == E_NOINTERFACE ? kErrorNotSupported : kErrorMethodFailed,
-      std::string("Applying ") + setting + " failed (HRESULT: " +
-          FormatHresult(result) + ").",
-      flutter::EncodableValue(flutter::EncodableMap{
-          {flutter::EncodableValue("setting"), flutter::EncodableValue(setting)},
-          {flutter::EncodableValue("hresult"),
-           flutter::EncodableValue(FormatHresult(result))},
-      }));
+  return FlutterError(result == E_NOINTERFACE ? kErrorNotSupported
+                                              : kErrorMethodFailed,
+                      std::string("Applying ") + setting +
+                          " failed (HRESULT: " + FormatHresult(result) + ").",
+                      flutter::EncodableValue(flutter::EncodableMap{
+                          {flutter::EncodableValue("setting"),
+                           flutter::EncodableValue(setting)},
+                          {flutter::EncodableValue("hresult"),
+                           flutter::EncodableValue(FormatHresult(result))},
+                      }));
 }
 
 FlutterError CreateInitializationError(
@@ -227,9 +228,9 @@ void WindowsHostApi::EnsureEnvironment(
     requested = ResolveEnvironmentConfiguration(options);
   }
 
-  switch (SelectEnvironmentRequestAction(
-      requested, webview_host_ != nullptr, environment_configuration_,
-      pending_environment_configuration_)) {
+  switch (SelectEnvironmentRequestAction(requested, webview_host_ != nullptr,
+                                         environment_configuration_,
+                                         pending_environment_configuration_)) {
   case EnvironmentRequestAction::reuse:
     result(std::nullopt);
     return;
@@ -397,10 +398,35 @@ void WindowsHostApi::ClearAllWebsiteDataForEnvironment(
 }
 
 void WindowsHostApi::CreateWebView(
+    std::function<void(ErrorOr<WindowsCreateWebViewResult>)> result) {
+  CreateWebViewForMode(std::move(result), false);
+}
+
+void WindowsHostApi::CreatePrivateWebView(
+    std::function<void(ErrorOr<WindowsCreateWebViewResult>)> result) {
+  CreateWebViewForMode(std::move(result), true);
+}
+
+void WindowsHostApi::IsIncognitoSupported(
+    std::function<void(ErrorOr<bool>)> result) {
+  const WindowsEnvironmentOptions options;
+  EnsureEnvironment(
+      options, [lifetime_state = lifetime_state_,
+                result = std::move(result)](std::optional<FlutterError> error) {
+        if (!lifetime_state->owner)
+          return;
+        if (error)
+          return result(*error);
+        result(lifetime_state->owner->webview_host_->SupportsIncognito());
+      });
+}
+
+void WindowsHostApi::CreateWebViewForMode(
     std::function<void(webview_all_windows::ErrorOr<
                        webview_all_windows::WindowsCreateWebViewResult>
                            reply)>
-        result) {
+        result,
+    bool incognito) {
   if (parent_window_ == nullptr || !IsWindow(parent_window_)) {
     return result(webview_all_windows::FlutterError(
         kErrorCodeInvalidParentWindow,
@@ -408,12 +434,12 @@ void WindowsHostApi::CreateWebView(
   }
 
   if (webview_host_) {
-    CreateWebViewWithEnvironment(std::move(result));
+    CreateWebViewWithEnvironment(std::move(result), incognito);
     return;
   }
 
   EnvironmentInitializationCallback continue_creation =
-      [lifetime_state = lifetime_state_,
+      [lifetime_state = lifetime_state_, incognito,
        result = std::move(result)](std::optional<FlutterError> error) mutable {
         WindowsHostApi *const owner = lifetime_state->owner;
         if (owner == nullptr) {
@@ -423,7 +449,7 @@ void WindowsHostApi::CreateWebView(
           result(*error);
           return;
         }
-        owner->CreateWebViewWithEnvironment(std::move(result));
+        owner->CreateWebViewWithEnvironment(std::move(result), incognito);
       };
   if (pending_environment_configuration_.has_value()) {
     pending_environment_callbacks_.push_back(std::move(continue_creation));
@@ -439,7 +465,8 @@ void WindowsHostApi::CreateWebViewWithEnvironment(
     std::function<void(webview_all_windows::ErrorOr<
                        webview_all_windows::WindowsCreateWebViewResult>
                            reply)>
-        result) {
+        result,
+    bool incognito) {
   if (const std::optional<FlutterError> platform_error =
           EnsureRenderingPlatform()) {
     return result(*platform_error);
@@ -485,7 +512,8 @@ void WindowsHostApi::CreateWebViewWithEnvironment(
         owner->instances_[texture_id] = std::move(bridge);
 
         result(webview_all_windows::WindowsCreateWebViewResult(texture_id));
-      });
+      },
+      incognito);
 }
 
 std::optional<webview_all_windows::FlutterError>
@@ -961,7 +989,8 @@ WindowsHostApi::SetDownloadsEnabled(int64_t texture_id, bool enabled) {
   if (!bridge) {
     return InvalidIdError();
   }
-  return SettingResult("downloadsEnabled", bridge->SetDownloadsEnabled(enabled));
+  return SettingResult("downloadsEnabled",
+                       bridge->SetDownloadsEnabled(enabled));
 }
 
 std::optional<webview_all_windows::FlutterError>

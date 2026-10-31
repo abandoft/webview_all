@@ -812,6 +812,44 @@ class WindowsWebViewHostApi {
     return pigeonVar_replyValue! as WindowsCreateWebViewResult;
   }
 
+  Future<WindowsCreateWebViewResult> createPrivateWebView() async {
+    final pigeonVar_channelName =
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.createPrivateWebView$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as WindowsCreateWebViewResult;
+  }
+
+  Future<bool> isIncognitoSupported() async {
+    final pigeonVar_channelName =
+        'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.isIncognitoSupported$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as bool;
+  }
+
   Future<void> disposeWebView(int textureId) async {
     final pigeonVar_channelName =
         'com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.disposeWebView$pigeonVar_messageChannelSuffix';
