@@ -256,6 +256,22 @@ class WebWebViewController extends PlatformWebViewController {
   String? _customSandbox;
   _WebHistoryEntry? _activeHistoryEntry;
   WebNavigationDelegate? _navigationDelegate;
+  WebViewDownloadDelegate? _downloadDelegate;
+  int _downloadDelegateGeneration = 0;
+  int _nextDownloadId = 0;
+  Completer<void> _downloadDelegateCancelled = Completer<void>();
+
+  @override
+  Future<void> setDownloadDelegate(WebViewDownloadDelegate? delegate) async {
+    if (_nativeDisposal.isDisposed) {
+      throw StateError('The WebView was disposed.');
+    }
+    _downloadDelegateGeneration++;
+    _downloadDelegateCancelled.complete();
+    _downloadDelegateCancelled = Completer<void>();
+    _downloadDelegate = delegate;
+  }
+
   int _navigationGeneration = 0;
   bool _verticalScrollBarEnabled = true;
   bool _horizontalScrollBarEnabled = true;
@@ -2184,6 +2200,21 @@ ${params.functionBody}
     final String? contentTypeHeader = responseHeaders['content-type'];
     final String header = contentTypeHeader ?? 'text/html';
 
+    final String? disposition = responseHeaders['content-disposition'];
+    if (response.status < 400 &&
+        disposition != null &&
+        disposition.split(';').first.trim().toLowerCase() == 'attachment') {
+      _currentUrl = previousUrl;
+      _navigationDelegate?.onUrlChange?.call(UrlChange(url: previousUrl));
+      await _handleFetchedDownload(
+        response,
+        effectiveUrl,
+        responseHeaders,
+        generation,
+      );
+      return;
+    }
+
     if (response.status >= 400) {
       _navigationDelegate?.onHttpError?.call(
         HttpResponseError(
@@ -2230,6 +2261,142 @@ ${params.functionBody}
       _recordHistoryEntry(entry);
     } else {
       _replaceActiveHistoryEntry(entry);
+    }
+  }
+
+  Future<void> _handleFetchedDownload(
+    web.Response response,
+    String url,
+    Map<String, String> headers,
+    int navigationGeneration,
+  ) async {
+    final delegate = _downloadDelegate;
+    final delegateGeneration = _downloadDelegateGeneration;
+    final length = int.tryParse(headers['content-length'] ?? '');
+    final id = 'web-${++_nextDownloadId}';
+    final name = webViewDownloadSuggestedFilename(
+      url: url,
+      contentDisposition: headers['content-disposition'],
+    );
+    WebViewDownloadResult result(
+      WebViewDownloadStatus status, {
+      String? errorCode,
+      String? description,
+    }) => WebViewDownloadResult(
+      id: id,
+      status: status,
+      errorCode: errorCode,
+      description: description,
+    );
+    Future<void> discard() async {
+      try {
+        await response.body?.cancel().toDart;
+      } catch (_) {
+        /* The body may already be closed. */
+      }
+    }
+
+    bool allowed() =>
+        _currentSandboxTokens == null ||
+        _currentSandboxTokens!.contains('allow-downloads');
+    var accepted = false;
+    try {
+      if (!allowed()) {
+        throw StateError('The iframe sandbox does not allow downloads.');
+      }
+      final decision = delegate == null
+          ? const WebViewDownloadDecision.platformDefault()
+          : await delegate.decide(
+              WebViewDownloadRequest(
+                id: id,
+                url: url,
+                suggestedFilename: name,
+                mimeType: _mimeTypeFromContentTypeHeader(
+                  headers['content-type'],
+                ),
+                contentDisposition: headers['content-disposition'],
+                contentLength: length == null || length < 0 ? null : length,
+                supportedActions: const <WebViewDownloadAction>{
+                  WebViewDownloadAction.cancel,
+                  WebViewDownloadAction.platformDefault,
+                  WebViewDownloadAction.handledExternally,
+                },
+              ),
+              cancelled: _downloadDelegateCancelled.future,
+            );
+      if (_nativeDisposal.isDisposed ||
+          delegateGeneration != _downloadDelegateGeneration ||
+          decision.action == WebViewDownloadAction.cancel) {
+        await discard();
+        delegate?.notifyResult(result(WebViewDownloadStatus.cancelled));
+        return;
+      }
+      if (decision.action == WebViewDownloadAction.handledExternally) {
+        await discard();
+        delegate?.notifyResult(result(WebViewDownloadStatus.handedOff));
+        return;
+      }
+      if (!allowed()) {
+        throw StateError('The iframe sandbox does not allow downloads.');
+      }
+      accepted = true;
+      final blob = await response.blob().toDart;
+      if (_nativeDisposal.isDisposed) {
+        delegate?.notifyResult(result(WebViewDownloadStatus.cancelled));
+        return;
+      }
+      final objectUrl = web.URL.createObjectURL(blob);
+      _nativeDisposal.downloadObjectUrls.add(objectUrl);
+      final anchor = web.HTMLAnchorElement()
+        ..href = objectUrl
+        ..download = name
+        ..style.display = 'none';
+      try {
+        web.document.body?.append(anchor);
+        anchor.click();
+      } finally {
+        anchor.remove();
+        // Browser downloads are asynchronous. Release the object URL after the
+        // browser has had time to consume it, or when this controller is freed.
+        final disposal = WeakReference<_WebWebViewDisposal>(_nativeDisposal);
+        Timer(const Duration(minutes: 1), () {
+          disposal.target?.downloadObjectUrls.remove(objectUrl);
+          web.URL.revokeObjectURL(objectUrl);
+        });
+      }
+      // A page cannot observe the browser's save result or destination.
+      delegate?.notifyResult(result(WebViewDownloadStatus.handedOff));
+    } catch (error) {
+      await discard();
+      if (_nativeDisposal.isDisposed ||
+          (!accepted && delegateGeneration != _downloadDelegateGeneration)) {
+        delegate?.notifyResult(result(WebViewDownloadStatus.cancelled));
+        return;
+      }
+      final failure = result(
+        WebViewDownloadStatus.failed,
+        errorCode: 'download_failed',
+        description: error.toString(),
+      );
+      if (delegate != null) {
+        delegate.notifyResult(failure);
+      } else {
+        _navigationDelegate?.onWebResourceError?.call(
+          WebResourceError(
+            errorCode: 0,
+            description: error.toString(),
+            errorType: WebResourceErrorType.unknown,
+            isForMainFrame: true,
+            url: url,
+          ),
+        );
+      }
+    } finally {
+      if (navigationGeneration == _navigationGeneration) {
+        // The document has not navigated. Finish the loading indication without
+        // pretending that an attachment became the current page/history item.
+        _navigationDelegate?.onProgress?.call(100);
+      }
     }
   }
 
@@ -2630,7 +2797,7 @@ ${params.functionBody}
     final Map<String, String> headers = <String, String>{};
     response.headers.forEach(
       ((JSString value, JSString name, JSAny _) {
-        headers[name.toDart] = value.toDart;
+        headers[name.toDart.toLowerCase()] = value.toDart;
       }).toJS,
     );
     return headers;
@@ -2851,6 +3018,8 @@ class _WebWebViewDisposal {
   web.MessagePort? isolatedBridgeCandidatePort;
   final Set<web.MessagePort> permissionDecisionPorts = <web.MessagePort>{};
   Future<void>? _disposeFuture;
+  bool get isDisposed => _disposeFuture != null;
+  final Set<String> downloadObjectUrls = <String>{};
 
   void setScrollListener(
     web.Window window,
@@ -2893,6 +3062,10 @@ class _WebWebViewDisposal {
   }
 
   Future<void> _dispose() async {
+    for (final url in downloadObjectUrls) {
+      web.URL.revokeObjectURL(url);
+    }
+    downloadObjectUrls.clear();
     web.window.removeEventListener('message', messageEventListener);
     closeMessagePorts();
     detachScrollListener();
