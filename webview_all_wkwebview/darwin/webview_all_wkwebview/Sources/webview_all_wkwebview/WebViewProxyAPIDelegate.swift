@@ -150,7 +150,7 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
   func setNavigationDelegate(
     pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView, delegate: WKNavigationDelegate
   ) throws {
-    pigeonInstance.navigationDelegate = delegate
+    DownloadBridgeChannel.setNavigationDelegate(delegate, on: pigeonInstance)
   }
 
   func setNavigationDelegate(
@@ -186,7 +186,9 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
   func load(
     pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView, request: URLRequestWrapper
   ) throws {
-    pigeonInstance.load(request.value)
+    let navigation = pigeonInstance.load(request.value)
+    DownloadBridgeChannel.noteNavigation(
+      on: pigeonInstance, navigation: navigation, url: request.value.url)
   }
 
   func load(
@@ -408,6 +410,7 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
   }
 
   func dispose(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView) throws {
+    DownloadBridgeChannel.dispose(pigeonInstance)
     pigeonInstance.stopLoading()
     pigeonInstance.navigationDelegate = nil
     pigeonInstance.uiDelegate = nil

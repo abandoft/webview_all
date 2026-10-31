@@ -16,6 +16,7 @@ import 'common/platform_webview.dart';
 import 'common/weak_reference_utils.dart';
 import 'common/web_kit.g.dart';
 import 'common/webkit_constants.dart';
+import 'common/webkit_download_delegate.dart';
 import 'webkit_ssl_auth_error.dart';
 
 const String _webKitWebViewPlatformViewType =
@@ -202,6 +203,33 @@ class WebKitWebViewControllerCreationParams
 
 /// An implementation of [PlatformWebViewController] with the WebKit api.
 class WebKitWebViewController extends PlatformWebViewController {
+  WebKitDownloadDelegateBridge? _downloadBridge;
+  Future<void> _downloadUpdateTail = Future<void>.value();
+
+  @override
+  Future<void> setDownloadDelegate(WebViewDownloadDelegate? delegate) {
+    if (_offscreenCloseFuture != null) {
+      throw StateError('This WebView controller has been closed.');
+    }
+    final update = _downloadUpdateTail.catchError((Object _) {}).then((
+      _,
+    ) async {
+      if (_offscreenCloseFuture != null) return;
+      if (_downloadBridge != null) {
+        await _downloadBridge!.update(delegate);
+      } else if (delegate != null) {
+        final bridge = WebKitDownloadDelegateBridge(
+          webViewIdentifier,
+          delegate,
+        );
+        await bridge.enable();
+        _downloadBridge = bridge;
+      }
+    });
+    _downloadUpdateTail = update;
+    return update;
+  }
+
   /// Constructs a [WebKitWebViewController].
   WebKitWebViewController(PlatformWebViewControllerCreationParams params)
     : super.implementation(
@@ -792,6 +820,21 @@ ${params.functionBody}
 
   Future<void> _closeOffscreenWebView() async {
     _navigationGeneration += 1;
+    Object? firstError;
+    StackTrace? firstStackTrace;
+    try {
+      await _downloadUpdateTail;
+    } catch (_) {
+      // Failed registration has already removed its messenger handler.
+    }
+    try {
+      await _downloadBridge?.close();
+    } catch (error, stackTrace) {
+      firstError = error;
+      firstStackTrace = stackTrace;
+    } finally {
+      _downloadBridge = null;
+    }
     final WebKitNavigationDelegate? previousDelegate =
         _currentNavigationDelegate;
     if (previousDelegate != null) {
@@ -801,13 +844,11 @@ ${params.functionBody}
     }
     _currentNavigationDelegate = null;
 
-    Object? firstError;
-    StackTrace? firstStackTrace;
     try {
       await _scriptUpdateTail;
     } catch (error, stackTrace) {
-      firstError = error;
-      firstStackTrace = stackTrace;
+      firstError ??= error;
+      firstStackTrace ??= stackTrace;
     }
     for (final String keyPath in <String>[
       'estimatedProgress',
