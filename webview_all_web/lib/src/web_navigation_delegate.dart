@@ -30,6 +30,7 @@ class WebNavigationDelegate extends PlatformNavigationDelegate {
   WebResourceErrorCallback? onWebResourceError;
   NavigationRequestCallback? onNavigationRequest;
   UrlChangeCallback? onUrlChange;
+  TitleChangeCallback? onTitleChange;
   HttpAuthRequestCallback? onHttpAuthRequest;
   SslAuthErrorCallback? onSslAuthError;
 
@@ -65,6 +66,11 @@ class WebNavigationDelegate extends PlatformNavigationDelegate {
     WebResourceErrorCallback onWebResourceError,
   ) async {
     this.onWebResourceError = onWebResourceError;
+  }
+
+  @override
+  Future<void> setOnTitleChange(TitleChangeCallback onTitleChange) async {
+    this.onTitleChange = onTitleChange;
   }
 
   @override

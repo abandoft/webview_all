@@ -13,6 +13,14 @@ import 'web_webview_data_manager.dart';
 /// An implementation of [WebViewPlatform] using Flutter for Web API.
 class WebWebViewPlatform extends WebViewPlatform {
   @override
+  Future<WebViewSessionCapabilities>
+  getSessionCapabilities() async => WebViewSessionCapabilities(
+    canClose: true,
+    privateSessionRestriction:
+        'Browsers do not expose independent private browsing stores to iframe applications.',
+  );
+
+  @override
   PlatformWebViewController createPlatformWebViewController(
     PlatformWebViewControllerCreationParams params,
   ) {

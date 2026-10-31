@@ -96,13 +96,22 @@ class WebWebViewControllerCreationParams
     extends PlatformWebViewControllerCreationParams {
   /// Creates a new [WebWebViewControllerCreationParams] instance.
   WebWebViewControllerCreationParams({
+    WebViewSessionMode sessionMode = WebViewSessionMode.shared,
     @visibleForTesting this.httpRequestFactory = const HttpRequestFactory(),
     this.iFrameAllow,
     this.iFrameSandbox,
     this.iFrameReferrerPolicy,
     Map<String, String?> iFrameAttributes = const <String, String?>{},
   }) : iFrameAttributes = Map<String, String?>.unmodifiable(iFrameAttributes),
-       super() {
+       super(sessionMode: sessionMode) {
+    if (sessionMode != WebViewSessionMode.shared) {
+      debugPrint(
+        'webview_all_web: private sessions are unavailable in a browser iframe.',
+      );
+      throw UnsupportedError(
+        'Private WebView sessions are not supported on Web.',
+      );
+    }
     _setIFrameAttribute(iFrame, 'allow', iFrameAllow);
     _setIFrameAttribute(iFrame, 'sandbox', iFrameSandbox);
     _setIFrameAttribute(iFrame, 'referrerpolicy', iFrameReferrerPolicy);
@@ -121,6 +130,7 @@ class WebWebViewControllerCreationParams
     String? iFrameReferrerPolicy,
     Map<String, String?> iFrameAttributes = const <String, String?>{},
   }) : this(
+         sessionMode: params.sessionMode,
          httpRequestFactory: httpRequestFactory,
          iFrameAllow: iFrameAllow,
          iFrameSandbox: iFrameSandbox,
@@ -256,10 +266,27 @@ class WebWebViewController extends PlatformWebViewController {
   String? _customSandbox;
   _WebHistoryEntry? _activeHistoryEntry;
   WebNavigationDelegate? _navigationDelegate;
+  web.Document? _titleDocument;
+  String? _lastReportedTitle;
+  bool _reportedTitleRestriction = false;
   WebViewDownloadDelegate? _downloadDelegate;
   int _downloadDelegateGeneration = 0;
   int _nextDownloadId = 0;
   Completer<void> _downloadDelegateCancelled = Completer<void>();
+
+  @override
+  Future<void> closeWebViewSession() async {
+    if (_nativeDisposal.isDisposed) return;
+    _downloadDelegateGeneration++;
+    if (!_downloadDelegateCancelled.isCompleted) {
+      _downloadDelegateCancelled.complete();
+    }
+    _downloadDelegate = null;
+    _resetIsolatedBridge();
+    _navigationDelegate = null;
+    _finalizer.detach(this);
+    await _nativeDisposal.dispose();
+  }
 
   @override
   Future<void> setDownloadDelegate(WebViewDownloadDelegate? delegate) async {
@@ -467,6 +494,7 @@ class WebWebViewController extends PlatformWebViewController {
     PlatformNavigationDelegate handler,
   ) async {
     _navigationDelegate = handler as WebNavigationDelegate;
+    _bindTitleObserver();
   }
 
   @override
@@ -605,6 +633,7 @@ class WebWebViewController extends PlatformWebViewController {
     _installJavaScriptTextInputDialogHook();
     _installPlatformPermissionRequestHook();
     _attachScrollListenerToCurrentWindow();
+    _bindTitleObserver();
   }
 
   void _refreshAccessibleDocumentIdentity() {
@@ -926,6 +955,69 @@ class WebWebViewController extends PlatformWebViewController {
 
   void _detachScrollListener() {
     _nativeDisposal.detachScrollListener();
+  }
+
+  void _reportTitle(String title) {
+    if (_nativeDisposal.isDisposed || title == _lastReportedTitle) return;
+    _lastReportedTitle = title;
+    _navigationDelegate?.onTitleChange?.call(title);
+  }
+
+  void _bindTitleObserver() {
+    if (_nativeDisposal.isDisposed) return;
+    _nativeDisposal.titleObserver?.disconnect();
+    _nativeDisposal.titleObserver = null;
+    _titleDocument = null;
+    _lastReportedTitle = null;
+    if (_navigationDelegate?.onTitleChange == null) return;
+    final window = _tryReadAccessibleContentWindow();
+    if (window == null) {
+      if (_hasIsolatedBridge) {
+        if (!_isolatedBridgeLoadPending) {
+          // A ready page can replay its title, including an empty one. Before
+          // mounting/loading, _finishIsolatedDocumentLoad will request it later.
+          _nativeDisposal.isolatedBridgePort?.postMessage(
+            <String, Object?>{
+              _channelMessageType: _isolatedBridgeRequestMessageType,
+              'webViewId': _webWebViewParams.iFrame.id,
+              'generation': _isolatedBridgeGeneration,
+              'documentId': _currentDocumentId,
+              'action': 'reportTitle',
+            }.jsify(),
+          );
+        }
+      } else if (_webWebViewParams.iFrame.isConnected &&
+          !_reportedTitleRestriction) {
+        debugPrint(
+          'webview_all_web: title change notifications are unavailable for this cross-origin frame.',
+        );
+        _reportedTitleRestriction = true;
+      }
+      return;
+    }
+    _reportedTitleRestriction = false;
+    final document = window.document;
+    _titleDocument = document;
+    final weakThis = WeakReference<WebWebViewController>(this);
+    final observer = web.MutationObserver(
+      ((JSArray<web.MutationRecord> _, web.MutationObserver _) {
+        final target = weakThis.target;
+        if (target != null &&
+            _isSameJavaScriptObject(target._titleDocument, document)) {
+          target._reportTitle(document.title);
+        }
+      }).toJS,
+    );
+    observer.observe(
+      document,
+      web.MutationObserverInit(
+        childList: true,
+        subtree: true,
+        characterData: true,
+      ),
+    );
+    _nativeDisposal.titleObserver = observer;
+    _reportTitle(document.title);
   }
 
   void _attachScrollListenerToCurrentWindow() {
@@ -1517,6 +1609,14 @@ ${params.functionBody}
             ),
           );
         }
+        return;
+      case 'webview_all_title':
+        if (_isolatedBridgeLoadPending) {
+          _deferredIsolatedBridgeMessages.add(event);
+          return;
+        }
+        final title = decoded['title'];
+        if (title is String) _reportTitle(title);
         return;
       case _isolatedBridgeScrollMessageType:
         if (_isolatedBridgeLoadPending) {
@@ -2530,6 +2630,10 @@ ${params.functionBody}
       switch (data.action) {
         case 'documentLoaded':
           send({type: readyType, loadId: data.loadId});
+          reportTitle();
+          return;
+        case 'reportTitle':
+          reportTitle(true);
           return;
         case 'evaluate':
           (0, eval)(String(payload.script || ''));
@@ -2573,6 +2677,17 @@ ${params.functionBody}
       fail(requestId, error);
     }
   }
+
+  let lastTitle = null;
+  function reportTitle(force = false) {
+    const title = document.title;
+    if (force || title !== lastTitle) {
+      lastTitle = title;
+      send({type: 'webview_all_title', title: title});
+    }
+  }
+  const titleObserver = new MutationObserver(() => reportTitle());
+  titleObserver.observe(document, {childList: true, subtree: true, characterData: true});
 
   function handleScroll() {
     send({type: scrollType, x: window.scrollX, y: window.scrollY});
@@ -3014,6 +3129,7 @@ class _WebWebViewDisposal {
   web.EventListener? _scrollEventListener;
   web.Window? scrollEventListenerWindow;
   web.MutationObserver? _scrollDocumentObserver;
+  web.MutationObserver? titleObserver;
   web.MessagePort? isolatedBridgePort;
   web.MessagePort? isolatedBridgeCandidatePort;
   final Set<web.MessagePort> permissionDecisionPorts = <web.MessagePort>{};
@@ -3069,6 +3185,8 @@ class _WebWebViewDisposal {
     web.window.removeEventListener('message', messageEventListener);
     closeMessagePorts();
     detachScrollListener();
+    titleObserver?.disconnect();
+    titleObserver = null;
     try {
       await loadEventSubscription.cancel();
     } finally {
