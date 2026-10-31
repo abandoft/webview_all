@@ -6,6 +6,20 @@ import 'package:webview_all/webview_all.dart';
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 void main() {
+  test(
+    'download delegate can be installed and removed through the public controller',
+    () async {
+      final platform = _DownloadController();
+      final controller = WebViewController.fromPlatform(platform);
+      final delegate = WebViewDownloadDelegate(
+        onDownloadRequest: (_) => const WebViewDownloadDecision.cancel(),
+      );
+      await controller.setDownloadDelegate(delegate);
+      expect(platform.delegate, same(delegate));
+      await controller.setDownloadDelegate(null);
+      expect(platform.delegate, isNull);
+    },
+  );
   test('WebViewController forwards public API calls to the platform', () async {
     final _FakePlatformWebViewController platform =
         _FakePlatformWebViewController();
@@ -403,6 +417,16 @@ void main() {
     expect(find.text('fake-webview'), findsOneWidget);
     expect(platform.buildCount, 1);
   });
+}
+
+class _DownloadController extends PlatformWebViewController {
+  _DownloadController()
+    : super.implementation(const PlatformWebViewControllerCreationParams());
+  WebViewDownloadDelegate? delegate;
+  @override
+  Future<void> setDownloadDelegate(WebViewDownloadDelegate? value) async {
+    delegate = value;
+  }
 }
 
 class _FakePlatformWebViewController extends PlatformWebViewController {

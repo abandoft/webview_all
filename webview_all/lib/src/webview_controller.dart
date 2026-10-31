@@ -41,6 +41,14 @@ import 'webview_widget.dart';
 /// }
 /// ```
 class WebViewController {
+  /// Sets download handling without creating a download UI. Available actions
+  /// are advertised on each request. Web iframe downloads may be browser-owned
+  /// and cannot all be observed. Pass null to restore existing platform behavior.
+  /// Updating the delegate cancels unanswered requests; accepted downloads keep
+  /// reporting to their original delegate until completion or controller disposal.
+  Future<void> setDownloadDelegate(WebViewDownloadDelegate? delegate) =>
+      platform.setDownloadDelegate(delegate);
+
   /// Constructs a [WebViewController].
   ///
   /// {@template webview_fluttter.WebViewController.constructor}

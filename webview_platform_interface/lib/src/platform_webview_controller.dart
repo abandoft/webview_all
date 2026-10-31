@@ -49,6 +49,16 @@ abstract class PlatformWebViewController extends PlatformInterface {
   /// The parameters used to initialize the [PlatformWebViewController].
   final PlatformWebViewControllerCreationParams params;
 
+  /// Sets optional download handling independently of navigation callbacks.
+  /// Removing a delegate restores the platform's existing behavior. Download
+  /// observation and available actions differ between engines.
+  Future<void> setDownloadDelegate(WebViewDownloadDelegate? delegate) {
+    if (delegate == null) return Future<void>.value();
+    throw UnsupportedError(
+      'Download delegates are not supported on this platform.',
+    );
+  }
+
   /// Loads the file located on the specified [absoluteFilePath].
   ///
   /// The [absoluteFilePath] parameter should contain the absolute path to the
