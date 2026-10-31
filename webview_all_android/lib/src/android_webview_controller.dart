@@ -496,6 +496,122 @@ class AndroidWebViewController extends PlatformWebViewController {
   Future<void>? _offscreenCloseFuture;
 
   AndroidNavigationDelegate? _currentNavigationDelegate;
+  WebViewDownloadDelegate? _downloadDelegate;
+  int _nextDownloadId = 0;
+  int _downloadDelegateGeneration = 0;
+  Completer<void> _downloadDelegateCancelled = Completer<void>();
+
+  late final android_webview.DownloadListener _controllerDownloadListener =
+      android_webview.DownloadListener(
+        onDownloadStart: withWeakReferenceTo(this, (weakThis) {
+          return (
+            _,
+            String url,
+            String userAgent,
+            String disposition,
+            String mimeType,
+            int length,
+          ) {
+            final target = weakThis.target;
+            if (target == null) return;
+            unawaited(
+              target._handleDownload(
+                url,
+                userAgent,
+                disposition,
+                mimeType,
+                length,
+              ),
+            );
+          };
+        }),
+      );
+
+  @override
+  Future<void> setDownloadDelegate(WebViewDownloadDelegate? delegate) async {
+    if (_offscreenCloseFuture != null) {
+      throw StateError('The Android WebView controller was closed.');
+    }
+    final previous = _downloadDelegate;
+    final generation = ++_downloadDelegateGeneration;
+    _downloadDelegateCancelled.complete();
+    _downloadDelegateCancelled = Completer<void>();
+    _downloadDelegate = delegate;
+    try {
+      await _webView.setDownloadListener(
+        delegate == null
+            ? _currentNavigationDelegate?.androidDownloadListener
+            : _controllerDownloadListener,
+      );
+    } catch (_) {
+      if (generation == _downloadDelegateGeneration) {
+        _downloadDelegate = previous;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _handleDownload(
+    String url,
+    String userAgent,
+    String disposition,
+    String mimeType,
+    int length,
+  ) async {
+    final delegate = _downloadDelegate;
+    if (delegate == null) {
+      _currentNavigationDelegate?._handleNavigation(url, isForMainFrame: true);
+      return;
+    }
+    final generation = _downloadDelegateGeneration;
+    final id = 'android-${++_nextDownloadId}';
+    try {
+      final decision = await delegate.decide(
+        WebViewDownloadRequest(
+          id: id,
+          url: url,
+          suggestedFilename: webViewDownloadSuggestedFilename(
+            url: url,
+            contentDisposition: disposition,
+          ),
+          userAgent: userAgent.isEmpty ? null : userAgent,
+          contentDisposition: disposition.isEmpty ? null : disposition,
+          mimeType: mimeType.isEmpty ? null : mimeType,
+          contentLength: length < 0 ? null : length,
+          supportedActions: const <WebViewDownloadAction>{
+            WebViewDownloadAction.cancel,
+            WebViewDownloadAction.handledExternally,
+          },
+        ),
+        cancelled: _downloadDelegateCancelled.future,
+      );
+      delegate.notifyResult(
+        WebViewDownloadResult(
+          id: id,
+          status:
+              generation != _downloadDelegateGeneration ||
+                  _offscreenCloseFuture != null ||
+                  decision.action == WebViewDownloadAction.cancel
+              ? WebViewDownloadStatus.cancelled
+              : WebViewDownloadStatus.handedOff,
+        ),
+      );
+    } catch (error) {
+      final cancelled =
+          generation != _downloadDelegateGeneration ||
+          _offscreenCloseFuture != null;
+      delegate.notifyResult(
+        WebViewDownloadResult(
+          id: id,
+          status: cancelled
+              ? WebViewDownloadStatus.cancelled
+              : WebViewDownloadStatus.failed,
+          errorCode: cancelled ? null : 'download_decision_failed',
+          description: cancelled ? null : error.toString(),
+        ),
+      );
+    }
+  }
 
   Future<List<String>> Function(FileSelectorParams)?
   _onShowFileSelectorCallback;
@@ -683,7 +799,11 @@ class AndroidWebViewController extends PlatformWebViewController {
     await Future.wait(<Future<void>>[
       handler.setOnLoadRequest(loadRequest),
       _webView.setWebViewClient(handler.androidWebViewClient),
-      _webView.setDownloadListener(handler.androidDownloadListener),
+      _webView.setDownloadListener(
+        _downloadDelegate == null
+            ? handler.androidDownloadListener
+            : _controllerDownloadListener,
+      ),
     ]);
   }
 
@@ -752,6 +872,9 @@ class AndroidWebViewController extends PlatformWebViewController {
   }
 
   Future<void> _closeOffscreenWebView() async {
+    _downloadDelegateGeneration++;
+    _downloadDelegateCancelled.complete();
+    _downloadDelegate = null;
     final AndroidNavigationDelegate? previousDelegate =
         _currentNavigationDelegate;
     if (previousDelegate != null) {

@@ -958,6 +958,112 @@ void main() {
       verifyNever(mockWebView.setWebChromeClient(mockWebChromeClient));
     });
 
+    test(
+      'download delegate receives metadata and does not repeat the URL request',
+      () async {
+        android_webview.PigeonOverrides.downloadListener_new =
+            TestDownloadListener.new;
+        final webView = MockWebView();
+        final controller = createControllerWithMocks(mockWebView: webView);
+        final completion = Completer<WebViewDownloadResult>();
+        late WebViewDownloadRequest request;
+        await controller.setDownloadDelegate(
+          WebViewDownloadDelegate(
+            onDownloadRequest: (value) {
+              request = value;
+              return const WebViewDownloadDecision.handledExternally();
+            },
+            onDownloadResult: completion.complete,
+          ),
+        );
+        final listener =
+            verify(webView.setDownloadListener(captureAny)).captured.single
+                as android_webview.DownloadListener;
+        listener.onDownloadStart(
+          listener,
+          'https://example.test/report',
+          'UA',
+          "attachment; filename*=UTF-8''report%20one.txt",
+          'text/plain',
+          -1,
+        );
+        expect(
+          (await completion.future).status,
+          WebViewDownloadStatus.handedOff,
+        );
+        expect(request.suggestedFilename, 'report one.txt');
+        expect(request.contentDisposition, contains('filename*'));
+        expect(request.contentLength, isNull);
+        expect(request.userAgent, 'UA');
+        expect(request.supportedActions, {
+          WebViewDownloadAction.cancel,
+          WebViewDownloadAction.handledExternally,
+        });
+        verifyNever(webView.loadUrl(any, any));
+      },
+    );
+
+    test(
+      'unsupported download decisions fail without loading the URL',
+      () async {
+        android_webview.PigeonOverrides.downloadListener_new =
+            TestDownloadListener.new;
+        final webView = MockWebView();
+        final controller = createControllerWithMocks(mockWebView: webView);
+        final completion = Completer<WebViewDownloadResult>();
+        await controller.setDownloadDelegate(
+          WebViewDownloadDelegate(
+            onDownloadRequest: (_) =>
+                const WebViewDownloadDecision.platformDefault(),
+            onDownloadResult: completion.complete,
+          ),
+        );
+        final listener =
+            verify(webView.setDownloadListener(captureAny)).captured.single
+                as android_webview.DownloadListener;
+        listener.onDownloadStart(
+          listener,
+          'https://example.test/report',
+          '',
+          '',
+          '',
+          0,
+        );
+        expect((await completion.future).status, WebViewDownloadStatus.failed);
+        verifyNever(webView.loadUrl(any, any));
+      },
+    );
+
+    test('removing a download delegate cancels pending decisions', () async {
+      android_webview.PigeonOverrides.downloadListener_new =
+          TestDownloadListener.new;
+      final webView = MockWebView();
+      final controller = createControllerWithMocks(mockWebView: webView);
+      final decision = Completer<WebViewDownloadDecision>();
+      final result = Completer<WebViewDownloadResult>();
+      await controller.setDownloadDelegate(
+        WebViewDownloadDelegate(
+          onDownloadRequest: (_) => decision.future,
+          onDownloadResult: result.complete,
+        ),
+      );
+      final listener =
+          verify(webView.setDownloadListener(captureAny)).captured.single
+              as android_webview.DownloadListener;
+      listener.onDownloadStart(
+        listener,
+        'https://example.test/file',
+        '',
+        '',
+        '',
+        1,
+      );
+      await controller.setDownloadDelegate(null);
+      expect((await result.future).status, WebViewDownloadStatus.cancelled);
+      verify(webView.setDownloadListener(null)).called(1);
+      decision.complete(const WebViewDownloadDecision.handledExternally());
+    });
+
     test('onProgress', () {
       android_webview.PigeonOverrides.webViewClient_new = TestWebViewClient.new;
       android_webview.PigeonOverrides.webChromeClient_new =
