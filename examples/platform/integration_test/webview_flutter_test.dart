@@ -572,6 +572,8 @@ return {
       (Object value) => value == true,
     );
 
+    // Settle the window's initial layout before using system coordinates.
+    await tester.pumpAndSettle();
     final _X11Window window = await _findCurrentX11Window();
     await _runXdotool(<String>['windowfocus', window.id]);
     await _moveX11Pointer(
@@ -721,6 +723,7 @@ return {
 ''');
     await pageFinished.future.timeout(const Duration(seconds: 10));
 
+    await tester.pumpAndSettle();
     final _X11Window window = await _findCurrentX11Window();
     await _runXdotool(<String>['windowfocus', window.id]);
     final bool propagatedDeviceEvents =

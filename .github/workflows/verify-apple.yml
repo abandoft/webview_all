@@ -78,6 +78,13 @@ jobs:
         if: matrix.flutter == '3.44.x'
         run: swift webview_all_wkwebview/test/console_document_rewrite_test.swift
 
+      - name: Test native downloads and safe file destinations
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: |
+          flutter pub get
+          flutter test integration_test/webview_download_test.dart -d macos
+
       - name: Run macOS integration tests
         if: matrix.flutter == '3.44.x'
         working-directory: examples/platform
