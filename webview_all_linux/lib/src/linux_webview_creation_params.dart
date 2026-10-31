@@ -5,6 +5,8 @@ import 'package:webview_platform_interface/webview_platform_interface.dart';
 class LinuxWebViewControllerCreationParams
     extends PlatformWebViewControllerCreationParams {
   const LinuxWebViewControllerCreationParams({
+    bool incognito = false,
+    WebViewSessionMode sessionMode = WebViewSessionMode.shared,
     this.developerExtrasEnabled,
     this.downloadsEnabled,
     this.javascriptCanOpenWindowsAutomatically,
@@ -18,10 +20,15 @@ class LinuxWebViewControllerCreationParams
     this.defaultMonospaceFontSize,
     this.minimumFontSize,
     this.zoomFactor,
-  });
+  }) : super(
+         sessionMode: incognito
+             ? WebViewSessionMode.isolatedIncognito
+             : sessionMode,
+       );
 
   const LinuxWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
     PlatformWebViewControllerCreationParams params, {
+    bool incognito = false,
     this.developerExtrasEnabled,
     this.downloadsEnabled,
     this.javascriptCanOpenWindowsAutomatically,
@@ -35,7 +42,17 @@ class LinuxWebViewControllerCreationParams
     this.defaultMonospaceFontSize,
     this.minimumFontSize,
     this.zoomFactor,
-  });
+  }) : super.fromPlatformWebViewControllerCreationParams(
+         params,
+         sessionMode: incognito ? WebViewSessionMode.isolatedIncognito : null,
+       );
+
+  /// Uses a separate, ephemeral WebKitGTK context for this controller.
+  ///
+  /// Cookies and website data are isolated from other controllers and from the
+  /// shared cookie/data managers. Nothing is persisted to the shared profile.
+  /// This option must be selected when creating the controller.
+  bool get incognito => sessionMode != WebViewSessionMode.shared;
 
   /// Whether WebKitGTK developer extras are enabled for this WebView.
   final bool? developerExtrasEnabled;

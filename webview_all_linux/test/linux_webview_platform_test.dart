@@ -17,6 +17,23 @@ void main() {
   tearDown(_clearLinuxWebViewCreationMock);
 
   test(
+    'incognito sessions request an isolated native context at creation',
+    () async {
+      final calls = <MethodCall>[];
+      _mockLinuxWebViewCreation(onRootCall: calls.add);
+      final controller = LinuxWebViewController(
+        const LinuxWebViewControllerCreationParams(incognito: true),
+      );
+      await controller.currentUrl();
+      expect(
+        calls.singleWhere((call) => call.method == 'createWebView').arguments,
+        <String, Object?>{'incognito': true},
+      );
+      await controller.dispose();
+    },
+  );
+
+  test(
     'download decisions and results remain independent of navigation',
     () async {
       final calls = <MethodCall>[];

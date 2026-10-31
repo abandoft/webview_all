@@ -351,6 +351,70 @@ void shared_storage_test() {
   });
 }
 
+void incognito_storage_test() {
+  isolated([] {
+    GError *error = nullptr;
+    g_autoptr(WebKitUserContentManager) manager =
+        webkit_user_content_manager_new();
+    WebKitWebView *first =
+        create_linux_environment_web_view(manager, &error, TRUE);
+    g_assert_no_error(error);
+    // Private views must not lock the persistent environment configuration.
+    g_assert_true(ensure_linux_environment(
+        path("data").c_str(), path("cache").c_str(), FALSE, &error));
+    g_assert_no_error(error);
+    WebKitWebView *shared =
+        create_linux_environment_web_view(manager, &error);
+    WebKitWebView *second =
+        create_linux_environment_web_view(manager, &error, TRUE);
+    g_assert_no_error(error);
+    WebKitWebContext *first_context = webkit_web_view_get_context(first);
+    WebKitWebContext *second_context = webkit_web_view_get_context(second);
+    WebKitWebContext *shared_context = webkit_web_view_get_context(shared);
+    g_assert_true(webkit_web_view_is_ephemeral(first));
+    g_assert_true(webkit_web_view_is_ephemeral(second));
+    g_assert_false(webkit_web_view_is_ephemeral(shared));
+    g_assert_true(first_context != second_context);
+    g_assert_true(first_context != shared_context);
+
+    GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_container_add(GTK_CONTAINER(window), box);
+    for (WebKitWebView *view : {first, shared, second}) {
+      gtk_box_pack_start(GTK_BOX(box), GTK_WIDGET(view), TRUE, TRUE, 0);
+    }
+    gtk_widget_show_all(window);
+    add_cookie(shared_context, "shared");
+    add_cookie(first_context, "private");
+    const auto shared_cookies = cookie_names(shared_context);
+    const auto private_cookies = cookie_names(first_context);
+    g_assert_cmpuint(shared_cookies.size(), ==, 1);
+    g_assert_cmpuint(private_cookies.size(), ==, 1);
+    g_assert_cmpstr(shared_cookies.front().c_str(), ==, "shared");
+    g_assert_cmpstr(private_cookies.front().c_str(), ==, "private");
+    g_assert_true(cookie_names(second_context).empty());
+    webview_test::load_html(shared, "<body>Shared</body>",
+                            "http://environment.example/");
+    webview_test::evaluate(
+        shared, "localStorage.setItem('session', 'shared'); null;");
+    webview_test::load_html(first, "<body>Private</body>",
+                            "http://environment.example/");
+    webview_test::evaluate(
+        first, "if (localStorage.getItem('session') !== null) throw new "
+               "Error('Shared storage leaked'); "
+               "localStorage.setItem('session', 'private'); null;");
+    webview_test::load_html(second, "<body>New private</body>",
+                            "http://environment.example/");
+    webview_test::evaluate(
+        second, "if (localStorage.getItem('session') !== null) throw new "
+                "Error('Private storage leaked'); null;");
+    webview_test::evaluate(
+        shared, "if (localStorage.getItem('session') !== 'shared') throw new "
+                "Error('Shared storage changed'); null;");
+    gtk_widget_destroy(window);
+  });
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -375,5 +439,6 @@ int main(int argc, char **argv) {
   g_test_add_func("/environment/explicit-default-failure",
                   explicit_default_failure_test);
   g_test_add_func("/environment/shared-storage", shared_storage_test);
+  g_test_add_func("/environment/incognito-storage", incognito_storage_test);
   return g_test_run();
 }

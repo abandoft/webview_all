@@ -9,6 +9,8 @@ import 'package:path/path.dart' as path;
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'linux_navigation_delegate.dart';
+import 'linux_webview_cookie_manager.dart';
+import 'linux_webview_data_manager.dart';
 import 'linux_webview_constants.dart';
 import 'linux_webview_creation_params.dart';
 import 'linux_webview_requests.dart';
@@ -122,6 +124,7 @@ class LinuxWebViewController extends PlatformWebViewController {
 
   Future<void>? _readyFuture;
   MethodChannel? _channel;
+  int? _sessionViewId;
   EventChannel? _eventChannel;
   StreamSubscription<dynamic>? _eventSubscription;
   _LinuxWebViewDisposal? _nativeDisposal;
@@ -166,8 +169,12 @@ class LinuxWebViewController extends PlatformWebViewController {
     WeakReference<LinuxWebViewController> weakThis,
   ) async {
     final int id =
-        await rootChannel.invokeMethod<int>('createWebView') ??
+        await rootChannel.invokeMethod<int>(
+          'createWebView',
+          _linuxParams.incognito ? <String, Object?>{'incognito': true} : null,
+        ) ??
         (throw StateError('Failed to create Linux WebView instance.'));
+    _sessionViewId = id;
     _channel = MethodChannel('$linuxWebViewChannelPrefix/$id');
     _eventChannel = EventChannel('$linuxWebViewChannelPrefix/$id/events');
     _eventSubscription = _eventChannel!.receiveBroadcastStream().listen(
@@ -213,6 +220,28 @@ class LinuxWebViewController extends PlatformWebViewController {
 
   LinuxWebViewControllerCreationParams get _linuxParams =>
       params as LinuxWebViewControllerCreationParams;
+
+  @override
+  Future<void> prepareSession() => _ensureReady();
+
+  int get _sessionIdentifier {
+    if (_disposed || _sessionViewId == null) {
+      throw StateError('The WebView session is not ready or has closed.');
+    }
+    return _sessionViewId!;
+  }
+
+  @override
+  PlatformWebViewCookieManager createSessionCookieManager() =>
+      LinuxWebViewCookieManager(
+        LinuxWebViewCookieManagerCreationParams(webViewId: _sessionIdentifier),
+      );
+
+  @override
+  PlatformWebViewDataManager createSessionDataManager() =>
+      LinuxWebViewDataManager(
+        LinuxWebViewDataManagerCreationParams(webViewId: _sessionIdentifier),
+      );
 
   @override
   Future<void> setDownloadDelegate(WebViewDownloadDelegate? delegate) async {

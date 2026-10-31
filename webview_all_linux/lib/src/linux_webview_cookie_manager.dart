@@ -4,11 +4,13 @@ import 'linux_webview_controller.dart';
 
 class LinuxWebViewCookieManagerCreationParams
     extends PlatformWebViewCookieManagerCreationParams {
-  const LinuxWebViewCookieManagerCreationParams();
+  const LinuxWebViewCookieManagerCreationParams({this.webViewId});
+
+  final int? webViewId;
 
   const LinuxWebViewCookieManagerCreationParams.fromPlatformWebViewCookieManagerCreationParams(
     PlatformWebViewCookieManagerCreationParams params,
-  );
+  ) : webViewId = null;
 }
 
 class LinuxWebViewCookieManager extends PlatformWebViewCookieManager {
@@ -21,10 +23,14 @@ class LinuxWebViewCookieManager extends PlatformWebViewCookieManager {
               ),
       );
 
+  int? get _viewId =>
+      (params as LinuxWebViewCookieManagerCreationParams).webViewId;
+
   @override
   Future<bool> clearCookies() async {
     final bool? value = await LinuxWebViewController.rootChannel.invokeMethod(
       'clearCookies',
+      _viewId == null ? null : <String, Object?>{'webViewId': _viewId},
     );
     return value ?? false;
   }
@@ -34,6 +40,7 @@ class LinuxWebViewCookieManager extends PlatformWebViewCookieManager {
     _validateWebViewCookie(cookie);
 
     return LinuxWebViewController.rootChannel.invokeMethod<void>('setCookie', {
+      if (_viewId != null) 'webViewId': _viewId,
       'name': cookie.name,
       'value': cookie.value,
       'domain': cookie.domain,
@@ -46,7 +53,10 @@ class LinuxWebViewCookieManager extends PlatformWebViewCookieManager {
     final List<Object?> rawCookies =
         await LinuxWebViewController.rootChannel.invokeListMethod<Object?>(
           'getCookies',
-          <String, Object?>{'url': url.toString()},
+          <String, Object?>{
+            'url': url.toString(),
+            if (_viewId != null) 'webViewId': _viewId,
+          },
         ) ??
         const <Object?>[];
 

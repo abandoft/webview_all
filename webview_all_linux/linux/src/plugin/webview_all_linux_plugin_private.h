@@ -89,7 +89,8 @@ typedef struct {
 } PendingNavigationDecision;
 
 LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self,
-                                  GError **error = nullptr);
+                                  GError **error = nullptr,
+                                  gboolean incognito = FALSE);
 void destroy_linux_webview(gpointer data);
 void root_method_call_cb(FlMethodChannel *channel, FlMethodCall *method_call,
                          gpointer user_data);

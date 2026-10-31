@@ -5,15 +5,19 @@ import 'linux_webview_controller.dart';
 class LinuxWebViewDataManagerCreationParams
     extends PlatformWebViewDataManagerCreationParams {
   const LinuxWebViewDataManagerCreationParams({
+    this.webViewId,
     this.userDataPath,
     this.cachePath,
   });
 
   const LinuxWebViewDataManagerCreationParams.fromPlatformWebViewDataManagerCreationParams(
     PlatformWebViewDataManagerCreationParams params, {
+    this.webViewId,
     this.userDataPath,
     this.cachePath,
   });
+
+  final int? webViewId;
 
   /// The persistent website-data directory used by the shared environment.
   final String? userDataPath;
@@ -41,12 +45,17 @@ class LinuxWebViewDataManager extends PlatformWebViewDataManager {
   Future<WebViewDataClearingResult> clearAllWebsiteData() async {
     final linuxParams = params as LinuxWebViewDataManagerCreationParams;
     try {
-      await LinuxWebViewController.ensureEnvironment(
-        userDataPath: linuxParams.userDataPath,
-        cachePath: linuxParams.cachePath,
-      );
+      if (linuxParams.webViewId == null) {
+        await LinuxWebViewController.ensureEnvironment(
+          userDataPath: linuxParams.userDataPath,
+          cachePath: linuxParams.cachePath,
+        );
+      }
       await LinuxWebViewController.rootChannel.invokeMethod<void>(
         'clearAllWebsiteData',
+        linuxParams.webViewId == null
+            ? null
+            : <String, Object?>{'webViewId': linuxParams.webViewId},
       );
       return WebViewDataClearingResult(
         clearedDataTypes: WebViewDataType.values.toSet(),

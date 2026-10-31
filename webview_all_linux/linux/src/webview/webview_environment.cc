@@ -156,8 +156,11 @@ WebKitWebContext *get_linux_environment_context(GError **error) {
 
 WebKitWebView *
 create_linux_environment_web_view(WebKitUserContentManager *content_manager,
-                                  GError **error) {
-  WebKitWebContext *context = get_linux_environment_context(error);
+                                  GError **error, gboolean incognito) {
+  g_autoptr(WebKitWebContext) ephemeral_context =
+      incognito ? webkit_web_context_new_ephemeral() : nullptr;
+  WebKitWebContext *context =
+      incognito ? ephemeral_context : get_linux_environment_context(error);
   if (!context)
     return nullptr;
   return WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context",

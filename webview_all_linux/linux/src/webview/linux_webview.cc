@@ -775,13 +775,15 @@ void destroy_linux_webview(gpointer data) {
   g_free(webview);
 }
 
-LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self, GError **error) {
+LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self, GError **error,
+                                  gboolean incognito) {
   LinuxWebView *webview = g_new0(LinuxWebView, 1);
   webview->plugin = self;
   webview->id = self->next_webview_id++;
   webview->content_manager = webkit_user_content_manager_new();
   webview->web_view =
-      create_linux_environment_web_view(webview->content_manager, error);
+      create_linux_environment_web_view(webview->content_manager, error,
+                                        incognito);
   if (webview->web_view == nullptr) {
     g_object_unref(webview->content_manager);
     g_free(webview);

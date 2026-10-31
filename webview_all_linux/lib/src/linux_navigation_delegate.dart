@@ -18,6 +18,7 @@ class LinuxNavigationDelegate extends PlatformNavigationDelegate {
   WebResourceErrorCallback? _onWebResourceError;
   NavigationRequestCallback? _onNavigationRequest;
   UrlChangeCallback? _onUrlChange;
+  TitleChangeCallback? _onTitleChange;
   HttpResponseErrorCallback? _onHttpError;
   HttpAuthRequestCallback? _onHttpAuthRequest;
   SslAuthErrorCallback? _onSslAuthError;
@@ -27,6 +28,8 @@ class LinuxNavigationDelegate extends PlatformNavigationDelegate {
   bool get hasHttpAuthRequestHandler => _onHttpAuthRequest != null;
 
   bool get hasSslAuthErrorHandler => _onSslAuthError != null;
+
+  void handleTitleChange(String title) => _onTitleChange?.call(title);
 
   void handleUrlChange(String url) {
     _onUrlChange?.call(UrlChange(url: url));
@@ -99,6 +102,11 @@ class LinuxNavigationDelegate extends PlatformNavigationDelegate {
     WebResourceErrorCallback onWebResourceError,
   ) async {
     _onWebResourceError = onWebResourceError;
+  }
+
+  @override
+  Future<void> setOnTitleChange(TitleChangeCallback onTitleChange) async {
+    _onTitleChange = onTitleChange;
   }
 
   @override

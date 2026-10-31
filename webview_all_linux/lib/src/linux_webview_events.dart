@@ -74,6 +74,7 @@ extension LinuxWebViewControllerEventHandling on LinuxWebViewController {
         break;
       case 'titleChanged':
         _title = event['title'] as String?;
+        _navigationDelegate?.handleTitleChange(_title ?? '');
         break;
       case 'webResourceError':
         _navigationDelegate?.handleWebResourceError(

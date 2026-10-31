@@ -24,9 +24,10 @@ gboolean ensure_linux_environment(const gchar *user_data_path,
 // when no explicit configuration has been initialized yet.
 WebKitWebContext *get_linux_environment_context(GError **error);
 
-// The returned widget has the usual floating GtkWidget reference.
+// The returned widget has the usual floating GtkWidget reference. Incognito
+// views own a separate ephemeral context and do not initialize the environment.
 WebKitWebView *
 create_linux_environment_web_view(WebKitUserContentManager *content_manager,
-                                  GError **error);
+                                  GError **error, gboolean incognito = FALSE);
 
 #endif // WEBVIEW_ALL_LINUX_WEBVIEW_ENVIRONMENT_H_

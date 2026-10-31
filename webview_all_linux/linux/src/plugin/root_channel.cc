@@ -145,7 +145,8 @@ void root_method_call_cb(FlMethodChannel* channel,
 
   if (strcmp(method, "createWebView") == 0) {
     GError* error = nullptr;
-    LinuxWebView* webview = create_linux_webview(self, &error);
+    LinuxWebView* webview = create_linux_webview(
+        self, &error, map_lookup_bool(args, "incognito", FALSE));
     if (webview == nullptr) {
       respond_environment_error(method_call, error);
       return;
@@ -181,7 +182,22 @@ void root_method_call_cb(FlMethodChannel* channel,
   }
 
   GError* error = nullptr;
-  WebKitWebContext* context = get_linux_environment_context(&error);
+  WebKitWebContext* context = nullptr;
+  FlValue* scoped_id = map_lookup(args, "webViewId");
+  if (scoped_id != nullptr) {
+    LinuxWebView* scoped_view = fl_value_get_type(scoped_id) == FL_VALUE_TYPE_INT &&
+        fl_value_get_int(scoped_id) > 0 && fl_value_get_int(scoped_id) <= G_MAXINT
+        ? static_cast<LinuxWebView*>(g_hash_table_lookup(
+            self->webviews, GINT_TO_POINTER(fl_value_get_int(scoped_id))))
+        : nullptr;
+    if (scoped_view == nullptr) {
+      respond(method_call, error_response("invalid_session", "The WebView session has closed or does not exist."));
+      return;
+    }
+    context = webkit_web_view_get_context(scoped_view->web_view);
+  } else {
+    context = get_linux_environment_context(&error);
+  }
   if (!context) {
     respond_environment_error(method_call, error);
     return;
