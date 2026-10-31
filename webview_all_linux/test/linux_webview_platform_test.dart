@@ -16,6 +16,221 @@ void main() {
   tearDown(_clearLinuxWebViewCreationMock);
 
   test(
+    'download decisions and results remain independent of navigation',
+    () async {
+      final calls = <MethodCall>[];
+      _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+      final controller = LinuxWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final requests = <WebViewDownloadRequest>[];
+      final progress = <WebViewDownloadProgress>[];
+      final results = <WebViewDownloadResult>[];
+      await controller.setDownloadDelegate(
+        WebViewDownloadDelegate(
+          onDownloadRequest: (request) {
+            requests.add(request);
+            return const WebViewDownloadDecision.saveToFile('/tmp/chosen.txt');
+          },
+          onDownloadProgress: progress.add,
+          onDownloadResult: results.add,
+        ),
+      );
+      await _emitLinuxWebViewEvent(<String, Object?>{
+        'type': 'downloadRequest',
+        'id': '7',
+        'url': 'blob:download',
+        'suggestedFilename': 'report.txt',
+        'mimeType': 'text/plain',
+        'contentDisposition': 'attachment; filename=report.txt',
+      });
+      await _flushAsyncEvents();
+      expect(requests.single.contentLength, isNull);
+      expect(requests.single.suggestedFilename, 'report.txt');
+      expect(
+        requests.single.supportedActions,
+        WebViewDownloadAction.values.toSet(),
+      );
+      expect(
+        calls
+            .singleWhere((call) => call.method == 'completeDownloadRequest')
+            .arguments,
+        <String, Object?>{
+          'id': '7',
+          'action': 'saveToFile',
+          'path': '/tmp/chosen.txt',
+        },
+      );
+      await _emitLinuxWebViewEvent(<String, Object?>{
+        'type': 'downloadProgress',
+        'id': '7',
+        'bytesReceived': 12,
+      });
+      await _emitLinuxWebViewEvent(<String, Object?>{
+        'type': 'downloadResult',
+        'id': '7',
+        'status': 'completed',
+        'path': '/tmp/chosen.txt',
+      });
+      await _flushAsyncEvents();
+      expect(progress.single.totalBytes, isNull);
+      expect(progress.single.bytesReceived, 12);
+      expect(results.single.status, WebViewDownloadStatus.completed);
+      expect(results.single.path, '/tmp/chosen.txt');
+      expect(calls.where((call) => call.method == 'loadRequest'), isEmpty);
+      await controller.setDownloadDelegate(null);
+      expect(
+        calls
+            .where((call) => call.method == 'setDownloadDelegate')
+            .last
+            .arguments,
+        <String, Object?>{'enabled': false},
+      );
+      await controller.dispose();
+    },
+  );
+
+  test(
+    'download callback failures cancel instead of reloading the URL',
+    () async {
+      final calls = <MethodCall>[];
+      _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+      final controller = LinuxWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final results = <WebViewDownloadResult>[];
+      await controller.setDownloadDelegate(
+        WebViewDownloadDelegate(
+          onDownloadRequest: (_) => throw StateError('application failed'),
+          onDownloadResult: results.add,
+        ),
+      );
+      await _emitLinuxWebViewEvent(<String, Object?>{
+        'type': 'downloadRequest',
+        'id': '8',
+        'url': 'https://example.test/file',
+      });
+      await _flushAsyncEvents();
+      final args =
+          calls
+                  .singleWhere(
+                    (call) => call.method == 'completeDownloadRequest',
+                  )
+                  .arguments
+              as Map;
+      expect(args['action'], 'cancel');
+      expect(args['error'], contains('application failed'));
+      for (var i = 0; i < 2; i++) {
+        await _emitLinuxWebViewEvent(<String, Object?>{
+          'type': 'downloadResult',
+          'id': '8',
+          'status': 'failed',
+          'errorCode': 'download_decision_failed',
+        });
+      }
+      await _flushAsyncEvents();
+      expect(results, hasLength(1));
+      expect(results.single.status, WebViewDownloadStatus.failed);
+      expect(calls.where((call) => call.method == 'loadRequest'), isEmpty);
+      await controller.dispose();
+    },
+  );
+
+  test(
+    'replacing a delegate cancels pending decisions without replaying late replies',
+    () async {
+      final calls = <MethodCall>[];
+      _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+      final controller = LinuxWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final decision = Completer<WebViewDownloadDecision>();
+      final oldResults = <WebViewDownloadResult>[];
+      final newResults = <WebViewDownloadResult>[];
+      await controller.setDownloadDelegate(
+        WebViewDownloadDelegate(
+          onDownloadRequest: (_) => decision.future,
+          onDownloadResult: oldResults.add,
+        ),
+      );
+      await _emitLinuxWebViewEvent(<String, Object?>{
+        'type': 'downloadRequest',
+        'id': '9',
+        'url': 'https://example.test/file',
+      });
+      await _flushAsyncEvents();
+      await controller.setDownloadDelegate(
+        WebViewDownloadDelegate(
+          onDownloadRequest: (_) => const WebViewDownloadDecision.cancel(),
+          onDownloadResult: newResults.add,
+        ),
+      );
+      await _flushAsyncEvents();
+      final decisions = calls
+          .where((call) => call.method == 'completeDownloadRequest')
+          .toList();
+      expect(decisions, hasLength(1));
+      expect((decisions.single.arguments as Map)['action'], 'cancel');
+      await _emitLinuxWebViewEvent(<String, Object?>{
+        'type': 'downloadResult',
+        'id': '9',
+        'status': 'cancelled',
+      });
+      await _flushAsyncEvents();
+      await controller.dispose();
+      expect(oldResults.single.status, WebViewDownloadStatus.cancelled);
+      expect(newResults, isEmpty);
+      decision.complete(const WebViewDownloadDecision.platformDefault());
+      await _flushAsyncEvents();
+      expect(
+        calls.where((call) => call.method == 'completeDownloadRequest'),
+        hasLength(1),
+      );
+      expect(oldResults, hasLength(1));
+    },
+  );
+
+  test(
+    'accepted downloads keep their original delegate after replacement',
+    () async {
+      final controller = LinuxWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      final oldResults = <WebViewDownloadResult>[];
+      final newResults = <WebViewDownloadResult>[];
+      await controller.setDownloadDelegate(
+        WebViewDownloadDelegate(
+          onDownloadRequest: (_) =>
+              const WebViewDownloadDecision.platformDefault(),
+          onDownloadResult: oldResults.add,
+        ),
+      );
+      await _emitLinuxWebViewEvent(<String, Object?>{
+        'type': 'downloadRequest',
+        'id': 'accepted',
+        'url': 'https://example.test/file',
+      });
+      await _flushAsyncEvents();
+      await controller.setDownloadDelegate(
+        WebViewDownloadDelegate(
+          onDownloadRequest: (_) => const WebViewDownloadDecision.cancel(),
+          onDownloadResult: newResults.add,
+        ),
+      );
+      await _emitLinuxWebViewEvent(<String, Object?>{
+        'type': 'downloadResult',
+        'id': 'accepted',
+        'status': 'completed',
+        'path': '/tmp/file',
+      });
+      await _flushAsyncEvents();
+      expect(oldResults.single.status, WebViewDownloadStatus.completed);
+      expect(newResults, isEmpty);
+      await controller.dispose();
+    },
+  );
+
+  test(
     'environment options preserve omitted and explicit default paths',
     () async {
       final calls = <MethodCall>[];

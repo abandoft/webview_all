@@ -27,6 +27,7 @@ typedef struct {
   WebKitWebView *web_view;
   FlMethodCall *method_call;
   SoupSession *session;
+  SoupCookieJar *cookie_jar;
   SoupMessage *message;
   gchar *url;
 } PendingSoupLoadRequest;
@@ -224,6 +225,7 @@ void destroy_pending_soup_load_request(PendingSoupLoadRequest *pending) {
   g_clear_object(&pending->web_view);
   g_clear_object(&pending->method_call);
   g_clear_object(&pending->session);
+  g_clear_object(&pending->cookie_jar);
   g_clear_object(&pending->message);
   g_free(pending->url);
   g_free(pending);
@@ -315,21 +317,70 @@ void soup_load_request_cb(GObject *source_object, GAsyncResult *result,
   if (webview != nullptr) {
     emit_soup_http_error(webview, pending->message, pending->url);
 
+    // The custom request shares browser cookies, including HttpOnly cookies,
+    // and writes response cookies back to the same WebKit profile.
+    WebKitCookieManager *manager = webkit_web_context_get_cookie_manager(
+        webkit_web_view_get_context(pending->web_view));
+    GSList *cookies = soup_cookies_from_response(pending->message);
+    for (GSList *entry = cookies; entry; entry = entry->next) {
+      webkit_cookie_manager_add_cookie(manager,
+                                       static_cast<SoupCookie *>(entry->data),
+                                       nullptr, nullptr, nullptr);
+    }
+    g_slist_free_full(cookies,
+                      reinterpret_cast<GDestroyNotify>(soup_cookie_free));
+
     SoupMessageHeaders *response_headers =
         soup_message_get_response_headers(pending->message);
     const gchar *mime_type =
         response_headers == nullptr
             ? nullptr
             : soup_message_headers_get_content_type(response_headers, nullptr);
-    webkit_web_view_load_bytes(
-        pending->web_view, bytes,
-        mime_type != nullptr ? mime_type : "application/octet-stream", nullptr,
-        pending->url);
+    if (!webview->download_policy->HandleResponseData(bytes,
+                                                      pending->message)) {
+      webkit_web_view_load_bytes(
+          pending->web_view, bytes,
+          mime_type != nullptr ? mime_type : "application/octet-stream",
+          nullptr, pending->url);
+    }
   }
 
   g_bytes_unref(bytes);
   respond(pending->method_call, success_response());
   destroy_pending_soup_load_request(pending);
+}
+
+void soup_request_cookies_cb(GObject *source, GAsyncResult *result,
+                             gpointer data) {
+  auto *pending = static_cast<PendingSoupLoadRequest *>(data);
+  GError *error = nullptr;
+  GList *cookies = webkit_cookie_manager_get_cookies_finish(
+      WEBKIT_COOKIE_MANAGER(source), result, &error);
+  if (error) {
+    respond(pending->method_call,
+            error_response("load_request_error", error->message));
+    g_clear_error(&error);
+    destroy_pending_soup_load_request(pending);
+    return;
+  }
+  for (GList *entry = cookies; entry; entry = entry->next) {
+    // Adding transfers ownership to the jar. It also handles response cookies
+    // and redirect scoping instead of copying a Cookie header across origins.
+    soup_cookie_jar_add_cookie(pending->cookie_jar,
+                               static_cast<SoupCookie *>(entry->data));
+  }
+  g_list_free(cookies);
+  if (!g_object_get_data(G_OBJECT(pending->web_view),
+                         kLinuxWebViewInstanceKey)) {
+    respond(
+        pending->method_call,
+        error_response("load_request_error", "The WebView has been disposed."));
+    destroy_pending_soup_load_request(pending);
+    return;
+  }
+  soup_session_send_and_read_async(pending->session, pending->message,
+                                   G_PRIORITY_DEFAULT, nullptr,
+                                   soup_load_request_cb, pending);
 }
 
 void load_request_with_soup(WebKitWebView *web_view, FlMethodCall *method_call,
@@ -348,6 +399,11 @@ void load_request_with_soup(WebKitWebView *web_view, FlMethodCall *method_call,
   SoupMessageHeaders *request_headers =
       soup_message_get_request_headers(message);
   append_headers_from_value(request_headers, headers);
+  // CookieJar replaces Cookie headers on every send. Preserve an explicitly
+  // supplied header; only use profile cookies when the caller did not set one.
+  if (soup_message_headers_get_one(request_headers, "Cookie") != nullptr) {
+    soup_message_disable_feature(message, SOUP_TYPE_COOKIE_JAR);
+  }
 
   GBytes *body = body_bytes_from_value(body_value);
   if (body != nullptr) {
@@ -365,13 +421,20 @@ void load_request_with_soup(WebKitWebView *web_view, FlMethodCall *method_call,
   PendingSoupLoadRequest *pending = g_new0(PendingSoupLoadRequest, 1);
   pending->web_view = WEBKIT_WEB_VIEW(g_object_ref(web_view));
   pending->method_call = FL_METHOD_CALL(g_object_ref(method_call));
-  pending->session = soup_session_new();
+  pending->session = soup_session_new_with_options(
+      "user-agent",
+      webkit_settings_get_user_agent(webkit_web_view_get_settings(web_view)),
+      nullptr);
+  pending->cookie_jar = soup_cookie_jar_new();
+  soup_session_add_feature(pending->session,
+                           SOUP_SESSION_FEATURE(pending->cookie_jar));
   pending->message = SOUP_MESSAGE(g_object_ref(message));
   pending->url = g_strdup(url);
 
-  soup_session_send_and_read_async(pending->session, message,
-                                   G_PRIORITY_DEFAULT, nullptr,
-                                   soup_load_request_cb, pending);
+  WebKitCookieManager *manager = webkit_web_context_get_cookie_manager(
+      webkit_web_view_get_context(web_view));
+  webkit_cookie_manager_get_cookies(manager, url, nullptr,
+                                    soup_request_cookies_cb, pending);
   g_object_unref(message);
 }
 
@@ -770,6 +833,31 @@ void instance_method_call_cb(FlMethodChannel *channel,
     WebKitSettings *settings = webkit_web_view_get_settings(webview->web_view);
     webkit_settings_set_enable_developer_extras(
         settings, map_lookup_bool(args, "enabled", FALSE));
+    respond(method_call, success_response());
+    return;
+  }
+
+  if (strcmp(method, "setDownloadDelegate") == 0) {
+    FlValue *enabled = map_lookup(args, "enabled");
+    if (enabled == nullptr || fl_value_get_type(enabled) != FL_VALUE_TYPE_BOOL) {
+      respond(method_call, error_response("invalid_arguments", "enabled must be a boolean"));
+      return;
+    }
+    webview->download_policy->SetDelegateEnabled(fl_value_get_bool(enabled));
+    respond(method_call, success_response());
+    return;
+  }
+
+  if (strcmp(method, "completeDownloadRequest") == 0) {
+    const gchar *id = fl_value_to_string_or_null(map_lookup(args, "id"));
+    const gchar *action = fl_value_to_string_or_null(map_lookup(args, "action"));
+    const gchar *path = fl_value_to_string_or_null(map_lookup(args, "path"));
+    const gchar *error = fl_value_to_string_or_null(map_lookup(args, "error"));
+    if (id == nullptr || action == nullptr) {
+      respond(method_call, error_response("invalid_arguments", "id and action must be strings"));
+      return;
+    }
+    webview->download_policy->Resolve(id, action, path ? path : "", error ? error : "");
     respond(method_call, success_response());
     return;
   }

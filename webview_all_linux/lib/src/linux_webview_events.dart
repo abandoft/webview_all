@@ -2,12 +2,46 @@ part of 'linux_webview_controller.dart';
 
 extension LinuxWebViewControllerEventHandling on LinuxWebViewController {
   void _handleEvent(dynamic event) {
-    if (event is! Map) {
+    if (_disposed || event is! Map) {
       return;
     }
 
     final String? type = event['type'] as String?;
     switch (type) {
+      case 'downloadRequest':
+        _dispatchEventHandler(
+          'download request',
+          () => _handleDownloadRequest(event),
+        );
+        break;
+      case 'downloadProgress':
+        _downloadDelegates['${event['id']}']?.notifyProgress(
+          WebViewDownloadProgress(
+            id: '${event['id']}',
+            bytesReceived: (event['bytesReceived'] as num?)?.toInt() ?? 0,
+            totalBytes: (event['totalBytes'] as num?)?.toInt(),
+          ),
+        );
+        break;
+      case 'downloadResult':
+        final id = '${event['id']}';
+        if (!_finishedDownloads.add(id)) break;
+        if (_finishedDownloads.length > 256) {
+          _finishedDownloads.remove(_finishedDownloads.first);
+        }
+        final delegate = _downloadDelegates.remove(id) ?? _downloadDelegate;
+        final pending = _downloadDecisions.remove(id);
+        if (pending != null && !pending.isCompleted) pending.complete();
+        delegate?.notifyResult(
+          WebViewDownloadResult(
+            id: id,
+            status: WebViewDownloadStatus.values.byName('${event['status']}'),
+            path: event['path'] as String?,
+            errorCode: event['errorCode'] as String?,
+            description: event['description'] as String?,
+          ),
+        );
+        break;
       case 'urlChanged':
         final String url = '${event['url'] ?? ''}';
         _currentUrl = url;
@@ -145,6 +179,49 @@ extension LinuxWebViewControllerEventHandling on LinuxWebViewController {
         );
         break;
     }
+  }
+
+  Future<void> _handleDownloadRequest(Map<dynamic, dynamic> event) async {
+    final id = '${event['id']}';
+    if (_finishedDownloads.contains(id)) return;
+    final delegate = _downloadDelegate;
+    var decision = const WebViewDownloadDecision.cancel();
+    String? failure;
+    if (delegate != null) {
+      if (_downloadDelegates.containsKey(id)) return;
+      _downloadDelegates[id] = delegate;
+      final cancelled = Completer<void>();
+      _downloadDecisions[id] = cancelled;
+      try {
+        decision = await delegate.decide(
+          WebViewDownloadRequest(
+            id: id,
+            url: '${event['url'] ?? ''}',
+            suggestedFilename: event['suggestedFilename'] as String?,
+            mimeType: event['mimeType'] as String?,
+            contentDisposition: event['contentDisposition'] as String?,
+            contentLength: (event['totalBytes'] as num?)?.toInt(),
+            userAgent: event['userAgent'] as String?,
+            supportedActions: WebViewDownloadAction.values.toSet(),
+          ),
+          cancelled: cancelled.future,
+        );
+      } catch (error) {
+        decision = const WebViewDownloadDecision.cancel();
+        if (!cancelled.isCompleted) failure = error.toString();
+      } finally {
+        _downloadDecisions.remove(id);
+      }
+    }
+    if (_disposed || _finishedDownloads.contains(id)) return;
+    await _channel!.invokeMethod<void>(
+      'completeDownloadRequest',
+      <String, Object?>{
+        'id': id,
+        ...decision.toMap(),
+        if (failure != null) 'error': failure,
+      },
+    );
   }
 
   Future<void> _handleNavigationRequestEvent(

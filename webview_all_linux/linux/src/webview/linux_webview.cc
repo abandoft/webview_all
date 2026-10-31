@@ -252,12 +252,15 @@ static gboolean decide_policy_cb(WebKitWebView *widget,
                                  WebKitPolicyDecision *decision,
                                  WebKitPolicyDecisionType type,
                                  gpointer user_data) {
+  LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
+  if (type == WEBKIT_POLICY_DECISION_TYPE_RESPONSE) {
+    return webview->download_policy->HandleResponsePolicy(decision);
+  }
   if (type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION &&
       type != WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION) {
     return FALSE;
   }
 
-  LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
   WebKitNavigationPolicyDecision *navigation_decision =
       WEBKIT_NAVIGATION_POLICY_DECISION(decision);
   WebKitNavigationAction *navigation_action =
@@ -355,6 +358,10 @@ static gboolean load_failed_cb(WebKitWebView *widget,
                                WebKitLoadEvent load_event,
                                const gchar *failing_url, GError *error,
                                gpointer user_data) {
+  LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
+  if (webview->download_policy->ShouldIgnoreLoadFailure(error, failing_url)) {
+    return FALSE;
+  }
   if (error != nullptr && error->domain == webkit_network_error_quark() &&
       error->code == WEBKIT_NETWORK_ERROR_CANCELLED) {
     return FALSE;
@@ -814,7 +821,26 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self, GError **error) 
   webview->vertical_scrollbar_enabled = TRUE;
   webview->horizontal_scrollbar_enabled = TRUE;
   webview->zoom_enabled = TRUE;
-  webview->download_policy = new DownloadPolicy(webview->web_view);
+  webview->download_policy = new DownloadPolicy(
+      webview->web_view, [webview](const DownloadEvent &download) {
+        FlValue *event = make_event(download.type.c_str());
+        auto text = [event](const char *key, const std::string &value) {
+          if (!value.empty()) fl_value_set_string_take(event, key, fl_value_new_string(value.c_str()));
+        };
+        text("id", download.id);
+        text("url", download.url);
+        text("suggestedFilename", download.suggested_filename);
+        text("mimeType", download.mime_type);
+        text("contentDisposition", download.content_disposition);
+        text("userAgent", download.user_agent);
+        text("status", download.status);
+        text("path", download.path);
+        text("errorCode", download.error_code);
+        text("description", download.description);
+        fl_value_set_string_take(event, "bytesReceived", fl_value_new_int(download.bytes_received));
+        if (download.total_bytes >= 0) fl_value_set_string_take(event, "totalBytes", fl_value_new_int(download.total_bytes));
+        send_event(webview, event);
+      });
   webview->media_playback_requires_user_gesture = -1;
   webview->frame_sequence = 0;
   webview->over_scroll_behavior = "";

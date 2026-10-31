@@ -127,6 +127,13 @@ class LinuxWebViewController extends PlatformWebViewController {
   _LinuxWebViewDisposal? _nativeDisposal;
 
   LinuxNavigationDelegate? _navigationDelegate;
+  WebViewDownloadDelegate? _downloadDelegate;
+  final Map<String, WebViewDownloadDelegate> _downloadDelegates =
+      <String, WebViewDownloadDelegate>{};
+  final Set<String> _finishedDownloads = <String>{};
+  final Map<String, Completer<void>> _downloadDecisions =
+      <String, Completer<void>>{};
+  int _downloadDelegateGeneration = 0;
   final Map<String, JavaScriptChannelParams> _javaScriptChannels =
       <String, JavaScriptChannelParams>{};
   final Map<String, Completer<Object?>> _pendingAsyncJavaScriptInvocations =
@@ -206,6 +213,30 @@ class LinuxWebViewController extends PlatformWebViewController {
 
   LinuxWebViewControllerCreationParams get _linuxParams =>
       params as LinuxWebViewControllerCreationParams;
+
+  @override
+  Future<void> setDownloadDelegate(WebViewDownloadDelegate? delegate) async {
+    await _ensureReady();
+    final previous = _downloadDelegate;
+    final generation = ++_downloadDelegateGeneration;
+    for (final pending in _downloadDecisions.values) {
+      if (!pending.isCompleted) pending.complete();
+    }
+    _downloadDecisions.clear();
+    _downloadDelegate = delegate;
+    try {
+      await _channel!.invokeMethod<void>(
+        'setDownloadDelegate',
+        <String, Object?>{'enabled': delegate != null},
+      );
+      await _ensureReady();
+    } catch (_) {
+      if (!_disposed && generation == _downloadDelegateGeneration) {
+        _downloadDelegate = previous;
+      }
+      rethrow;
+    }
+  }
 
   Future<void> _applyCreationParams() async {
     final Map<String, Object?> settings = <String, Object?>{
@@ -828,6 +859,26 @@ class LinuxWebViewController extends PlatformWebViewController {
 
   Future<void> _dispose() async {
     _disposed = true;
+    _downloadDelegateGeneration++;
+    for (final pending in _downloadDecisions.values) {
+      if (!pending.isCompleted) pending.complete();
+    }
+    _downloadDecisions.clear();
+    final downloads = Map<String, WebViewDownloadDelegate>.of(
+      _downloadDelegates,
+    );
+    _downloadDelegates.clear();
+    _finishedDownloads.clear();
+    _downloadDelegate = null;
+    for (final entry in downloads.entries) {
+      entry.value.notifyResult(
+        WebViewDownloadResult(
+          id: entry.key,
+          status: WebViewDownloadStatus.cancelled,
+          description: 'The WebView controller was disposed.',
+        ),
+      );
+    }
     _cancelPendingAsyncJavaScriptInvocations(
       const JavaScriptExecutionException(
         name: 'AbortError',
