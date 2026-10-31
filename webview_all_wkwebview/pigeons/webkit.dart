@@ -598,6 +598,9 @@ abstract class WKWebsiteDataStore extends NSObject {
   @static
   late WKWebsiteDataStore defaultDataStore;
 
+  /// Creates a new nonpersistent store for an independent private session.
+  WKWebsiteDataStore.nonPersistent();
+
   /// The object that manages the HTTP cookies for your website.
   @attached
   late WKHTTPCookieStore httpCookieStore;

@@ -13,6 +13,19 @@ class WebKitWebViewPlatform extends WebViewPlatform {
   @override
   bool get supportsOffscreenWebViews => true;
 
+  @override
+  Set<WebViewSessionMode> get supportedSessionModes =>
+      WebViewSessionMode.values.toSet();
+  @override
+  Future<WebViewSessionCapabilities> getSessionCapabilities() async =>
+      WebViewSessionCapabilities(
+        supportedModes: supportedSessionModes,
+        canClose: true,
+        incognitoSupport: WebViewIncognitoSupport.nativeStore,
+        scopedCookies: true,
+        scopedWebsiteData: true,
+      );
+
   /// Registers this class as the default instance of [WebViewPlatform].
   static void registerWith() {
     WebViewPlatform.instance = WebKitWebViewPlatform();

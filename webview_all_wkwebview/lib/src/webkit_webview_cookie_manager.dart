@@ -5,6 +5,7 @@
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'common/web_kit.g.dart';
+import 'common/platform_webview.dart';
 
 /// Object specifying creation parameters for a [WebKitWebViewCookieManager].
 class WebKitWebViewCookieManagerCreationParams
@@ -37,25 +38,44 @@ class WebKitWebViewCookieManager extends PlatformWebViewCookieManager {
               ),
       );
 
+  /// Uses the actual store configured on this WebView, including private stores.
+  WebKitWebViewCookieManager.forController(PlatformWebView controller)
+    : _sessionController = controller,
+      super.implementation(WebKitWebViewCookieManagerCreationParams());
+
+  PlatformWebView? _sessionController;
+
+  Future<WKWebsiteDataStore> get _store async => _sessionController == null
+      ? _webkitParams._websiteDataStore
+      : await _sessionController!.configuration.getWebsiteDataStore();
+
   WebKitWebViewCookieManagerCreationParams get _webkitParams =>
       params as WebKitWebViewCookieManagerCreationParams;
 
   @override
   Future<bool> clearCookies() {
-    return _webkitParams._websiteDataStore.removeDataOfTypes(<WebsiteDataType>[
-      WebsiteDataType.cookies,
-    ], 0.0);
+    if (_sessionController == null) {
+      return _webkitParams._websiteDataStore.removeDataOfTypes(
+        <WebsiteDataType>[WebsiteDataType.cookies],
+        0.0,
+      );
+    }
+    return _store.then(
+      (store) => store.removeDataOfTypes(<WebsiteDataType>[
+        WebsiteDataType.cookies,
+      ], 0.0),
+    );
   }
 
   @override
-  Future<void> setCookie(WebViewCookie cookie) {
+  Future<void> setCookie(WebViewCookie cookie) async {
     if (!_isValidPath(cookie.path)) {
       throw ArgumentError(
         'The path property for the provided cookie was not given a legal value.',
       );
     }
 
-    return _webkitParams._websiteDataStore.httpCookieStore.setCookie(
+    return (await _store).httpCookieStore.setCookie(
       HTTPCookie(
         properties: <HttpCookiePropertyKey, Object>{
           HttpCookiePropertyKey.name: cookie.name,
@@ -76,9 +96,7 @@ class WebKitWebViewCookieManager extends PlatformWebViewCookieManager {
 
   @override
   Future<List<WebViewCookie>> getCookies(Uri url) async {
-    final List<HTTPCookie> httpCookies = await _webkitParams
-        ._websiteDataStore
-        .httpCookieStore
+    final List<HTTPCookie> httpCookies = await (await _store).httpCookieStore
         .getAllCookies();
 
     final Iterable<Future<WebViewCookie?>> webviewCookies = httpCookies.map((

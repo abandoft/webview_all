@@ -16,6 +16,8 @@ import 'common/platform_webview.dart';
 import 'common/weak_reference_utils.dart';
 import 'common/web_kit.g.dart';
 import 'common/webkit_constants.dart';
+import 'webkit_webview_cookie_manager.dart';
+import 'webkit_webview_data_manager.dart';
 import 'common/webkit_download_delegate.dart';
 import 'webkit_ssl_auth_error.dart';
 
@@ -94,6 +96,7 @@ class WebKitWebViewControllerCreationParams
     extends PlatformWebViewControllerCreationParams {
   /// Constructs a [WebKitWebViewControllerCreationParams].
   WebKitWebViewControllerCreationParams({
+    super.sessionMode,
     this.mediaTypesRequiringUserAction = const <PlaybackMediaTypes>{
       PlaybackMediaTypes.audio,
       PlaybackMediaTypes.video,
@@ -103,6 +106,9 @@ class WebKitWebViewControllerCreationParams
     this.javaScriptCanOpenWindowsAutomatically,
   }) {
     _configuration = WKWebViewConfiguration();
+    if (sessionMode != WebViewSessionMode.shared) {
+      _configuration.setWebsiteDataStore(WKWebsiteDataStore.nonPersistent());
+    }
 
     if (mediaTypesRequiringUserAction.isEmpty) {
       _configuration.setMediaTypesRequiringUserActionForPlayback(
@@ -167,6 +173,7 @@ class WebKitWebViewControllerCreationParams
     bool limitsNavigationsToAppBoundDomains = false,
     bool? javaScriptCanOpenWindowsAutomatically,
   }) : this(
+         sessionMode: params.sessionMode,
          mediaTypesRequiringUserAction: mediaTypesRequiringUserAction,
          allowsInlineMediaPlayback: allowsInlineMediaPlayback,
          limitsNavigationsToAppBoundDomains: limitsNavigationsToAppBoundDomains,
@@ -232,13 +239,7 @@ class WebKitWebViewController extends PlatformWebViewController {
 
   /// Constructs a [WebKitWebViewController].
   WebKitWebViewController(PlatformWebViewControllerCreationParams params)
-    : super.implementation(
-        params is WebKitWebViewControllerCreationParams
-            ? params
-            : WebKitWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
-                params,
-              ),
-      ) {
+    : super.implementation(_paramsForController(params)) {
     _webView.addObserver(
       _webView.nativeWebView,
       'estimatedProgress',
@@ -247,6 +248,12 @@ class WebKitWebViewController extends PlatformWebViewController {
     _webView.addObserver(
       _webView.nativeWebView,
       'URL',
+      <KeyValueObservingOptions>[KeyValueObservingOptions.newValue],
+    );
+
+    _webView.addObserver(
+      _webView.nativeWebView,
+      'title',
       <KeyValueObservingOptions>[KeyValueObservingOptions.newValue],
     );
 
@@ -425,6 +432,11 @@ class WebKitWebViewController extends PlatformWebViewController {
               final url = change[KeyValueChangeKey.newValue] as URL?;
               urlChangeCallback(UrlChange(url: await url?.getAbsoluteString()));
             }
+          case 'title':
+            if (controller._offscreenCloseFuture != null) return;
+            controller._currentNavigationDelegate?._onTitleChange?.call(
+              change[KeyValueChangeKey.newValue] as String? ?? '',
+            );
           case 'canGoBack':
             if (controller._onCanGoBackChangeCallback != null) {
               final canGoBack = change[KeyValueChangeKey.newValue]! as bool;
@@ -480,6 +492,27 @@ class WebKitWebViewController extends PlatformWebViewController {
 
   void Function(ScrollPositionChange scrollPositionChange)?
   _onScrollPositionChangeCallback;
+
+  static WebKitWebViewControllerCreationParams _paramsForController(
+    PlatformWebViewControllerCreationParams params,
+  ) {
+    if (params is! WebKitWebViewControllerCreationParams) {
+      return WebKitWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
+        params,
+      );
+    }
+    if (params.sessionMode == WebViewSessionMode.shared) return params;
+    // Reusing a creation-params object must not share its private data store.
+    return WebKitWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
+      params,
+      mediaTypesRequiringUserAction: params.mediaTypesRequiringUserAction,
+      allowsInlineMediaPlayback: params.allowsInlineMediaPlayback,
+      limitsNavigationsToAppBoundDomains:
+          params.limitsNavigationsToAppBoundDomains,
+      javaScriptCanOpenWindowsAutomatically:
+          params.javaScriptCanOpenWindowsAutomatically,
+    );
+  }
 
   WebKitWebViewControllerCreationParams get _webKitParams =>
       params as WebKitWebViewControllerCreationParams;
@@ -811,6 +844,19 @@ ${params.functionBody}
   }
 
   @override
+  Future<void> prepareSession() async {
+    await _webView.getTitle();
+  }
+
+  @override
+  PlatformWebViewCookieManager createSessionCookieManager() =>
+      WebKitWebViewCookieManager.forController(_webView);
+
+  @override
+  PlatformWebViewDataManager createSessionDataManager() =>
+      WebKitWebViewDataManager.forController(_webView);
+
+  @override
   Future<bool> isOffscreenWebViewSupported() async => true;
 
   @override
@@ -822,6 +868,15 @@ ${params.functionBody}
     _navigationGeneration += 1;
     Object? firstError;
     StackTrace? firstStackTrace;
+    WKWebsiteDataStore? privateStore;
+    if (params.sessionMode != WebViewSessionMode.shared) {
+      try {
+        privateStore = await _webView.configuration.getWebsiteDataStore();
+      } catch (error, stackTrace) {
+        firstError = error;
+        firstStackTrace = stackTrace;
+      }
+    }
     try {
       await _downloadUpdateTail;
     } catch (_) {
@@ -830,8 +885,8 @@ ${params.functionBody}
     try {
       await _downloadBridge?.close();
     } catch (error, stackTrace) {
-      firstError = error;
-      firstStackTrace = stackTrace;
+      firstError ??= error;
+      firstStackTrace ??= stackTrace;
     } finally {
       _downloadBridge = null;
     }
@@ -853,6 +908,7 @@ ${params.functionBody}
     for (final String keyPath in <String>[
       'estimatedProgress',
       'URL',
+      'title',
       'canGoBack',
     ]) {
       try {
@@ -870,6 +926,16 @@ ${params.functionBody}
     } catch (error, stackTrace) {
       firstError ??= error;
       firstStackTrace ??= stackTrace;
+    }
+    if (privateStore != null) {
+      try {
+        // A retained Dart configuration/manager can outlive the native view.
+        // Clear this private store after stopping its page, without touching defaults.
+        await privateStore.removeDataOfTypes(WebsiteDataType.values, 0);
+      } catch (error, stackTrace) {
+        firstError ??= error;
+        firstStackTrace ??= stackTrace;
+      }
     }
     if (firstError != null) {
       Error.throwWithStackTrace(firstError, firstStackTrace!);
@@ -2044,6 +2110,7 @@ class WebKitNavigationDelegate extends PlatformNavigationDelegate {
   WebResourceErrorCallback? _onWebResourceError;
   NavigationRequestCallback? _onNavigationRequest;
   UrlChangeCallback? _onUrlChange;
+  TitleChangeCallback? _onTitleChange;
   HttpAuthRequestCallback? _onHttpAuthRequest;
   SslAuthErrorCallback? _onSslAuthError;
 
@@ -2079,6 +2146,11 @@ class WebKitNavigationDelegate extends PlatformNavigationDelegate {
     NavigationRequestCallback onNavigationRequest,
   ) async {
     _onNavigationRequest = onNavigationRequest;
+  }
+
+  @override
+  Future<void> setOnTitleChange(TitleChangeCallback onTitleChange) async {
+    _onTitleChange = onTitleChange;
   }
 
   @override

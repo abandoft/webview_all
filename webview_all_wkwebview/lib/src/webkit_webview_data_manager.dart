@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'common/web_kit.g.dart';
+import 'common/platform_webview.dart';
 
 /// WebKit creation parameters for [WebKitWebViewDataManager].
 @immutable
@@ -43,13 +44,28 @@ class WebKitWebViewDataManager extends PlatformWebViewDataManager {
               ),
       );
 
+  /// Uses the actual store configured on this WebView, including private stores.
+  WebKitWebViewDataManager.forController(PlatformWebView controller)
+    : _sessionController = controller,
+      super.implementation(
+        WebKitWebViewDataManagerCreationParams.fromPlatformWebViewDataManagerCreationParams(
+          const PlatformWebViewDataManagerCreationParams(),
+        ),
+      );
+
+  PlatformWebView? _sessionController;
+
+  Future<WKWebsiteDataStore> get _store async => _sessionController == null
+      ? _webkitParams.websiteDataStore
+      : await _sessionController!.configuration.getWebsiteDataStore();
+
   WebKitWebViewDataManagerCreationParams get _webkitParams =>
       params as WebKitWebViewDataManagerCreationParams;
 
   @override
   Future<WebViewDataClearingResult> clearAllWebsiteData() async {
     try {
-      await _webkitParams.websiteDataStore.removeDataOfTypes(<WebsiteDataType>[
+      await (await _store).removeDataOfTypes(<WebsiteDataType>[
         WebsiteDataType.cookies,
         WebsiteDataType.memoryCache,
         WebsiteDataType.diskCache,

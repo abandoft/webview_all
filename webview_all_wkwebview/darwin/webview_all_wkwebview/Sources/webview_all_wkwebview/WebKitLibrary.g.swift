@@ -2789,6 +2789,8 @@ final class PigeonApiAuthenticationChallengeResponse:
   }
 }
 protocol PigeonApiDelegateWKWebsiteDataStore {
+  /// Creates a new nonpersistent store for an independent private session.
+  func nonPersistent(pigeonApi: PigeonApiWKWebsiteDataStore) throws -> WKWebsiteDataStore
   /// The default data store, which stores data persistently to disk.
   func defaultDataStore(pigeonApi: PigeonApiWKWebsiteDataStore) throws -> WKWebsiteDataStore
   /// The object that manages the HTTP cookies for your website.
@@ -2828,6 +2830,25 @@ final class PigeonApiWKWebsiteDataStore: PigeonApiProtocolWKWebsiteDataStore {
         readerWriter: WebKitLibraryPigeonInternalProxyApiCodecReaderWriter(
           pigeonRegistrar: api!.pigeonRegistrar))
       : FlutterStandardMessageCodec.sharedInstance()
+    let nonPersistentChannel = FlutterBasicMessageChannel(
+      name: "com.abandoft.pigeon.webview_all_wkwebview.WKWebsiteDataStore.nonPersistent",
+      binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      nonPersistentChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let pigeonIdentifierArg = args[0] as! Int64
+        do {
+          api.pigeonRegistrar.instanceManager.addDartCreatedInstance(
+            try api.pigeonDelegate.nonPersistent(pigeonApi: api),
+            withIdentifier: pigeonIdentifierArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      nonPersistentChannel.setMessageHandler(nil)
+    }
     let defaultDataStoreChannel = FlutterBasicMessageChannel(
       name: "com.abandoft.pigeon.webview_all_wkwebview.WKWebsiteDataStore.defaultDataStore",
       binaryMessenger: binaryMessenger, codec: codec)
