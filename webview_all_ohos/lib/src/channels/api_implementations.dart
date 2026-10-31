@@ -272,7 +272,10 @@ class WebViewHostApiImpl extends WebViewHostApi {
 
   /// Helper method to convert instances ids to objects.
   Future<void> createFromInstance(WebView instance) {
-    return create(instanceManager.addDartCreatedInstance(instance));
+    return create(
+      instanceManager.addDartCreatedInstance(instance),
+      incognito: instance.incognito,
+    );
   }
 
   /// Helper method to convert the instances ids to objects.
@@ -1236,6 +1239,25 @@ class WebChromeClientFlutterApiImpl {
 
   /// Maintains instances stored to communicate with java objects.
   final InstanceManager instanceManager;
+  void onReceivedTitle(int instanceId, int webViewInstanceId, String title) {
+    final instance = _callbackInstance<WebChromeClient>(
+      instanceManager,
+      instanceId,
+      'WebChromeClient',
+    );
+    final view = _callbackInstance<WebView>(
+      instanceManager,
+      webViewInstanceId,
+      'WebView',
+    );
+    if (instance != null && view != null) {
+      _runOhosVoidCallbackSafely(
+        'title callback',
+        () => instance.onReceivedTitle?.call(view, title),
+      );
+    }
+  }
+
   void onProgressChanged(int instanceId, int webViewInstanceId, int progress) {
     final WebChromeClient? instance = _callbackInstance<WebChromeClient>(
       instanceManager,

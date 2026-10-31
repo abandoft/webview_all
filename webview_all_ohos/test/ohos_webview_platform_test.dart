@@ -245,6 +245,7 @@ class TestWebViewClient extends ohos_webview.WebViewClient {
 class TestWebChromeClient extends ohos_webview.WebChromeClient {
   TestWebChromeClient(
     InstanceManager instanceManager, {
+    super.onReceivedTitle,
     super.onProgressChanged,
     super.onShowFileChooser,
     super.onPermissionRequest,
@@ -944,9 +945,11 @@ void main() {
             // ignore: invalid_use_of_protected_member
             ohos_webview.WebStorage.detached(instanceManager: instanceManager),
         ohosWebViewProxy: OhosWebViewProxy(
-          createOhosWebView: ({onScrollChanged}) => testWebView,
+          createOhosWebView: ({incognito = false, onScrollChanged}) =>
+              testWebView,
           createOhosWebChromeClient:
               ({
+                onReceivedTitle,
                 onProgressChanged,
                 onShowFileChooser,
                 onPermissionRequest,
@@ -961,6 +964,7 @@ void main() {
               }) {
                 return ohos_webview.WebChromeClient.detached(
                   instanceManager: instanceManager,
+                  onReceivedTitle: onReceivedTitle,
                   onProgressChanged: onProgressChanged,
                   onShowFileChooser: onShowFileChooser,
                   onPermissionRequest: onPermissionRequest,
@@ -1009,9 +1013,11 @@ void main() {
             // ignore: invalid_use_of_protected_member
             ohos_webview.WebStorage.detached(instanceManager: instanceManager),
         ohosWebViewProxy: OhosWebViewProxy(
-          createOhosWebView: ({onScrollChanged}) => testWebView,
+          createOhosWebView: ({incognito = false, onScrollChanged}) =>
+              testWebView,
           createOhosWebChromeClient:
               ({
+                onReceivedTitle,
                 onProgressChanged,
                 onShowFileChooser,
                 onPermissionRequest,
@@ -1026,6 +1032,7 @@ void main() {
               }) {
                 return ohos_webview.WebChromeClient.detached(
                   instanceManager: instanceManager,
+                  onReceivedTitle: onReceivedTitle,
                   onProgressChanged: onProgressChanged,
                   onShowFileChooser: onShowFileChooser,
                   onPermissionRequest: onPermissionRequest,
@@ -1091,9 +1098,11 @@ void main() {
             // ignore: invalid_use_of_protected_member
             ohos_webview.WebStorage.detached(instanceManager: instanceManager),
         ohosWebViewProxy: OhosWebViewProxy(
-          createOhosWebView: ({onScrollChanged}) => testWebView,
+          createOhosWebView: ({incognito = false, onScrollChanged}) =>
+              testWebView,
           createOhosWebChromeClient:
               ({
+                onReceivedTitle,
                 onProgressChanged,
                 onShowFileChooser,
                 onPermissionRequest,
@@ -1108,6 +1117,7 @@ void main() {
               }) {
                 return ohos_webview.WebChromeClient.detached(
                   instanceManager: instanceManager,
+                  onReceivedTitle: onReceivedTitle,
                   onProgressChanged: onProgressChanged,
                   onShowFileChooser: onShowFileChooser,
                   onPermissionRequest: onPermissionRequest,
@@ -1175,9 +1185,11 @@ void main() {
             // ignore: invalid_use_of_protected_member
             ohos_webview.WebStorage.detached(instanceManager: instanceManager),
         ohosWebViewProxy: OhosWebViewProxy(
-          createOhosWebView: ({onScrollChanged}) => testWebView,
+          createOhosWebView: ({incognito = false, onScrollChanged}) =>
+              testWebView,
           createOhosWebChromeClient:
               ({
+                onReceivedTitle,
                 onProgressChanged,
                 onShowFileChooser,
                 onPermissionRequest,
@@ -1192,6 +1204,7 @@ void main() {
               }) {
                 webChromeClient = TestWebChromeClient(
                   instanceManager,
+                  onReceivedTitle: onReceivedTitle,
                   onProgressChanged: onProgressChanged,
                   onShowFileChooser: onShowFileChooser,
                   onPermissionRequest: onPermissionRequest,
@@ -1287,9 +1300,11 @@ void main() {
             // ignore: invalid_use_of_protected_member
             ohos_webview.WebStorage.detached(instanceManager: instanceManager),
         ohosWebViewProxy: OhosWebViewProxy(
-          createOhosWebView: ({onScrollChanged}) => testWebView,
+          createOhosWebView: ({incognito = false, onScrollChanged}) =>
+              testWebView,
           createOhosWebChromeClient:
               ({
+                onReceivedTitle,
                 onProgressChanged,
                 onShowFileChooser,
                 onPermissionRequest,
@@ -1304,6 +1319,7 @@ void main() {
               }) {
                 webChromeClient = TestWebChromeClient(
                   instanceManager,
+                  onReceivedTitle: onReceivedTitle,
                   onProgressChanged: onProgressChanged,
                   onShowFileChooser: onShowFileChooser,
                   onPermissionRequest: onPermissionRequest,
@@ -1376,12 +1392,13 @@ void main() {
             // ignore: invalid_use_of_protected_member
             ohos_webview.WebStorage.detached(instanceManager: instanceManager),
         ohosWebViewProxy: OhosWebViewProxy(
-          createOhosWebView: ({onScrollChanged}) {
+          createOhosWebView: ({incognito = false, onScrollChanged}) {
             capturedOnScrollChanged = onScrollChanged!;
             return testWebView;
           },
           createOhosWebChromeClient:
               ({
+                onReceivedTitle,
                 onProgressChanged,
                 onShowFileChooser,
                 onPermissionRequest,
@@ -1396,6 +1413,7 @@ void main() {
               }) {
                 return TestWebChromeClient(
                   instanceManager,
+                  onReceivedTitle: onReceivedTitle,
                   onProgressChanged: onProgressChanged,
                   onShowFileChooser: onShowFileChooser,
                   onPermissionRequest: onPermissionRequest,
@@ -1442,9 +1460,11 @@ void main() {
                 instanceManager: instanceManager,
               ),
           ohosWebViewProxy: OhosWebViewProxy(
-            createOhosWebView: ({onScrollChanged}) => testWebView,
+            createOhosWebView: ({incognito = false, onScrollChanged}) =>
+                testWebView,
             createOhosWebChromeClient:
                 ({
+                  onReceivedTitle,
                   onProgressChanged,
                   onShowFileChooser,
                   onPermissionRequest,
@@ -1459,6 +1479,7 @@ void main() {
                 }) {
                   webChromeClient = ohos_webview.WebChromeClient.detached(
                     instanceManager: instanceManager,
+                    onReceivedTitle: onReceivedTitle,
                     onProgressChanged: onProgressChanged,
                     onShowFileChooser: onShowFileChooser,
                     onPermissionRequest: onPermissionRequest,
@@ -1536,9 +1557,11 @@ void main() {
                 instanceManager: instanceManager,
               ),
           ohosWebViewProxy: OhosWebViewProxy(
-            createOhosWebView: ({onScrollChanged}) => testWebView,
+            createOhosWebView: ({incognito = false, onScrollChanged}) =>
+                testWebView,
             createOhosWebChromeClient:
                 ({
+                  onReceivedTitle,
                   onProgressChanged,
                   onShowFileChooser,
                   onPermissionRequest,
@@ -1553,6 +1576,7 @@ void main() {
                 }) {
                   webChromeClient = ohos_webview.WebChromeClient.detached(
                     instanceManager: instanceManager,
+                    onReceivedTitle: onReceivedTitle,
                     onProgressChanged: onProgressChanged,
                     onShowFileChooser: onShowFileChooser,
                     onPermissionRequest: onPermissionRequest,
@@ -1934,9 +1958,11 @@ OhosWebViewController _createTestWebViewController({
           // ignore: invalid_use_of_protected_member
           ohos_webview.WebStorage.detached(instanceManager: instanceManager),
       ohosWebViewProxy: OhosWebViewProxy(
-        createOhosWebView: ({onScrollChanged}) => testWebView,
+        createOhosWebView: ({incognito = false, onScrollChanged}) =>
+            testWebView,
         createOhosWebChromeClient:
             ({
+              onReceivedTitle,
               onProgressChanged,
               onShowFileChooser,
               onPermissionRequest,
@@ -1951,6 +1977,7 @@ OhosWebViewController _createTestWebViewController({
             }) {
               return ohos_webview.WebChromeClient.detached(
                 instanceManager: instanceManager,
+                onReceivedTitle: onReceivedTitle,
                 onProgressChanged: onProgressChanged,
                 onShowFileChooser: onShowFileChooser,
                 onPermissionRequest: onPermissionRequest,

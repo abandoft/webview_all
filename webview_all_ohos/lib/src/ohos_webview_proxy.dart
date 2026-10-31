@@ -26,6 +26,7 @@ class OhosWebViewProxy {
 
   /// Constructs a [ohos_webview.WebView].
   final ohos_webview.WebView Function({
+    bool incognito,
     void Function(int left, int top, int oldLeft, int oldTop)? onScrollChanged,
   })
   createOhosWebView;
@@ -34,6 +35,7 @@ class OhosWebViewProxy {
   final ohos_webview.WebChromeClient Function({
     void Function(ohos_webview.WebView webView, int progress)?
     onProgressChanged,
+    void Function(ohos_webview.WebView webView, String title)? onReceivedTitle,
     Future<List<String>> Function(
       ohos_webview.WebView webView,
       ohos_webview.FileChooserParams params,

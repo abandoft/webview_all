@@ -52,12 +52,17 @@ export class WebViewHostApiImpl {
     this.context = context;
   }
 
-  create(instanceId: number): void {
+  create(instanceId: number, incognito: boolean = false): void {
     const displayProxy = new DisplayListenerProxy();
     displayProxy.onPreWebViewInitialization();
     const webView = this.webViewProxy.createWebView(this.binaryMessenger, this.instanceManager);
+    webView.setIncognito(incognito);
     displayProxy.onPostWebViewInitialization();
     this.instanceManager.addDartCreatedInstance(webView, instanceId);
+  }
+
+  closeSession(instanceId: number): void {
+    this.webView(instanceId).dispose();
   }
 
   async loadData(instanceId: number, data: string, mimeType: string, encoding: string): Promise<void> {
@@ -159,7 +164,12 @@ export class WebViewHostApiImpl {
   }
 
   clearCache(instanceId: number, includeDiskFiles: boolean): void {
-    this.webView(instanceId).ensureNotDisposed();
+    const view = this.webView(instanceId);
+    view.ensureNotDisposed();
+    if (view.isIncognito()) {
+      Log.e(TAG, 'Private cache clearing is unavailable: ArkWeb only exposes a global cache operation.');
+      return;
+    }
     this.clearAllCache(includeDiskFiles);
   }
 

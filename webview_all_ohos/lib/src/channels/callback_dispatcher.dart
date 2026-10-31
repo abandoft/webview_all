@@ -147,6 +147,13 @@ class OhosWebViewCallbackDispatcher {
           args.intValue('contentLength'),
         );
         return null;
+      case 'WebChromeClient.onReceivedTitle':
+        apis.webChromeClientFlutterApi.onReceivedTitle(
+          args.intValue('instanceId'),
+          args.intValue('webViewInstanceId'),
+          args.stringValue('title'),
+        );
+        return null;
       case 'WebChromeClient.onProgressChanged':
         apis.webChromeClientFlutterApi.onProgressChanged(
           args.intValue('instanceId'),

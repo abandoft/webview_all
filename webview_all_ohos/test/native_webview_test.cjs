@@ -96,6 +96,7 @@ async function main() {
   const viewStub = {
     waitControllerAttached: () => wait.promise,
     ensureNotDisposed() {},
+    isIncognito: () => false,
     getController: () => controller,
     setUrl() {},
     setScrollPosition: () => assert.fail('Do not report a requested scroll as an actual position'),
@@ -103,6 +104,8 @@ async function main() {
     getScrollY: () => assert.fail('Do not read predicted scroll coordinates'),
   };
   const instances = { getInstance: () => viewStub };
+  let privateMode = false;
+  viewStub.isIncognito = () => privateMode;
   const host = new WebViewHostApiImpl(instances, null, null, null);
   const scroll = host.scrollTo(1, 9999, 9999);
   const delta = host.scrollBy(1, 5, 7);
@@ -132,6 +135,10 @@ async function main() {
   await assert.rejects(host.getScrollX(1), /Controller detached/);
   assert.equal(fallbackReads, 1, 'Initialization failures must not be hidden by fallback');
   actions.length = 0;
+  privateMode = true;
+  host.clearCache(1, true);
+  assert.deepEqual(actions, [], 'Private cache clearing must not delete normal cache');
+  privateMode = false;
   instances.getInstance = () => assert.fail('Global cache clearing must not create or require a view');
   host.clearAllCache(true);
   assert.deepEqual(actions, ['initialize', ['clearCache', true]]);
@@ -141,6 +148,13 @@ async function main() {
 
   const { WebViewPlatformView } = loadSource('WebViewPlatformView');
   const view = new WebViewPlatformView(null, null);
+  view.setIncognito(true);
+  assert.equal(view.isIncognito(), true);
+  const titles = [];
+  view.setWebChromeClient({ onReceivedTitle: (_, title) => titles.push(title) });
+  view.onTitleReceive({ title: 'Changed' });
+  view.onTitleReceive({ title: '' });
+  assert.deepEqual(titles, ['Changed', '']);
   const state = view.getDocumentStartScriptState();
   const channel = { getJavaScriptChannelName: () => 'Bridge', createJavaScriptProxy: () => ({}) };
   actions.length = 0;
@@ -188,6 +202,8 @@ async function main() {
   view.onRefreshAccessedHistory({ url: 'https://late.test/', isMainFrame: true });
   view.onInactive();
   view.onActive();
+  view.onTitleReceive({ title: 'Late' });
+  assert.deepEqual(titles, ['Changed', '']);
   assert.deepEqual(actions, [], 'Late callbacks must not revive or address a disposed view');
   assert.equal(history.length, 2);
   assert.equal(view.onJsAlert({}), false);

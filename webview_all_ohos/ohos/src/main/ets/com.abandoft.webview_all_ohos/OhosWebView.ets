@@ -69,7 +69,7 @@ export struct OhosWebView {
   build() {
     Column() {
       if (!this.disposed) {
-        Web({ src: this.webView.getUrl(), controller: this.controller })
+        Web({ src: this.webView.getUrl(), controller: this.controller, incognitoMode: this.webView.isIncognito() })
           .runJavaScriptOnDocumentStart(this.documentStartScriptsForBuild())
           .keyboardAvoidMode(WebKeyboardAvoidMode.RESIZE_VISUAL)
           .backgroundColor(this.settings.backgroundColor)
@@ -94,6 +94,7 @@ export struct OhosWebView {
           .onHttpErrorReceive(this.webView.onHttpErrorReceive)
           .onRefreshAccessedHistory(this.webView.onRefreshAccessedHistory)
           .onProgressChange(this.webView.onProgressChange)
+          .onTitleReceive(this.webView.onTitleReceive)
           .onGeolocationShow(this.webView.onGeolocationShow)
           .onGeolocationHide(this.webView.onGeolocationHide)
           .onShowFileSelector(this.webView.onShowFileSelector)

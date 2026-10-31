@@ -117,20 +117,20 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
           result.success(null);
           return;
         case 'CookieManager.setCookie':
-          this.cookieManagerApi.setCookie(call.argument('identifier'), call.argument('url'), call.argument('value'));
+          this.cookieManagerApi.setCookie(call.argument('identifier'), call.argument('url'), call.argument('value'), call.argument('incognito') ?? false);
           result.success(null);
           return;
         case 'CookieManager.getCookies':
           this.cookieManagerApi.getCookies(
             call.argument('identifier'),
             call.argument('url'),
-            new MethodResultAdapter<string>(result)
+            new MethodResultAdapter<string>(result), call.argument('incognito') ?? false
           );
           return;
         case 'CookieManager.removeAllCookies':
           this.cookieManagerApi.removeAllCookies(
             call.argument('identifier'),
-            new MethodResultAdapter<boolean>(result)
+            new MethodResultAdapter<boolean>(result), call.argument('incognito') ?? false
           );
           return;
         case 'CookieManager.setAcceptThirdPartyCookies':
@@ -141,7 +141,11 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
           result.success(null);
           return;
         case 'WebView.create':
-          this.webViewApi.create(call.argument('instanceId'));
+          this.webViewApi.create(call.argument('instanceId'), call.argument('incognito') ?? false);
+          result.success(null);
+          return;
+        case 'WebView.closeSession':
+          this.webViewApi.closeSession(call.argument('instanceId'));
           result.success(null);
           return;
         case 'WebView.loadData':
@@ -302,7 +306,7 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
           result.success(null);
           return;
         case 'WebStorage.deleteAllData':
-          this.webStorageApi.deleteAllData(call.argument('instanceId'));
+          this.webStorageApi.deleteAllData(call.argument('instanceId'), call.argument('incognito') ?? false);
           result.success(null);
           return;
         case 'PermissionRequest.grant':

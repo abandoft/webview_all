@@ -17,6 +17,9 @@ import 'package:flutter/services.dart';
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'ohos_webview_proxy.dart';
+import 'ohos_webview_cookie_manager.dart';
+import 'ohos_webview_data_manager.dart';
+import 'ohos_website_data_store.dart';
 import 'ohos_webview_native.dart' as ohos_webview;
 import 'channels/api_implementations.dart';
 import 'channels/constants.dart';
@@ -89,6 +92,7 @@ class OhosWebViewControllerCreationParams
     extends PlatformWebViewControllerCreationParams {
   /// Creates a new [OhosWebViewControllerCreationParams] instance.
   OhosWebViewControllerCreationParams({
+    super.sessionMode,
     this.isAllowFullScreenRotate = false,
     this.domStorageEnabled = true,
     this.javaScriptCanOpenWindowsAutomatically = true,
@@ -105,7 +109,16 @@ class OhosWebViewControllerCreationParams
     @visibleForTesting this.ohosWebViewProxy = const OhosWebViewProxy(),
     @visibleForTesting ohos_webview.WebStorage? ohosWebStorage,
   }) : ohosWebStorage = ohosWebStorage ?? ohos_webview.WebStorage.instance,
-       super();
+       super() {
+    if (sessionMode == WebViewSessionMode.isolatedIncognito) {
+      debugPrint(
+        'webview_all_ohos: independent private sessions are not supported.',
+      );
+      throw UnsupportedError(
+        'ArkWeb shares one store between native private WebViews.',
+      );
+    }
+  }
 
   /// Creates a [OhosWebViewControllerCreationParams] instance based on [PlatformWebViewControllerCreationParams].
   factory OhosWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
@@ -130,6 +143,7 @@ class OhosWebViewControllerCreationParams
     @visibleForTesting ohos_webview.WebStorage? ohosWebStorage,
   }) {
     return OhosWebViewControllerCreationParams(
+      sessionMode: params.sessionMode,
       isAllowFullScreenRotate: isAllowFullScreenRotate,
       domStorageEnabled: domStorageEnabled,
       javaScriptCanOpenWindowsAutomatically:
@@ -224,6 +238,39 @@ class OhosWebViewPermissionResourceType extends WebViewPermissionResourceType {
 
 /// Implementation of the [PlatformWebViewController] with the Ohos WebView API.
 class OhosWebViewController extends PlatformWebViewController {
+  @override
+  Future<void> prepareSession() => _webView.creation;
+
+  @override
+  PlatformWebViewCookieManager createSessionCookieManager() =>
+      OhosWebViewCookieManager(
+        const PlatformWebViewCookieManagerCreationParams(),
+        incognito: params.sessionMode == WebViewSessionMode.incognito,
+      );
+
+  @override
+  PlatformWebViewDataManager createSessionDataManager() =>
+      OhosWebViewDataManager(
+        const PlatformWebViewDataManagerCreationParams(),
+        sessionScoped: true,
+        incognito: params.sessionMode == WebViewSessionMode.incognito,
+      );
+
+  Future<void>? _sessionClose;
+  @override
+  Future<void> closeWebViewSession() => _sessionClose ??= _closeSession();
+
+  Future<void> _closeSession() async {
+    await _handleDownloadCall(const MethodCall('disposed'));
+    await const MethodChannel(
+      'com.abandoft.webview_all_ohos/host_api',
+    ).invokeMethod<void>('WebView.closeSession', {
+      'instanceId': webViewIdentifier,
+    });
+    _downloadChannel?.setMethodCallHandler(null);
+    ohos_webview.OhosObject.dispose(_webView);
+  }
+
   WebViewDownloadDelegate? _downloadDelegate;
   MethodChannel? _downloadChannel;
   bool _downloadViewDisposed = false;
@@ -427,6 +474,7 @@ class OhosWebViewController extends PlatformWebViewController {
   /// The native [ohos_webview.WebView] being controlled.
   late final ohos_webview.WebView _webView = _ohosWebViewParams.ohosWebViewProxy
       .createOhosWebView(
+        incognito: params.sessionMode == WebViewSessionMode.incognito,
         onScrollChanged: withWeakReferenceTo(this, (
           WeakReference<OhosWebViewController> weakReference,
         ) {
@@ -442,6 +490,13 @@ class OhosWebViewController extends PlatformWebViewController {
 
   late final ohos_webview.WebChromeClient
   _webChromeClient = _ohosWebViewParams.ohosWebViewProxy.createOhosWebChromeClient(
+    onReceivedTitle: withWeakReferenceTo(this, (weakThis) {
+      return (ohos_webview.WebView webView, String title) {
+        final target = weakThis.target;
+        if (target == null || target._downloadViewDisposed) return;
+        target._currentNavigationDelegate?._onTitleChange?.call(title);
+      };
+    }),
     onProgressChanged: withWeakReferenceTo(this, (
       WeakReference<OhosWebViewController> weakReference,
     ) {
@@ -887,11 +942,21 @@ class OhosWebViewController extends PlatformWebViewController {
   }
 
   @override
-  Future<void> clearCache() => _webView.clearCache(true);
+  Future<void> clearCache() async {
+    if (params.sessionMode != WebViewSessionMode.shared) {
+      debugPrint(
+        'webview_all_ohos: ArkWeb only exposes global cache clearing. Clearing an incognito cache was skipped to preserve ordinary WebView data.',
+      );
+      return;
+    }
+    await _webView.clearCache(true);
+  }
 
   @override
   Future<void> clearLocalStorage() =>
-      _ohosWebViewParams.ohosWebStorage.deleteAllData();
+      params.sessionMode == WebViewSessionMode.shared
+      ? _ohosWebViewParams.ohosWebStorage.deleteAllData()
+      : OhosWebsiteDataStore().clearPrivateStorage();
 
   @override
   Future<void> setPlatformNavigationDelegate(
@@ -2453,6 +2518,7 @@ class OhosNavigationDelegate extends PlatformNavigationDelegate {
   NavigationRequestCallback? _onNavigationRequest;
   LoadRequestCallback? _onLoadRequest;
   UrlChangeCallback? _onUrlChange;
+  TitleChangeCallback? _onTitleChange;
   HttpAuthRequestCallback? _onHttpAuthRequest;
   SslAuthErrorCallback? _onSslAuthError;
 
@@ -2543,6 +2609,11 @@ class OhosNavigationDelegate extends PlatformNavigationDelegate {
     WebResourceErrorCallback onWebResourceError,
   ) async {
     _onWebResourceError = onWebResourceError;
+  }
+
+  @override
+  Future<void> setOnTitleChange(TitleChangeCallback onTitleChange) async {
+    _onTitleChange = onTitleChange;
   }
 
   @override

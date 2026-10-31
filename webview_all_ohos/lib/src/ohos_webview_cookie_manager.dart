@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'ohos_webview_native.dart';
+import 'channels/host_api.dart';
 import 'ohos_webview_controller.dart';
 
 /// Object specifying creation parameters for creating a [OhosWebViewCookieManager].
@@ -37,7 +38,9 @@ class OhosWebViewCookieManager extends PlatformWebViewCookieManager {
   OhosWebViewCookieManager(
     PlatformWebViewCookieManagerCreationParams params, {
     CookieManager? cookieManager,
-  }) : _cookieManager = cookieManager ?? CookieManager.instance,
+    bool incognito = false,
+  }) : _incognito = incognito,
+       _cookieManager = cookieManager ?? CookieManager.instance,
        super.implementation(
          params is OhosWebViewCookieManagerCreationParams
              ? params
@@ -46,26 +49,38 @@ class OhosWebViewCookieManager extends PlatformWebViewCookieManager {
                ),
        );
 
+  final bool _incognito;
   final CookieManager _cookieManager;
 
   @override
   Future<bool> clearCookies() {
-    return _cookieManager.removeAllCookies();
+    return _incognito
+        ? CookieManagerHostApi().removeAllCookies(0, incognito: true)
+        : _cookieManager.removeAllCookies();
   }
 
   @override
   Future<void> setCookie(WebViewCookie cookie) {
     _validateWebViewCookie(cookie);
 
-    return _cookieManager.setCookie(
-      cookie.domain,
-      '${Uri.encodeComponent(cookie.name)}=${Uri.encodeComponent(cookie.value)}; path=${cookie.path}',
-    );
+    final value =
+        '${Uri.encodeComponent(cookie.name)}=${Uri.encodeComponent(cookie.value)}; path=${cookie.path}';
+    if (_incognito) {
+      return CookieManagerHostApi().setCookie(
+        0,
+        cookie.domain,
+        value,
+        incognito: true,
+      );
+    }
+    return _cookieManager.setCookie(cookie.domain, value);
   }
 
   @override
   Future<List<WebViewCookie>> getCookies(Uri url) async {
-    final String cookies = await _cookieManager.getCookies(url.toString());
+    final String cookies = await (_incognito
+        ? CookieManagerHostApi().getCookies(0, url.toString(), incognito: true)
+        : _cookieManager.getCookies(url.toString()));
     if (cookies.isEmpty) {
       return <WebViewCookie>[];
     }

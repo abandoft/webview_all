@@ -73,26 +73,46 @@ class CookieManagerHostApi {
     });
   }
 
-  Future<void> setCookie(int identifier, String url, String value) {
+  Future<void> setCookie(
+    int identifier,
+    String url,
+    String value, {
+    bool incognito = false,
+  }) {
     return _host.invoke<void>('CookieManager.setCookie', <String, Object?>{
+      if (incognito) 'incognito': true,
       'identifier': identifier,
       'url': url,
       'value': value,
     });
   }
 
-  Future<String> getCookies(int identifier, String url) async {
+  Future<String> getCookies(
+    int identifier,
+    String url, {
+    bool incognito = false,
+  }) async {
     return await _host.invoke<String>(
           'CookieManager.getCookies',
-          <String, Object?>{'identifier': identifier, 'url': url},
+          <String, Object?>{
+            'identifier': identifier,
+            'url': url,
+            if (incognito) 'incognito': true,
+          },
         ) ??
         '';
   }
 
-  Future<bool> removeAllCookies(int identifier) async {
+  Future<bool> removeAllCookies(
+    int identifier, {
+    bool incognito = false,
+  }) async {
     return await _host.invoke<bool>(
           'CookieManager.removeAllCookies',
-          <String, Object?>{'identifier': identifier},
+          <String, Object?>{
+            'identifier': identifier,
+            if (incognito) 'incognito': true,
+          },
         ) ??
         false;
   }
@@ -119,9 +139,10 @@ class WebViewHostApi {
 
   final _HostChannel _host;
 
-  Future<void> create(int instanceId) {
+  Future<void> create(int instanceId, {bool incognito = false}) {
     return _host.invoke<void>('WebView.create', <String, Object?>{
       'instanceId': instanceId,
+      if (incognito) 'incognito': true,
     });
   }
 

@@ -156,11 +156,12 @@ class WebView extends OhosObject {
   /// any effect and should not be exposed publicly. More info here:
   /// https://github.com/flutter/flutter/issues/108106
   WebView({
+    this.incognito = false,
     this.onScrollChanged,
     @visibleForTesting super.binaryMessenger,
     @visibleForTesting super.instanceManager,
   }) : super.detached() {
-    api.createFromInstance(this);
+    _creation = api.createFromInstance(this);
   }
 
   /// Constructs a [WebView] without creating the associated native object.
@@ -169,10 +170,17 @@ class WebView extends OhosObject {
   /// create copies.
   @protected
   WebView.detached({
+    this.incognito = false,
     this.onScrollChanged,
     super.binaryMessenger,
     super.instanceManager,
-  }) : super.detached();
+  }) : super.detached() {
+    _creation = Future<void>.value();
+  }
+
+  final bool incognito;
+  late final Future<void> _creation;
+  Future<void> get creation => _creation;
 
   /// Host channel implementation for [WebView].
   @visibleForTesting
@@ -471,6 +479,7 @@ class WebView extends OhosObject {
   @override
   WebView copy() {
     return WebView.detached(
+      incognito: incognito,
       onScrollChanged: onScrollChanged,
       binaryMessenger: _api.binaryMessenger,
       instanceManager: _api.instanceManager,
@@ -1096,6 +1105,7 @@ class WebChromeClient extends OhosObject {
   /// Constructs a [WebChromeClient].
   WebChromeClient({
     this.onProgressChanged,
+    this.onReceivedTitle,
     this.onShowFileChooser,
     this.onPermissionRequest,
     this.onGeolocationPermissionsShowPrompt,
@@ -1121,6 +1131,7 @@ class WebChromeClient extends OhosObject {
   @protected
   WebChromeClient.detached({
     this.onProgressChanged,
+    this.onReceivedTitle,
     this.onShowFileChooser,
     this.onPermissionRequest,
     this.onGeolocationPermissionsShowPrompt,
@@ -1141,6 +1152,9 @@ class WebChromeClient extends OhosObject {
 
   /// Notify the host application that a file should be downloaded.
   final void Function(WebView webView, int progress)? onProgressChanged;
+
+  /// Reports the main document title, including later JavaScript changes.
+  final void Function(WebView webView, String title)? onReceivedTitle;
 
   /// Indicates the client should show a file chooser.
   ///
@@ -1326,6 +1340,7 @@ class WebChromeClient extends OhosObject {
   WebChromeClient copy() {
     return WebChromeClient.detached(
       onProgressChanged: onProgressChanged,
+      onReceivedTitle: onReceivedTitle,
       onShowFileChooser: onShowFileChooser,
       onPermissionRequest: onPermissionRequest,
       onGeolocationPermissionsShowPrompt: onGeolocationPermissionsShowPrompt,

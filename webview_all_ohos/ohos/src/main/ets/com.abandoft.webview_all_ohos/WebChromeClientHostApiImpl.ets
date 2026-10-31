@@ -11,6 +11,7 @@ import { WebViewPlatformView } from './WebViewPlatformView';
 
 export interface WebChromeClient {
   onProgressChanged(view: WebViewPlatformView, progress: number): void;
+  onReceivedTitle(view: WebViewPlatformView, title: string): void;
   onShowCustomView(view: DVModel, callback: CustomViewCallback): void;
   onHideCustomView(): void;
   onGeolocationPermissionsShowPrompt(origin: string, callback: JsGeolocation): void;
@@ -92,10 +93,11 @@ export class WebChromeClientHostApiImpl {
 @CustomDialog
 struct PopupWebView {
   controller?: CustomDialogController;
+  incognito: boolean = false;
   webViewController: web_webview.WebviewController = new web_webview.WebviewController();
 
   build() {
-    Web({ src: '', controller: this.webViewController })
+    Web({ src: '', controller: this.webViewController, incognitoMode: this.incognito })
       .javaScriptAccess(true)
       .multiWindowAccess(false)
       .onWindowExit(() => {
@@ -117,6 +119,10 @@ class OhosWebChromeClient implements WebChromeClient {
 
   constructor(flutterApi: WebChromeClientFlutterApiImpl) {
     this.flutterApi = flutterApi;
+  }
+
+  onReceivedTitle(view: WebViewPlatformView, title: string): void {
+    this.flutterApi.onReceivedTitleImpl(this, view, title, this.emptyReply);
   }
 
   onProgressChanged(view: WebViewPlatformView, progress: number): void {
@@ -180,7 +186,7 @@ class OhosWebChromeClient implements WebChromeClient {
     }
     const webViewController = new web_webview.WebviewController();
     const dialogController = new CustomDialogController({
-      builder: PopupWebView({ webViewController: webViewController })
+      builder: PopupWebView({ webViewController: webViewController, incognito: webView.isIncognito() })
     });
     webView.setDialogController(dialogController);
     dialogController.open();

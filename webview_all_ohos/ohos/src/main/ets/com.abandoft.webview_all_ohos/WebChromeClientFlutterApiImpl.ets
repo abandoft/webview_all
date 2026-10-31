@@ -32,6 +32,12 @@ export class WebChromeClientFlutterApiImpl {
     this.callbackApi = new OhosWebViewCallbackApiChannel(binaryMessenger);
   }
 
+  onReceivedTitleImpl(client: WebChromeClient, view: WebViewPlatformView, title: string, callback?: Reply<void>): void {
+    this.webViewFlutterApi.create(view, emptyReply<void>());
+    this.callbackApi.invoke('WebChromeClient.onReceivedTitle', this.baseArgs(client)
+      .set('webViewInstanceId', this.instanceManager.getIdentifier(view)).set('title', title), callback);
+  }
+
   onProgressChangedImpl(
     webChromeClient: WebChromeClient,
     webView: WebViewPlatformView,

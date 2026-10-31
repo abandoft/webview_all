@@ -102,6 +102,11 @@ export class WebViewPlatformView extends PlatformView {
   private visibleAreaEventInactiveThreshold: number = 0;
   private visibleAreaEventActiveThreshold: number = 0.1;
 
+  private incognito: boolean = false;
+
+  setIncognito(incognito: boolean): void { this.incognito = incognito; }
+  isIncognito(): boolean { return this.incognito; }
+
   userAgentString: string = '';
   isWebviewBinding: boolean = false;
 
@@ -212,6 +217,12 @@ export class WebViewPlatformView extends PlatformView {
     }
     handler.cancel();
   }
+
+  onTitleReceive = (event: ESObject): void => {
+    if (!this.documentStartScripts.isDisposed() && event) {
+      this.webChromeClient?.onReceivedTitle(this, event.title ?? '');
+    }
+  };
 
   onProgressChange = (event: ESObject): void => {
     if (!this.documentStartScripts.isDisposed() && this.webChromeClient) {

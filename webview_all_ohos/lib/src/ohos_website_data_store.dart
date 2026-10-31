@@ -11,6 +11,11 @@ class OhosWebsiteDataStore {
 
   final MethodChannel _channel;
 
+  Future<void> clearPrivateStorage() => _channel.invokeMethod<void>(
+    'WebStorage.deleteAllData',
+    {'instanceId': 0, 'incognito': true},
+  );
+
   Future<void> clearAllCache({required bool includeDiskFiles}) {
     return _channel.invokeMethod<void>(
       'WebView.clearAllCache',

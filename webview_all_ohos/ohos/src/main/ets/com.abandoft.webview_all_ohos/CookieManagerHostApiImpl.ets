@@ -6,23 +6,23 @@ export class CookieManagerHostApiImpl {
 
   attachInstance(_instanceIdentifier: number): void {}
 
-  setCookie(_identifier: number, url: string, value: string): void {
+  setCookie(_identifier: number, url: string, value: string, incognito: boolean = false): void {
     this.assertUrl(url);
-    web_webview.WebCookieManager.configCookieSync(url, value);
+    web_webview.WebCookieManager.configCookieSync(url, value, incognito);
   }
 
-  getCookies(_identifier: number, url: string, result: Result<string>): void {
+  getCookies(_identifier: number, url: string, result: Result<string>, incognito: boolean = false): void {
     this.assertUrl(url);
-    result.success(web_webview.WebCookieManager.fetchCookieSync(url));
+    result.success(web_webview.WebCookieManager.fetchCookieSync(url, incognito));
   }
 
   setAcceptThirdPartyCookies(_identifier: number, accept: boolean): void {
     web_webview.WebCookieManager.putAcceptThirdPartyCookieEnabled(accept);
   }
 
-  removeAllCookies(_identifier: number, result: Result<boolean>): void {
-    const hadCookies = web_webview.WebCookieManager.existCookie();
-    web_webview.WebCookieManager.clearAllCookiesSync();
+  removeAllCookies(_identifier: number, result: Result<boolean>, incognito: boolean = false): void {
+    const hadCookies = web_webview.WebCookieManager.existCookie(incognito);
+    web_webview.WebCookieManager.clearAllCookiesSync(incognito);
     result.success(hadCookies);
   }
 

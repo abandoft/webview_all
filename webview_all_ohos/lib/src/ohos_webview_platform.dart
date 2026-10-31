@@ -10,6 +10,24 @@ import 'ohos_webview_data_manager.dart';
 
 /// Implementation of [WebViewPlatform] using the WebKit API.
 class OhosWebViewPlatform extends WebViewPlatform {
+  @override
+  Set<WebViewSessionMode> get supportedSessionModes => const {
+    WebViewSessionMode.shared,
+    WebViewSessionMode.incognito,
+  };
+
+  @override
+  Future<WebViewSessionCapabilities>
+  getSessionCapabilities() async => WebViewSessionCapabilities(
+    supportedModes: supportedSessionModes,
+    canClose: true,
+    incognitoSupport: WebViewIncognitoSupport.nativeStore,
+    privateSessionRestriction:
+        'ArkWeb supports native incognito mode, but private WebViews share the same private store.',
+    scopedCookies: true,
+    scopedWebsiteData: true,
+  );
+
   /// Registers this class as the default instance of [WebViewPlatform].
   static void registerWith() {
     WebViewPlatform.instance = OhosWebViewPlatform();

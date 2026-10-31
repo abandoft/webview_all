@@ -14,7 +14,7 @@ const storageCalls = [];
 let hasCookies = false;
 let clearCookieError;
 const nativeCookies = {
-  configCookieSync: (url, value) => cookieCalls.push(['set', url, value]),
+  configCookieSync: (url, value, incognito) => cookieCalls.push(['set', url, value, incognito]),
   fetchCookieSync: () => 'name=value',
   existCookie: () => hasCookies,
   clearAllCookiesSync: () => {
@@ -170,8 +170,10 @@ async function main() {
 
   const cookies = new CookieManagerHostApiImpl(null, null);
   cookies.setCookie(1, 'https://example.test', 'name=value');
-  assert.deepEqual(cookieCalls, [['set', 'https://example.test', 'name=value']]);
+  assert.deepEqual(cookieCalls, [['set', 'https://example.test', 'name=value', false]]);
   assert.throws(() => cookies.setCookie(1, '', 'name=value'));
+  cookies.setCookie(1, 'https://private.test', 'private=value', true);
+  assert.deepEqual(cookieCalls.at(-1), ['set', 'https://private.test', 'private=value', true]);
   let cleared;
   const result = { success: (value) => { cleared = value; } };
   cookies.removeAllCookies(1, result);
