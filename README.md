@@ -19,6 +19,7 @@ A WebView component for all Flutter platforms, compatible with the
 
 - Comprehensive support for all platforms
 - Full compatibility with the `webview_flutter` API
+- Widely used in established commercial applications
 - Additional features:
   - Promise-aware asynchronous JavaScript calls
   - Custom JavaScript injection before page scripts execute
@@ -26,6 +27,7 @@ A WebView component for all Flutter platforms, compatible with the
   - Richer Web interactions and iframe configuration
   - Website data cleanup without a controller
   - Offscreen WebView sessions that can be explicitly closed
+  - Custom download handling and progress callbacks
 
 ## Quick Start
 
@@ -54,9 +56,13 @@ For detailed usage, API coverage, and platform limits, see the [Documentation](h
 ## Who's Using It?
 
 - [Wildfire IM](https://github.com/wildfirechat) official Flutter client: A well-established commercial IM/RTC platform.
-- [Miru](https://github.com/miru-project) new official client: A popular video, manga, and novel aggregation app.
-- [GodotHub](https://github.com/godothub) official client: A much-loved Godot community platform.
+- [GodotHub](https://godothub.com) official client: A much-loved Godot community platform.
 - [Operit2](https://github.com/AAswordman/Operit2): An AI agent for all platforms.
+- [Miru](https://github.com/miru-project) new client: A popular video, manga, and novel aggregation app.
+- [SubDock](https://github.com/sub-store-org) desktop client: The official app for running and managing Sub-Store.
+- [OpenHarness](https://github.com/autonomous-ai/openharness) desktop client: An AI workspace for coding agents and remote machines.
+- [AnymeX](https://github.com/RyanYuuki/AnymeX): A cross-platform anime and manga tracking client.
+- [ChessEver](https://chessever.com) desktop client: A chess platform for live tournaments and game analysis.
 - [Dartotsu](https://github.com/aayush2622/Dartotsu): A cross-platform anime, manga, and novel tracking client.
 - [Bili-music](https://github.com/AprDeci/bili-music): A cross-platform music player for Bilibili.
 - [ShonenX](https://github.com/roshancodespace/ShonenX): Discover anime, track your progress, and stream, all in one app.

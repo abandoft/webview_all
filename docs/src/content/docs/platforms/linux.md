@@ -90,7 +90,10 @@ Each field is nullable. `null` leaves the WebKitGTK default unchanged.
 Downloads are allowed by default. Set `downloadsEnabled: false` at creation, or
 await `setDownloadsEnabled(false)` before loading content, to cancel new
 downloads before a file is saved. Ongoing downloads and other WebViews are not
-affected. Allowed downloads use WebKitGTK's default download destination.
+affected. Allowed downloads use the default download directory with safe,
+non-overwriting file handling. From 1.4.8, use the common
+[download delegate](/webview_all/guides/downloads/) to select a file target or
+receive progress and results; the plugin does not create a save dialog.
 
 ## Controller API
 
@@ -175,7 +178,9 @@ shim because it cannot reproduce WebAuthn's origin and authenticator security.
   Flutter's logical position and size and is clipped at the Flutter viewport,
   but arbitrary Flutter layer interleaving and clip shapes cannot be reproduced
   by `GtkOverlay`.
-- Translation is supported. Scale, rotation, skew, perspective, and mirrored
+- System HiDPI and application scaling configured through `ViewConfiguration`
+  are supported.
+- Widget transforms support translation. Scale, rotation, skew, perspective, and mirrored
   transforms cannot be represented faithfully by a native GTK child; the
   plugin hides the WebView and logs the limitation instead of leaving a
   visually misaligned interactive surface.

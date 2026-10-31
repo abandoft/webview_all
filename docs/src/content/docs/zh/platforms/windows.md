@@ -86,6 +86,10 @@ DevTools 默认配置及显式配置均会在首次导航前应用，初始化
 `ICoreWebView2_4` 下载监听。不支持的限制返回 `not_supported`；原生调用失败
 返回 `method_failed`，错误详情包含设置名称和 HRESULT。
 
+从 1.4.8 起，可通过公共[下载代理](/webview_all/zh/guides/downloads/)由应用选择
+保存目标并获取下载进度、结果。`downloadsEnabled` 控制是否允许下载，不代表打开
+下载窗口。离屏原生 WebView 的下载面板无法可靠显示，需要保存提示时请由应用提供交互。
+
 | 值 | 行为 |
 | --- | --- |
 | `allow` | 允许 popup 新窗口。 |

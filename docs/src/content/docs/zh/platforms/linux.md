@@ -72,7 +72,9 @@ final params = const LinuxWebViewControllerCreationParams(
 
 下载默认允许。可在创建时设置 `downloadsEnabled: false`，或在加载内容前等待
 `setDownloadsEnabled(false)` 完成，取消新下载并阻止保存文件。已开始的下载和
-其他 WebView 不受影响。允许下载时沿用 WebKitGTK 的默认保存位置。
+其他 WebView 不受影响。允许下载时使用默认下载目录，并以不覆盖方式安全保存。
+从 1.4.8 起，可通过[下载代理](/webview_all/zh/guides/downloads/)选择目标文件、
+获取进度及结果；插件不会创建保存窗口。
 
 ## 主要 API
 
@@ -120,7 +122,8 @@ origin 与 authenticator 安全语义。
 - WebView 是 GTK 原生 widget，而非 Flutter texture。它会跟随 Flutter
   的逻辑位置和尺寸，并在 Flutter 视口边界裁剪；但 `GtkOverlay` 无法复现任意
   Flutter 图层穿插和裁剪形状。
-- 支持平移；缩放、旋转、倾斜、透视和镜像变换无法由 GTK 原生子组件准确表示。
+- 支持系统 HiDPI 和通过 `ViewConfiguration` 配置的应用界面缩放。
+- 组件变换支持平移；缩放、旋转、倾斜、透视和镜像无法由 GTK 原生子组件准确表示。
   遇到这些变换时，插件会隐藏 WebView 并打印限制说明，避免留下视觉错位但仍可交互
   的原生区域。
 - 本地文件必须使用绝对路径，并会在加载前规范化；Flutter asset 中的路径穿越、绝对路径和逃出 asset bundle 的符号链接会被拒绝。

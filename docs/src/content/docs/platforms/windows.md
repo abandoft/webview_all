@@ -112,6 +112,12 @@ requires a successfully registered `ICoreWebView2_4` download handler. Unsupport
 restrictions report `not_supported`; native failures report `method_failed` with
 the setting name and HRESULT.
 
+From 1.4.8, the common [download delegate](/webview_all/guides/downloads/)
+lets the app select a file target and receive download progress and results.
+`downloadsEnabled` controls permission to download, not whether a window opens.
+The offscreen native WebView cannot supply a reliably visible download panel;
+use application-owned UI when a save prompt is needed.
+
 `WindowsPopupWindowPolicy`:
 
 | Value | Behavior |

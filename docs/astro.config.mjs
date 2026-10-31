@@ -87,6 +87,11 @@ export default defineConfig({
               slug: 'guides/cookies',
             },
             {
+              label: 'Downloads',
+              translations: { 'zh-CN': '下载' },
+              slug: 'guides/downloads',
+            },
+            {
               label: 'JavaScript',
               translations: { 'zh-CN': 'JavaScript' },
               slug: 'guides/javascript',
