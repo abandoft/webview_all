@@ -277,6 +277,12 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
   bool _reportedUnsupportedTransform = false;
   bool _reportedUnsupportedClip = false;
 
+  // Retain a layer for this native-view placeholder so visibility can be checked
+  // after compositing. Covered routes and offstage OverlayEntries remain in the
+  // render tree, but their layers are detached from the scene.
+  @override
+  bool get isRepaintBoundary => true;
+
   bool get isEffectivelyPainted {
     RenderObject child = this;
     RenderObject? ancestor = parent;
@@ -316,11 +322,11 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
 
   /// Recomputes the on-screen rect of this box and reports it.
   ///
-  /// Called from [paint] and from each already-scheduled Flutter frame so the
+  /// Called after each already-scheduled Flutter frame so the
   /// native overlay keeps tracking composited movement during sliver scrolling
   /// and can detect when a previously clipped child re-enters the viewport.
   void syncGeometry() {
-    if (!attached) {
+    if (!attached || layer?.attached != true) {
       _onGeometryChanged(_LinuxViewGeometry.hidden);
       return;
     }
@@ -334,8 +340,9 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
       _onGeometryChanged(_LinuxViewGeometry.hidden);
       return;
     }
-    // GTK and RenderView layout both use logical pixels. Targeting the
-    // RenderView child deliberately excludes RenderView's root DPR transform.
+    // Exclude the root DPR transform while inspecting widget transforms. A
+    // custom ViewConfiguration can scale the app independently of GTK; convert
+    // the resulting geometry into GTK logical pixels after clipping below.
     final Matrix4 transform = getTransformTo(renderRoot);
     final Offset topLeft = MatrixUtils.transformPoint(transform, Offset.zero);
     final Offset topRight = MatrixUtils.transformPoint(
@@ -406,7 +413,22 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
       ancestor = ancestor.parent;
     }
 
-    _onGeometryChanged(_LinuxViewGeometry(frame: frame, clip: clip));
+    final double scale =
+        renderView.configuration.devicePixelRatio /
+        renderView.flutterView.devicePixelRatio;
+    if (!scale.isFinite || scale <= 0) {
+      _onGeometryChanged(_LinuxViewGeometry.hidden);
+      return;
+    }
+    Rect gtkRect(Rect rect) => Rect.fromLTRB(
+      rect.left * scale,
+      rect.top * scale,
+      rect.right * scale,
+      rect.bottom * scale,
+    );
+    _onGeometryChanged(
+      _LinuxViewGeometry(frame: gtkRect(frame), clip: gtkRect(clip)),
+    );
   }
 
   bool _hasNonRectangularClip(RenderObject ancestor) {
@@ -470,11 +492,5 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
       'be represented by a native GTK overlay; the native WebView was hidden.',
     );
     _reportedUnsupportedClip = true;
-  }
-
-  @override
-  void paint(PaintingContext context, Offset offset) {
-    super.paint(context, offset);
-    syncGeometry();
   }
 }

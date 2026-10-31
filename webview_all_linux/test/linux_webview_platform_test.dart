@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:webview_all_linux/src/linux_webview_constants.dart';
@@ -855,6 +856,231 @@ void main() {
     expect(arguments['y'], 30);
     expect(arguments['width'], 100);
     expect(arguments['height'], 80);
+  });
+
+  for (final double displayDpr in <double>[1, 2]) {
+    testWidgets(
+      'tracks custom app scaling independently of display DPR $displayDpr',
+      (WidgetTester tester) async {
+        tester.view.devicePixelRatio = displayDpr;
+        tester.view.physicalSize = Size(800 * displayDpr, 600 * displayDpr);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final calls = <MethodCall>[];
+        _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+        final controller = LinuxWebViewController(
+          const PlatformWebViewControllerCreationParams(),
+        );
+        final widget = LinuxWebViewWidget(
+          PlatformWebViewWidgetCreationParams(controller: controller),
+        );
+        addTearDown(() async {
+          await tester.pumpWidget(const SizedBox.shrink());
+          final disposal = controller.dispose();
+          await tester.pump();
+          await disposal;
+        });
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Transform.translate(
+                offset: const Offset(20, 30),
+                child: SizedBox(
+                  width: 100,
+                  height: 80,
+                  child: Builder(builder: widget.build),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        for (final double appScale in <double>[1.5, 0.75, 1]) {
+          final double renderDpr = displayDpr * appScale;
+          tester.binding.renderViews.single.configuration = ViewConfiguration(
+            physicalConstraints: BoxConstraints.tight(tester.view.physicalSize),
+            logicalConstraints: BoxConstraints.tight(
+              tester.view.physicalSize / renderDpr,
+            ),
+            devicePixelRatio: renderDpr,
+          );
+          await tester.pump();
+          final frame = calls.lastWhere(
+            (call) =>
+                call.method == 'setFrame' &&
+                (call.arguments as Map)['visible'] == true,
+          );
+          final args = frame.arguments as Map;
+          expect(args['x'], 20 * appScale);
+          expect(args['y'], 30 * appScale);
+          expect(args['width'], 100 * appScale);
+          expect(args['height'], 80 * appScale);
+          expect(args['clipX'], 20 * appScale);
+          expect(args['clipY'], 30 * appScale);
+          expect(args['clipWidth'], 100 * appScale);
+          expect(args['clipHeight'], 80 * appScale);
+        }
+      },
+    );
+  }
+
+  for (final bool nested in <bool>[false, true]) {
+    for (final bool opaque in <bool>[true, false]) {
+      testWidgets('tracks route coverage with opaque=$opaque, nested=$nested', (
+        tester,
+      ) async {
+        final calls = <MethodCall>[];
+        _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+        final controller = LinuxWebViewController(
+          const PlatformWebViewControllerCreationParams(),
+        );
+        addTearDown(() async {
+          await tester.pumpWidget(const SizedBox.shrink());
+          final disposal = controller.dispose();
+          await tester.pump();
+          await disposal;
+        });
+        final widget = LinuxWebViewWidget(
+          PlatformWebViewWidgetCreationParams(controller: controller),
+        );
+        final navigatorKey = GlobalKey<NavigatorState>();
+        late BuildContext routeContext;
+        Widget buildWebView(BuildContext context) {
+          routeContext = context;
+          return SizedBox(width: 100, height: 80, child: widget.build(context));
+        }
+
+        await tester.pumpWidget(
+          MaterialApp(
+            navigatorKey: navigatorKey,
+            home: nested
+                ? Navigator(
+                    onGenerateRoute: (_) =>
+                        MaterialPageRoute<void>(builder: buildWebView),
+                  )
+                : Builder(builder: buildWebView),
+          ),
+        );
+        await tester.pumpAndSettle();
+        bool nativeVisible() =>
+            (calls.lastWhere((call) => call.method == 'setFrame').arguments
+                as Map)['visible'] ==
+            true;
+        expect(nativeVisible(), isTrue);
+        final navigator = navigatorKey.currentState!;
+        final covered = navigator.push<void>(
+          PageRouteBuilder<void>(
+            opaque: opaque,
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+            pageBuilder: (_, _, _) => const SizedBox.expand(),
+          ),
+        );
+        await tester.pumpAndSettle();
+        if (nested) expect(ModalRoute.of(routeContext)!.isCurrent, isTrue);
+        expect(nativeVisible(), !opaque);
+        navigator.pop();
+        await tester.pumpAndSettle();
+        await covered;
+        expect(nativeVisible(), isTrue);
+      });
+    }
+  }
+
+  testWidgets('hides behind an opaque OverlayEntry and restores on removal', (
+    tester,
+  ) async {
+    final calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      final disposal = controller.dispose();
+      await tester.pump();
+      await disposal;
+    });
+    final widget = LinuxWebViewWidget(
+      PlatformWebViewWidgetCreationParams(controller: controller),
+    );
+    late BuildContext routeContext;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            routeContext = context;
+            return SizedBox(
+              width: 100,
+              height: 80,
+              child: widget.build(context),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    bool nativeVisible() =>
+        (calls.lastWhere((call) => call.method == 'setFrame').arguments
+            as Map)['visible'] ==
+        true;
+    expect(nativeVisible(), isTrue);
+    final cover = OverlayEntry(
+      opaque: true,
+      builder: (_) => const ColoredBox(color: Colors.white),
+    );
+    Overlay.of(routeContext).insert(cover);
+    await tester.pumpAndSettle();
+    expect(ModalRoute.of(routeContext)!.isCurrent, isTrue);
+    expect(nativeVisible(), isFalse);
+    cover.remove();
+    cover.dispose();
+    await tester.pumpAndSettle();
+    expect(nativeVisible(), isTrue);
+    // Retaining an unchanged layer across later frames must keep it visible.
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(nativeVisible(), isTrue);
+  });
+
+  testWidgets('disabling tickers on the current route keeps the view visible', (
+    tester,
+  ) async {
+    final calls = <MethodCall>[];
+    _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+    final controller = LinuxWebViewController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      final disposal = controller.dispose();
+      await tester.pump();
+      await disposal;
+    });
+    final widget = LinuxWebViewWidget(
+      PlatformWebViewWidgetCreationParams(controller: controller),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TickerMode(
+          enabled: false,
+          child: SizedBox(
+            width: 100,
+            height: 80,
+            child: Builder(builder: widget.build),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      (calls.lastWhere((call) => call.method == 'setFrame').arguments
+          as Map)['visible'],
+      isTrue,
+    );
   });
 
   testWidgets('hides native view for unsupported transforms', (
