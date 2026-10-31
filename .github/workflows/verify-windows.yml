@@ -64,6 +64,11 @@ jobs:
         working-directory: examples/platform
         run: flutter test integration_test/webview_flutter_test.dart -d windows
 
+      - name: Test session isolation, cleanup and titles
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_session_test.dart -d windows
+
       - name: Test native download handling and file safety
         if: matrix.flutter == '3.44.x'
         working-directory: examples/platform

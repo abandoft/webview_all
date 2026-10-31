@@ -73,6 +73,13 @@ jobs:
           xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
             flutter test integration_test/webview_flutter_test.dart -d linux
 
+      - name: Test session isolation, cleanup and titles
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: |
+          xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+            flutter test integration_test/webview_session_test.dart -d linux
+
       - name: Run Linux HiDPI native input test
         if: matrix.flutter == '3.44.x'
         working-directory: examples/platform
