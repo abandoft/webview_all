@@ -31,5 +31,6 @@ export 'webview_cookie.dart';
 export 'webview_credential.dart';
 export 'webview_data.dart';
 export 'webview_download.dart';
+export 'webview_session.dart';
 export 'webview_user_script.dart';
 export 'x509_certificate.dart';

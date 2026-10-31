@@ -47,6 +47,16 @@ abstract class WebViewPlatform extends PlatformInterface {
   /// unsupported platforms do not allocate native or browser resources.
   bool get supportsOffscreenWebViews => false;
 
+  /// Modes the implementation can create. Runtime requirements are checked by
+  /// [getSessionCapabilities] and again by native creation.
+  Set<WebViewSessionMode> get supportedSessionModes => const {
+    WebViewSessionMode.shared,
+  };
+
+  /// Queries session support without creating a browsing controller.
+  Future<WebViewSessionCapabilities> getSessionCapabilities() async =>
+      WebViewSessionCapabilities(supportedModes: supportedSessionModes);
+
   /// Creates a new [PlatformWebViewCookieManager].
   ///
   /// This function should only be called by the app-facing package.

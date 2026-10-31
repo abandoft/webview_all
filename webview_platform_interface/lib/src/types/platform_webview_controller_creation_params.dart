@@ -4,6 +4,8 @@
 
 import 'package:flutter/material.dart';
 
+import 'webview_session.dart';
+
 /// Object specifying creation parameters for creating a [PlatformWebViewController].
 ///
 /// Platform specific implementations can add additional fields by extending
@@ -20,11 +22,9 @@ import 'package:flutter/material.dart';
 /// class WKWebViewControllerCreationParams
 ///     extends PlatformWebViewControllerCreationParams {
 ///   WKWebViewControllerCreationParams._(
-///     // This parameter prevents breaking changes later.
-///     // ignore: avoid_unused_constructor_parameters
 ///     PlatformWebViewControllerCreationParams params, {
 ///     this.domain,
-///   }) : super();
+///   }) : super.fromPlatformWebViewControllerCreationParams(params);
 ///
 ///   factory WKWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
 ///     PlatformWebViewControllerCreationParams params, {
@@ -39,5 +39,23 @@ import 'package:flutter/material.dart';
 @immutable
 class PlatformWebViewControllerCreationParams {
   /// Used by the platform implementation to create a new [PlatformWebViewController].
-  const PlatformWebViewControllerCreationParams();
+  const PlatformWebViewControllerCreationParams({
+    WebViewSessionMode sessionMode = WebViewSessionMode.shared,
+  }) : _sessionMode = sessionMode,
+       _sourceParams = null;
+
+  /// Preserves generic policies in const platform-specific converters.
+  const PlatformWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
+    PlatformWebViewControllerCreationParams params, {
+    WebViewSessionMode? sessionMode,
+  }) : _sessionMode = sessionMode,
+       _sourceParams = params;
+
+  final WebViewSessionMode? _sessionMode;
+  final PlatformWebViewControllerCreationParams? _sourceParams;
+
+  /// Immutable website-data policy. Unsupported modes must never fall back to
+  /// an ordinary profile, because that could expose existing login state.
+  WebViewSessionMode get sessionMode =>
+      _sessionMode ?? _sourceParams!.sessionMode;
 }

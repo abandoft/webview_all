@@ -31,6 +31,10 @@ typedef WebResourceErrorCallback = void Function(WebResourceError error);
 /// url of the web view.
 typedef UrlChangeCallback = void Function(UrlChange change);
 
+/// Reports the main document title. For an empty title, some engines report
+/// a fallback such as the page URL.
+typedef TitleChangeCallback = void Function(String title);
+
 /// Signature for callbacks that notify the host application of an
 /// authentication request.
 typedef HttpAuthRequestCallback = void Function(HttpAuthRequest request);
@@ -77,6 +81,13 @@ abstract class PlatformNavigationDelegate extends PlatformInterface {
 
   /// The parameters used to initialize the [PlatformNavigationDelegate].
   final PlatformNavigationDelegateCreationParams params;
+
+  /// Observes main-document title changes independently of page completion.
+  Future<void> setOnTitleChange(TitleChangeCallback onTitleChange) async {
+    debugPrint(
+      'webview_all: title change notifications are not supported on this platform.',
+    );
+  }
 
   /// Invoked when a navigation request is pending.
   ///

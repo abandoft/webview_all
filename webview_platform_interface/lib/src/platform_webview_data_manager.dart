@@ -34,7 +34,7 @@ abstract class PlatformWebViewDataManager extends PlatformInterface {
   /// The parameters used to create this manager.
   final PlatformWebViewDataManagerCreationParams params;
 
-  /// Clears website data from the data store used by normal WebViews.
+  /// Clears website data from the store selected by this manager.
   ///
   /// The default implementation reports every category as unsupported so that
   /// older platform implementations fail safely without deleting a broader

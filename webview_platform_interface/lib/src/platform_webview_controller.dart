@@ -7,6 +7,8 @@ import 'package:flutter/painting.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'platform_navigation_delegate.dart';
+import 'platform_webview_cookie_manager.dart';
+import 'platform_webview_data_manager.dart';
 import 'types/types.dart';
 import 'webview_platform.dart' show WebViewPlatform;
 
@@ -48,6 +50,26 @@ abstract class PlatformWebViewController extends PlatformInterface {
 
   /// The parameters used to initialize the [PlatformWebViewController].
   final PlatformWebViewControllerCreationParams params;
+
+  /// Waits for native creation, including applying the requested data policy.
+  Future<void> prepareSession() async {}
+
+  /// Permanently releases an owned controller, whether displayed or offscreen.
+  Future<void> closeWebViewSession() => closeOffscreenWebView();
+
+  PlatformWebViewCookieManager createSessionCookieManager() {
+    const message =
+        'Session-scoped cookies are not supported on this platform.';
+    debugPrint('webview_all: $message');
+    return _UnsupportedSessionCookieManager();
+  }
+
+  PlatformWebViewDataManager createSessionDataManager() {
+    const message =
+        'Session-scoped website data is not supported on this platform.';
+    debugPrint('webview_all: $message');
+    return _UnsupportedSessionDataManager();
+  }
 
   /// Sets optional download handling independently of navigation callbacks.
   /// Removing a delegate restores the platform's existing behavior. Download
@@ -501,4 +523,20 @@ class JavaScriptChannelParams {
   /// The callback method that is invoked when a [JavaScriptMessage] is
   /// received.
   final void Function(JavaScriptMessage) onMessageReceived;
+}
+
+class _UnsupportedSessionCookieManager extends PlatformWebViewCookieManager {
+  _UnsupportedSessionCookieManager()
+    : super.implementation(const PlatformWebViewCookieManagerCreationParams());
+  @override
+  Future<bool> clearCookies() async => false;
+  @override
+  Future<void> setCookie(WebViewCookie cookie) async {}
+  @override
+  Future<List<WebViewCookie>> getCookies(Uri url) async => const [];
+}
+
+class _UnsupportedSessionDataManager extends PlatformWebViewDataManager {
+  _UnsupportedSessionDataManager()
+    : super.implementation(const PlatformWebViewDataManagerCreationParams());
 }

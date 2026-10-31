@@ -24,6 +24,7 @@ export 'package:webview_platform_interface/webview_platform_interface.dart'
         PlatformWebViewPermissionRequest,
         PlatformWebViewWidgetCreationParams,
         ProgressCallback,
+        TitleChangeCallback,
         ScrollPositionChange,
         UrlChange,
         WebResourceError,
@@ -45,12 +46,16 @@ export 'package:webview_platform_interface/webview_platform_interface.dart'
         WebViewOverScrollMode,
         WebViewPermissionResourceType,
         WebViewPlatform,
+        WebViewSessionMode,
+        WebViewIncognitoSupport,
+        WebViewSessionCapabilities,
         WebViewUserScript,
         WebViewUserScriptInjectionTime,
         X509Certificate;
 
 export 'src/navigation_delegate.dart';
 export 'src/offscreen_webview_session.dart';
+export 'src/webview_session.dart';
 export 'src/webview_controller.dart';
 export 'src/webview_cookie_manager.dart';
 export 'src/webview_data_manager.dart';

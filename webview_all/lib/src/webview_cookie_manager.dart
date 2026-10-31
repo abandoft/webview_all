@@ -77,18 +77,18 @@ class WebViewCookieManager {
   /// Implementation of [PlatformWebViewCookieManager] for the current platform.
   final PlatformWebViewCookieManager platform;
 
-  /// Clears all cookies for all WebViews.
+  /// Clears cookies in this manager's store.
+  /// Default managers use ordinary shared storage; session managers use the selected store.
   ///
   /// Returns true if cookies were present before clearing, else false.
   Future<bool> clearCookies() => platform.clearCookies();
 
-  /// Sets a cookie for all WebView instances.
+  /// Sets a cookie in this manager's store.
   ///
   /// This is a no op on iOS versions below 11.
   Future<void> setCookie(WebViewCookie cookie) => platform.setCookie(cookie);
 
-  /// Gets a list of existing cookie for specified domain from all
-  /// WebView instances of the application.
+  /// Gets cookies visible for [domain] from this manager's store.
   ///
   /// Each platform can have different url requirements. Please check individual
   /// platform implementation for details.

@@ -44,6 +44,7 @@ class NavigationDelegate {
   /// **`onProgress`:** invoked when page loading progress changes.
   /// **`onWebResourceError`:** invoked when a web resource loading error occurs.
   /// **`onUrlChange`:** invoked when the underlying web view changes to a new URL.
+  /// **`onTitleChange`:** invoked when the main document title changes.
   /// **`onHttpAuthRequest`:** invoked when the web view is requesting authentication.
   /// **`onHttpError`:** invoked when an HTTP error status code is received.
   /// **`onSslAuthError`:** invoked when the web view receives a recoverable SSL
@@ -56,6 +57,7 @@ class NavigationDelegate {
     void Function(String url)? onPageStarted,
     void Function(String url)? onPageFinished,
     void Function(int progress)? onProgress,
+    TitleChangeCallback? onTitleChange,
     void Function(WebResourceError error)? onWebResourceError,
     void Function(UrlChange change)? onUrlChange,
     void Function(HttpAuthRequest request)? onHttpAuthRequest,
@@ -67,6 +69,7 @@ class NavigationDelegate {
          onPageStarted: onPageStarted,
          onPageFinished: onPageFinished,
          onProgress: onProgress,
+         onTitleChange: onTitleChange,
          onWebResourceError: onWebResourceError,
          onUrlChange: onUrlChange,
          onHttpAuthRequest: onHttpAuthRequest,
@@ -112,6 +115,7 @@ class NavigationDelegate {
     void Function(String url)? onPageStarted,
     void Function(String url)? onPageFinished,
     void Function(int progress)? onProgress,
+    TitleChangeCallback? onTitleChange,
     void Function(WebResourceError error)? onWebResourceError,
     void Function(UrlChange change)? onUrlChange,
     void Function(HttpAuthRequest request)? onHttpAuthRequest,
@@ -123,6 +127,7 @@ class NavigationDelegate {
          onPageStarted: onPageStarted,
          onPageFinished: onPageFinished,
          onProgress: onProgress,
+         onTitleChange: onTitleChange,
          onWebResourceError: onWebResourceError,
          onUrlChange: onUrlChange,
          onHttpAuthRequest: onHttpAuthRequest,
@@ -139,6 +144,7 @@ class NavigationDelegate {
     this.onPageStarted,
     this.onPageFinished,
     this.onProgress,
+    this.onTitleChange,
     this.onWebResourceError,
     void Function(UrlChange change)? onUrlChange,
     HttpAuthRequestCallback? onHttpAuthRequest,
@@ -156,6 +162,9 @@ class NavigationDelegate {
     }
     if (onProgress != null) {
       platform.setOnProgress(onProgress!);
+    }
+    if (onTitleChange != null) {
+      platform.setOnTitleChange(onTitleChange!);
     }
     if (onWebResourceError != null) {
       platform.setOnWebResourceError(onWebResourceError!);
@@ -199,6 +208,10 @@ class NavigationDelegate {
 
   /// Invoked when a page is loading to report the progress.
   final ProgressCallback? onProgress;
+
+  /// Reports changes to the main document title, including JavaScript updates.
+  /// Empty titles follow the engine's fallback behavior, which may use a URL.
+  final TitleChangeCallback? onTitleChange;
 
   /// Invoked when a resource loading error occurred.
   final WebResourceErrorCallback? onWebResourceError;
