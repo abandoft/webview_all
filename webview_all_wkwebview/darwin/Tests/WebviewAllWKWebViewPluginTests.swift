@@ -13,6 +13,21 @@ import XCTest
 
 class WebviewAllWKWebViewPluginTests: XCTestCase {
   #if os(iOS)
+    @MainActor func testRegisterAddsSeparateGesturePolicyFactories() {
+      let registry = TestRegistry()
+      WebviewAllWKWebViewPlugin.register(with: registry.registrar)
+
+      let policies = registry.registrar.registeredGesturePolicies
+      let prefix = "com.abandoft.webview_all_wkwebview/webview/gesture/"
+      XCTAssertEqual(
+        policies[prefix + "eager"], FlutterPlatformViewGestureRecognizersBlockingPolicyEager)
+      XCTAssertEqual(
+        policies[prefix + "waitUntilTouchesEnded"],
+        FlutterPlatformViewGestureRecognizersBlockingPolicyWaitUntilTouchesEnded)
+      XCTAssertEqual(policies[prefix + "doNotBlockGesture"]?.rawValue, 2)
+      XCTAssertEqual(policies.count, 3)
+    }
+
     @MainActor func testRegisterAddsSceneLifeCycleDelegateWhenSupported() {
       let registry = TestRegistry()
       let registrar = registry.registrar(forPlugin: "")!

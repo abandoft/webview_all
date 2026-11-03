@@ -44,6 +44,22 @@ public class WebviewAllWKWebViewPlugin: NSObject, FlutterPlugin {
       plugin.registerForCompatibilityLookup(binaryMessenger: binaryMessenger)
       registrar.addApplicationDelegate(plugin)
       plugin.registerForSceneLifeCycle(with: registrar)
+      registrar.register(
+        viewFactory, withId: webviewAllWKWebViewPlatformViewType + "/gesture/eager",
+        gestureRecognizersBlockingPolicy: FlutterPlatformViewGestureRecognizersBlockingPolicyEager)
+      registrar.register(
+        viewFactory,
+        withId: webviewAllWKWebViewPlatformViewType + "/gesture/waitUntilTouchesEnded",
+        gestureRecognizersBlockingPolicy:
+          FlutterPlatformViewGestureRecognizersBlockingPolicyWaitUntilTouchesEnded)
+      // The public DoNotBlockGesture enum value is 2. Using its raw value keeps
+      // older Flutter headers buildable; Dart only selects this factory when
+      // the framework exposes the new gesture policy API (Flutter 3.47+).
+      registrar.register(
+        viewFactory,
+        withId: webviewAllWKWebViewPlatformViewType + "/gesture/doNotBlockGesture",
+        gestureRecognizersBlockingPolicy:
+          FlutterPlatformViewGestureRecognizersBlockingPolicy(rawValue: 2))
     #endif
     registrar.register(viewFactory, withId: webviewAllWKWebViewPlatformViewType)
     registrar.publish(plugin)

@@ -9,6 +9,7 @@ import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:webview_all_wkwebview/src/common/web_kit.g.dart';
 import 'package:webview_all_wkwebview/webview_all_wkwebview.dart';
+import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'webkit_webview_widget_test.mocks.dart';
 
@@ -24,7 +25,146 @@ void main() {
     PigeonOverrides.pigeon_reset();
   });
 
+  tearDown(() {
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   group('WebKitWebViewWidget', () {
+    for (final policy in WebKitGestureBlockingPolicy.values) {
+      testWidgets('selects the supported iOS factory for ${policy.name}', (
+        WidgetTester tester,
+      ) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        final controller = createTestWebViewController();
+        final widget = WebKitWebViewWidget(
+          WebKitWebViewWidgetCreationParams(
+            controller: controller,
+            uiKitGestureBlockingPolicy: policy,
+          ),
+        );
+        final messages = <String>[];
+        final previousDebugPrint = debugPrint;
+        debugPrint = (String? message, {int? wrapWidth}) {
+          if (message != null) messages.add(message);
+        };
+        try {
+          await tester.pumpWidget(
+            Builder(builder: (context) => widget.build(context)),
+          );
+          final view = tester.widget<UiKitView>(find.byType(UiKitView));
+          final bool unsupported =
+              policy == WebKitGestureBlockingPolicy.doNotBlockGesture &&
+              !hasFrameworkGesturePolicy();
+          final bool useDefault =
+              policy == WebKitGestureBlockingPolicy.fallbackToPluginDefault ||
+              unsupported;
+          expect(
+            view.viewType,
+            useDefault
+                ? 'com.abandoft.webview_all_wkwebview/webview'
+                : 'com.abandoft.webview_all_wkwebview/webview/gesture/${policy.name}',
+          );
+          expect(
+            messages.any(
+              (message) => message.contains('requires Flutter 3.47'),
+            ),
+            unsupported,
+          );
+        } finally {
+          debugPrint = previousDebugPrint;
+          debugDefaultTargetPlatformOverride = null;
+        }
+      });
+    }
+
+    testWidgets('unsupported macOS policies preserve the native view', (
+      WidgetTester tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      final widget = WebKitWebViewWidget(
+        WebKitWebViewWidgetCreationParams(
+          controller: createTestWebViewController(),
+          uiKitGestureBlockingPolicy:
+              WebKitGestureBlockingPolicy.doNotBlockGesture,
+        ),
+      );
+      final messages = <String>[];
+      final previousDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) messages.add(message);
+      };
+      try {
+        await tester.pumpWidget(
+          Builder(builder: (context) => widget.build(context)),
+        );
+        expect(
+          tester.widget<AppKitView>(find.byType(AppKitView)).viewType,
+          'com.abandoft.webview_all_wkwebview/webview',
+        );
+        expect(messages.single, contains('only supported on iOS'));
+      } finally {
+        debugPrint = previousDebugPrint;
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    testWidgets('changing the gesture policy recreates the platform view', (
+      WidgetTester tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final controller = createTestWebViewController();
+      Future<void> pumpPolicy(WebKitGestureBlockingPolicy policy) async {
+        final widget = WebKitWebViewWidget(
+          WebKitWebViewWidgetCreationParams(
+            controller: controller,
+            uiKitGestureBlockingPolicy: policy,
+          ),
+        );
+        await tester.pumpWidget(
+          Builder(builder: (context) => widget.build(context)),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      await pumpPolicy(WebKitGestureBlockingPolicy.eager);
+      final before = tester.element(find.byType(UiKitView));
+      await pumpPolicy(WebKitGestureBlockingPolicy.waitUntilTouchesEnded);
+      expect(tester.element(find.byType(UiKitView)), isNot(same(before)));
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    test('platform parameter conversion preserves an explicit policy', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final params = WebKitWebViewWidgetCreationParams(
+        controller: FakeWebViewController(),
+        uiKitGestureBlockingPolicy:
+            WebKitGestureBlockingPolicy.waitUntilTouchesEnded,
+      );
+      final copy =
+          WebKitWebViewWidgetCreationParams.fromPlatformWebViewWidgetCreationParams(
+            params,
+          );
+      expect(copy, params);
+      expect(copy.hashCode, params.hashCode);
+    });
+
+    test('accepts the public Flutter enum when the SDK provides it', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final dynamic view = const UiKitView(viewType: 'test');
+      if (!hasFrameworkGesturePolicy()) return;
+      final Enum frameworkPolicy = view.gestureBlockingPolicy as Enum;
+      final controller = FakeWebViewController();
+      final params = WebKitWebViewWidgetCreationParams(
+        controller: controller,
+        uiKitGestureBlockingPolicy: frameworkPolicy,
+      );
+      final pluginDefault = WebKitWebViewWidgetCreationParams(
+        controller: controller,
+      );
+      expect(params, pluginDefault);
+      expect(params.hashCode, pluginDefault.hashCode);
+    });
+
     testWidgets('build', (WidgetTester tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
 
@@ -169,6 +309,17 @@ void main() {
     );
   });
 }
+
+bool hasFrameworkGesturePolicy() {
+  final dynamic view = const UiKitView(viewType: 'test');
+  try {
+    return view.gestureBlockingPolicy is Enum;
+  } on NoSuchMethodError {
+    return false;
+  }
+}
+
+class FakeWebViewController extends Fake implements PlatformWebViewController {}
 
 WebKitWebViewController createTestWebViewController() {
   PigeonOverrides.uIViewWKWebView_new =

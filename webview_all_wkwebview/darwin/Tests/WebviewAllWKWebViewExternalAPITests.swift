@@ -181,6 +181,7 @@ class TestFlutterPluginRegistrar: NSObject, FlutterPluginRegistrar {
   #if os(iOS)
     var viewController: UIViewController?
     var sceneDelegate: AnyObject?
+    var registeredGesturePolicies: [String: FlutterPlatformViewGestureRecognizersBlockingPolicy] = [:]
 
     func messenger() -> FlutterBinaryMessenger {
       return testBinaryMessenger
@@ -199,6 +200,7 @@ class TestFlutterPluginRegistrar: NSObject, FlutterPluginRegistrar {
       gestureRecognizersBlockingPolicy: FlutterPlatformViewGestureRecognizersBlockingPolicy
     ) {
       registeredViewType = factoryId
+      registeredGesturePolicies[factoryId] = gestureRecognizersBlockingPolicy
     }
 
     func addSceneDelegate(_ delegate: any FlutterSceneLifeCycleDelegate) {

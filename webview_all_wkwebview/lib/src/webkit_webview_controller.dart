@@ -27,6 +27,42 @@ const String _webKitWebViewPlatformViewType =
 final Expando<Set<VoidCallback>> _webKitNavigationStartCallbacks =
     Expando<Set<VoidCallback>>();
 
+/// Controls how Flutter blocks the native iOS view's gesture recognizers.
+///
+/// See [WebKitWebViewWidgetCreationParams.uiKitGestureBlockingPolicy].
+enum WebKitGestureBlockingPolicy {
+  /// Uses the plugin's default gesture handling.
+  fallbackToPluginDefault,
+
+  /// Blocks native recognizers as soon as Flutter wins the gesture.
+  eager,
+
+  /// Delays blocking until the native recognizers receive the full touch sequence.
+  waitUntilTouchesEnded,
+
+  /// Uses hit testing instead of asynchronous gesture-arena blocking.
+  ///
+  /// Requires Flutter 3.47 or later. This can work around unresponsive touches,
+  /// but may also let the WebView recognize a gesture claimed by Flutter.
+  doNotBlockGesture,
+}
+
+// A new public SDK property provides a capability check without referring to
+// its enum type, which does not exist in Flutter 3.35.
+bool _detectUiKitGestureBlockingPolicySupport() {
+  final dynamic view = const UiKitView(
+    viewType: _webKitWebViewPlatformViewType,
+  );
+  try {
+    return view.gestureBlockingPolicy is Enum;
+  } on NoSuchMethodError {
+    return false;
+  }
+}
+
+final bool _supportsUiKitGestureBlockingPolicy =
+    _detectUiKitGestureBlockingPolicySupport();
+
 String _createWebKitOpaqueIdentifier(String prefix) {
   final Random random = Random.secure();
   final String token = List<String>.generate(
@@ -1815,27 +1851,49 @@ class WebKitWebViewWidgetCreationParams
     required super.controller,
     super.layoutDirection,
     super.gestureRecognizers,
+    this.uiKitGestureBlockingPolicy =
+        WebKitGestureBlockingPolicy.fallbackToPluginDefault,
   });
 
   /// Constructs a [WebKitWebViewWidgetCreationParams] using a
   /// [PlatformWebViewWidgetCreationParams].
   WebKitWebViewWidgetCreationParams.fromPlatformWebViewWidgetCreationParams(
-    PlatformWebViewWidgetCreationParams params,
-  ) : this(
-        key: params.key,
-        controller: params.controller,
-        layoutDirection: params.layoutDirection,
-        gestureRecognizers: params.gestureRecognizers,
-      );
+    PlatformWebViewWidgetCreationParams params, {
+    Enum? uiKitGestureBlockingPolicy,
+  }) : this(
+         key: params.key,
+         controller: params.controller,
+         layoutDirection: params.layoutDirection,
+         gestureRecognizers: params.gestureRecognizers,
+         uiKitGestureBlockingPolicy:
+             uiKitGestureBlockingPolicy ??
+             (params is WebKitWebViewWidgetCreationParams
+                 ? params.uiKitGestureBlockingPolicy
+                 : WebKitGestureBlockingPolicy.fallbackToPluginDefault),
+       );
+
+  /// How Flutter blocks gesture recognizers on the native iOS WebView.
+  ///
+  /// Accepts [WebKitGestureBlockingPolicy], or Flutter's
+  /// `UiKitViewGestureBlockingPolicy` on SDKs that provide it.
+  ///
+  /// Defaults to [WebKitGestureBlockingPolicy.fallbackToPluginDefault].
+  /// `doNotBlockGesture` requires Flutter 3.47 or later. Unsupported policies
+  /// print a diagnostic and retain the default behavior. macOS also retains its
+  /// default behavior. Changing this setting recreates the platform view.
+  final Enum uiKitGestureBlockingPolicy;
 
   @override
-  int get hashCode => Object.hash(controller, layoutDirection);
+  int get hashCode =>
+      Object.hash(controller, layoutDirection, uiKitGestureBlockingPolicy.name);
 
   @override
   bool operator ==(Object other) {
     return other is WebKitWebViewWidgetCreationParams &&
         controller == other.controller &&
-        layoutDirection == other.layoutDirection;
+        layoutDirection == other.layoutDirection &&
+        uiKitGestureBlockingPolicy.name ==
+            other.uiKitGestureBlockingPolicy.name;
   }
 }
 
@@ -1854,8 +1912,35 @@ class WebKitWebViewWidget extends PlatformWebViewWidget {
   WebKitWebViewWidgetCreationParams get _webKitParams =>
       params as WebKitWebViewWidgetCreationParams;
 
+  String _platformViewType() {
+    final String policy = _webKitParams.uiKitGestureBlockingPolicy.name;
+    if (policy == 'fallbackToPluginDefault') {
+      return _webKitWebViewPlatformViewType;
+    }
+    final bool known = WebKitGestureBlockingPolicy.values.any(
+      (value) => value.name == policy,
+    );
+    String? restriction;
+    if (!known) {
+      restriction = 'Unknown gesture blocking policy "$policy".';
+    } else if (defaultTargetPlatform != TargetPlatform.iOS) {
+      restriction = 'Gesture blocking policies are only supported on iOS.';
+    } else if (policy == 'doNotBlockGesture' &&
+        !_supportsUiKitGestureBlockingPolicy) {
+      restriction = 'doNotBlockGesture requires Flutter 3.47 or later.';
+    }
+    if (restriction != null) {
+      debugPrint(
+        'webview_all: $restriction Using the default WebView gesture policy.',
+      );
+      return _webKitWebViewPlatformViewType;
+    }
+    return '$_webKitWebViewPlatformViewType/gesture/$policy';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final String viewType = _platformViewType();
     // Setting a default key using `params` ensures the `UIKitView` recreates
     // the PlatformView when changes are made.
     final Key key =
@@ -1866,7 +1951,7 @@ class WebKitWebViewWidget extends PlatformWebViewWidget {
     if (defaultTargetPlatform == TargetPlatform.macOS) {
       return AppKitView(
         key: key,
-        viewType: _webKitWebViewPlatformViewType,
+        viewType: viewType,
         onPlatformViewCreated: (_) {},
         layoutDirection: params.layoutDirection,
         gestureRecognizers: params.gestureRecognizers,
@@ -1878,7 +1963,7 @@ class WebKitWebViewWidget extends PlatformWebViewWidget {
     } else {
       return UiKitView(
         key: key,
-        viewType: _webKitWebViewPlatformViewType,
+        viewType: viewType,
         onPlatformViewCreated: (_) {},
         layoutDirection: params.layoutDirection,
         gestureRecognizers: params.gestureRecognizers,
