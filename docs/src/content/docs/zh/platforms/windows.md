@@ -181,6 +181,10 @@ await manager.setWindowsCookie(
 
 ## 限制
 
+- `loadHtmlString` 通过 WebView2 `NavigateToString` 加载最多 2MB 的 HTML。
+  `baseUrl` 只用于解析相对链接，不改变文档 origin。加载被拒绝时抛出
+  `PlatformException`，错误码为 `method_failed`，`details['hresult']` 包含
+  原生错误码。更大的本地文档可使用 `loadFile` 或资源代理加载。
 - 目标机器必须有 WebView2 Runtime。
 - WebAuthn 可用性由 WebView2 Runtime、Windows 和凭据提供方决定；
   [WebView2 上游问题](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5663)

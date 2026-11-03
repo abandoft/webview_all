@@ -254,6 +254,11 @@ Windows-specific response classes add request and response detail:
 
 ## Known Limits
 
+- `loadHtmlString` accepts up to 2 MB of HTML through WebView2
+  `NavigateToString`. `baseUrl` resolves relative links without changing the
+  document's origin. Rejected loads throw `PlatformException` with code
+  `method_failed` and the native HRESULT in `details['hresult']`. Use
+  `loadFile` or resource delegates for larger local documents.
 - Scrollbars and overscroll are implemented with injected CSS because WebView2 does not expose stable direct APIs for every scrollbar behavior.
 - The app must ensure that the WebView2 Runtime is available on target machines.
 - WebAuthn availability is owned by the WebView2 Runtime, Windows, and the
