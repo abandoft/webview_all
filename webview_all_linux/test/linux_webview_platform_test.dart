@@ -513,6 +513,32 @@ void main() {
     );
   });
 
+  test(
+    'normalizes rounded clip radii before sending native geometry',
+    () async {
+      final calls = <MethodCall>[];
+      _mockLinuxWebViewCreation(onInstanceCall: calls.add);
+      final controller = LinuxWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      await controller.setFrame(
+        const Rect.fromLTWH(0, 0, 100, 80),
+        roundedClips: <RRect>[
+          RRect.fromRectAndRadius(
+            const Rect.fromLTWH(0, 0, 100, 80),
+            const Radius.circular(100),
+          ),
+        ],
+        visible: true,
+      );
+      final frame = calls.singleWhere((call) => call.method == 'setFrame');
+      expect((frame.arguments as Map)['roundedClips'], <List<double>>[
+        <double>[0, 0, 100, 80, 40, 40, 40, 40, 40, 40, 40, 40],
+      ]);
+      await controller.dispose();
+    },
+  );
+
   testWidgets('keeps full native geometry at the Flutter viewport edge', (
     WidgetTester tester,
   ) async {
@@ -769,7 +795,7 @@ void main() {
     expect(arguments['clipHeight'], 600);
   });
 
-  testWidgets('hides native view for non-rectangular ancestor clips', (
+  testWidgets('supports oval clips and hides unsupported ancestor clips', (
     WidgetTester tester,
   ) async {
     final List<MethodCall> calls = <MethodCall>[];
@@ -811,7 +837,7 @@ void main() {
     expect(
       (calls.lastWhere((MethodCall call) => call.method == 'setFrame').arguments
           as Map<Object?, Object?>)['visible'],
-      isFalse,
+      isTrue,
     );
 
     clipBuilder = (Widget child) => ClipRSuperellipse(
@@ -908,7 +934,10 @@ void main() {
                 child: SizedBox(
                   width: 100,
                   height: 80,
-                  child: Builder(builder: widget.build),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Builder(builder: widget.build),
+                  ),
                 ),
               ),
             ),
@@ -940,6 +969,15 @@ void main() {
           expect(args['clipY'], 30 * appScale);
           expect(args['clipWidth'], 100 * appScale);
           expect(args['clipHeight'], 80 * appScale);
+          expect(args['roundedClips'], <List<double>>[
+            <double>[
+              20 * appScale,
+              30 * appScale,
+              120 * appScale,
+              110 * appScale,
+              for (var corner = 0; corner < 8; corner++) 8 * appScale,
+            ],
+          ]);
         }
       },
     );

@@ -819,6 +819,155 @@ return {
     await restoredWebPointerDown.future.timeout(const Duration(seconds: 5));
   });
 
+  testWidgets(
+    'Linux native view clips rounded Flutter containers and routes corner input',
+    (WidgetTester tester) async {
+      if (!Platform.isLinux) return;
+      if (!await _hasExecutable('xdotool')) {
+        if (Platform.environment['CI'] == 'true') {
+          fail('xdotool is required for the Linux rounded clipping test.');
+        }
+        return;
+      }
+
+      final loaded = Completer<void>();
+      final controller = WebViewController();
+      var radius = 8.0;
+      var visible = true;
+      var flutterTaps = 0;
+      Completer<void>? nextFlutterTap;
+      late StateSetter setTestState;
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await (controller.platform as LinuxWebViewController).dispose();
+      });
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (_) {
+            if (!loaded.isCompleted) loaded.complete();
+          },
+        ),
+      );
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              setTestState = setState;
+              return Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      flutterTaps++;
+                      nextFlutterTap?.complete();
+                      nextFlutterTap = null;
+                    },
+                    child: const ColoredBox(color: Color(0xFF00FFFF)),
+                  ),
+                  if (visible)
+                    Center(
+                      child: SizedBox(
+                        width: 240,
+                        height: 180,
+                        // Same ClipPath/ShapeBorderClipper combination used by
+                        // fluent_ui NavigationView, including its 8px corner.
+                        child: ClipPath(
+                          clipper: ShapeBorderClipper(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.only(
+                                topLeft: Radius.circular(radius),
+                              ),
+                            ),
+                          ),
+                          child: WebViewWidget(controller: controller),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      );
+      await controller.loadHtmlString('''
+<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>html,body{margin:0;width:100%;height:100%;background:#ff00ff}</style>
+</head><body onmousedown="window.pointerDowns++">
+<script>window.pointerDowns=0;</script></body></html>
+''');
+      await loaded.future.timeout(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      final rect = tester.getRect(find.byType(WebViewWidget));
+      final corner = rect.topLeft + const Offset(1, 1);
+      final window = await _findCurrentX11Window();
+      await _runXdotool(<String>['windowfocus', window.id]);
+      final scale =
+          window.width /
+          tester.view.physicalSize.width *
+          tester.view.devicePixelRatio;
+      // The runner may put a GTK title bar above FlView. X11 coordinates
+      // include it; Flutter's view metrics and widget positions do not.
+      final contentTop =
+          window.height -
+          tester.view.physicalSize.height *
+              window.width /
+              tester.view.physicalSize.width;
+      Future<void> click(Offset point) async {
+        await _moveX11Pointer(
+          window,
+          x: (point.dx * scale).round(),
+          y: (contentTop + point.dy * scale).round(),
+        );
+        await _runXdotool(<String>['click', '1']);
+      }
+
+      final propagate = tester.binding.shouldPropagateDevicePointerEvents;
+      tester.binding.shouldPropagateDevicePointerEvents = true;
+      try {
+        await click(rect.center);
+        await _waitForJavaScriptResult(controller, 'window.pointerDowns', 1);
+        nextFlutterTap = Completer<void>();
+        final firstCornerTap = nextFlutterTap!.future;
+        await click(corner);
+        await firstCornerTap.timeout(const Duration(seconds: 5));
+        await _waitForJavaScriptResult(controller, 'window.pointerDowns', 1);
+
+        setTestState(() => radius = 0);
+        await tester.pumpAndSettle();
+        await click(corner);
+        await _waitForJavaScriptResult(controller, 'window.pointerDowns', 2);
+        expect(flutterTaps, 1);
+
+        setTestState(() => visible = false);
+        await tester.pumpAndSettle();
+        nextFlutterTap = Completer<void>();
+        final hiddenViewTap = nextFlutterTap!.future;
+        await click(rect.center);
+        await hiddenViewTap.timeout(const Duration(seconds: 5));
+        await _waitForJavaScriptResult(controller, 'window.pointerDowns', 2);
+
+        setTestState(() {
+          visible = true;
+          radius = 8;
+        });
+        await tester.pumpAndSettle();
+        nextFlutterTap = Completer<void>();
+        final restoredCornerTap = nextFlutterTap!.future;
+        await click(corner);
+        await restoredCornerTap.timeout(const Duration(seconds: 5));
+        await click(rect.center);
+        await _waitForJavaScriptResult(controller, 'window.pointerDowns', 3);
+        expect(flutterTaps, 3);
+      } finally {
+        tester.binding.shouldPropagateDevicePointerEvents = propagate;
+      }
+    },
+  );
+
   testWidgets('runJavaScriptReturningResult', (WidgetTester tester) async {
     final pageFinished = Completer<void>();
 
