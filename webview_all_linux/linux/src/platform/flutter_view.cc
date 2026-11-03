@@ -317,7 +317,15 @@ void update_flutter_view_input_region(WebviewAllLinuxPlugin* self) {
 
     cairo_rectangle_int_t webview_rect = {left, top, right - left,
                                           bottom - top};
-    cairo_region_subtract_rectangle(region, &webview_rect);
+    if (webview->clip_region != nullptr) {
+      cairo_region_t *visible = cairo_region_copy(webview->clip_region);
+      cairo_region_translate(visible, translated_x, translated_y);
+      cairo_region_intersect_rectangle(visible, &webview_rect);
+      cairo_region_subtract(region, visible);
+      cairo_region_destroy(visible);
+    } else {
+      cairo_region_subtract_rectangle(region, &webview_rect);
+    }
     has_visible_webview = TRUE;
   }
 

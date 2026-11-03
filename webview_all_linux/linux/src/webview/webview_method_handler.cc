@@ -1,4 +1,5 @@
 #include "common/method_channel_utils.h"
+#include "platform/webview_clip.h"
 #include "webview/download_policy.h"
 #include "webview/webview_internal.h"
 
@@ -67,7 +68,7 @@ GtkWidget *ensure_clip_container(LinuxWebView *webview, GtkOverlay *overlay) {
     return webview->clip_container;
   }
 
-  GtkWidget *container = gtk_layout_new(nullptr, nullptr);
+  GtkWidget *container = create_linux_webview_clip_container();
   gtk_widget_set_halign(container, GTK_ALIGN_START);
   gtk_widget_set_valign(container, GTK_ALIGN_START);
   gtk_widget_set_hexpand(container, FALSE);
@@ -80,7 +81,10 @@ GtkWidget *ensure_clip_container(LinuxWebView *webview, GtkOverlay *overlay) {
 
   gtk_layout_put(GTK_LAYOUT(container), GTK_WIDGET(webview->web_view), 0, 0);
   gtk_overlay_add_overlay(overlay, container);
-  gtk_overlay_set_overlay_pass_through(overlay, container, FALSE);
+  // WebKit owns an input window of its own. Let the overlay's auxiliary
+  // window pass uncovered areas through to Flutter instead of swallowing
+  // events at rounded corners; WebKit's child still receives page input.
+  gtk_overlay_set_overlay_pass_through(overlay, container, TRUE);
   return container;
 }
 
@@ -454,6 +458,39 @@ void instance_method_call_cb(FlMethodChannel *channel,
       respond(method_call, success_response());
       return;
     }
+    std::vector<LinuxRoundedClip> rounded_clips;
+    FlValue *clip_values = fl_value_lookup_string(args, "roundedClips");
+    if (clip_values != nullptr) {
+      bool valid = fl_value_get_type(clip_values) == FL_VALUE_TYPE_LIST;
+      for (size_t index = 0;
+           valid && index < fl_value_get_length(clip_values); ++index) {
+        FlValue *item = fl_value_get_list_value(clip_values, index);
+        valid = fl_value_get_type(item) == FL_VALUE_TYPE_LIST &&
+                fl_value_get_length(item) == 12;
+        LinuxRoundedClip clip{};
+        for (size_t field = 0; valid && field < clip.size(); ++field) {
+          FlValue *value = fl_value_get_list_value(item, field);
+          if (fl_value_get_type(value) == FL_VALUE_TYPE_FLOAT) {
+            clip[field] = fl_value_get_float(value);
+          } else if (fl_value_get_type(value) == FL_VALUE_TYPE_INT) {
+            clip[field] = static_cast<double>(fl_value_get_int(value));
+          } else {
+            valid = false;
+          }
+          valid = valid && std::isfinite(clip[field]) &&
+                  (field < 4 || clip[field] >= 0);
+        }
+        valid = valid && clip[2] > clip[0] && clip[3] > clip[1];
+        if (valid) {
+          rounded_clips.push_back(clip);
+        }
+      }
+      if (!valid) {
+        respond(method_call,
+                error_response("invalid_frame", "Invalid rounded clip geometry."));
+        return;
+      }
+    }
     if (webview->clip_container == nullptr) {
       GtkOverlay *overlay = ensure_overlay(webview->plugin);
       if (overlay == nullptr) {
@@ -503,14 +540,28 @@ void instance_method_call_cb(FlMethodChannel *channel,
     webview->clip_height = clip_bottom > clip_top
                                ? clamp_int64_to_gint(clip_bottom - clip_top)
                                : 0;
+    g_clear_pointer(&webview->clip_region, cairo_region_destroy);
+    if (!rounded_clips.empty()) {
+      webview->clip_region = create_linux_webview_clip_region(
+          webview->clip_x, webview->clip_y, webview->clip_width,
+          webview->clip_height, rounded_clips);
+    }
     webview->visible = map_lookup_bool(args, "visible", TRUE) &&
                        webview->frame_width > 0 && webview->frame_height > 0 &&
-                       webview->clip_width > 0 && webview->clip_height > 0;
+                       webview->clip_width > 0 && webview->clip_height > 0 &&
+                       (webview->clip_region == nullptr ||
+                        (cairo_region_status(webview->clip_region) ==
+                             CAIRO_STATUS_SUCCESS &&
+                         !cairo_region_is_empty(webview->clip_region)));
     gtk_widget_set_halign(widget, GTK_ALIGN_START);
     gtk_widget_set_valign(widget, GTK_ALIGN_START);
     gtk_widget_set_size_request(widget, webview->frame_width,
                                 webview->frame_height);
     GtkWidget *clip_container = webview->clip_container;
+    // Apply the same local region to visual clipping and event routing. The
+    // widget APIs retain it across realization and only shape this child;
+    // never shape the application window or its parent.
+    set_linux_webview_clip(clip_container, webview->clip_region);
     // Keep WebKit at the full Flutter widget size and move it inside a smaller
     // GtkLayout viewport. Resizing WebKit to the clip would reflow the page.
     gtk_widget_set_size_request(clip_container, webview->clip_width,

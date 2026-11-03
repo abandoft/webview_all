@@ -65,6 +65,7 @@ typedef struct {
   gint clip_y;
   gint clip_width;
   gint clip_height;
+  cairo_region_t *clip_region;
   gint64 frame_sequence;
   gboolean visible;
   double last_scroll_x;

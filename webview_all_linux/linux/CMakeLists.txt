@@ -12,6 +12,7 @@ pkg_check_modules(WEBKIT REQUIRED IMPORTED_TARGET webkit2gtk-4.1)
 add_library(${PLUGIN_NAME} SHARED
   "src/common/method_channel_utils.cc"
   "src/platform/flutter_view.cc"
+  "src/platform/webview_clip.cc"
   "src/plugin/webview_all_linux_plugin.cc"
   "src/plugin/root_channel.cc"
   "src/webview/linux_webview.cc"

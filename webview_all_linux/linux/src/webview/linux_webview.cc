@@ -772,6 +772,7 @@ void destroy_linux_webview(gpointer data) {
   g_hash_table_destroy(webview->js_channels);
   g_hash_table_destroy(webview->user_scripts);
   g_ptr_array_unref(webview->user_script_order);
+  g_clear_pointer(&webview->clip_region, cairo_region_destroy);
   g_free(webview);
 }
 
