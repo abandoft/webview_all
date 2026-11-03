@@ -62,3 +62,20 @@ jobs:
       - name: Verify coexistence with the official Android plugin
         if: matrix.flutter == '3.44.x'
         run: tool/test_plugin_coexistence.sh android
+
+      - name: Enable KVM for resource integration tests
+        if: matrix.flutter == '3.44.x'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Test application resources in Android WebView
+        if: matrix.flutter == '3.44.x'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: cd examples/platform && flutter test integration_test/webview_resource_test.dart -d emulator-5554

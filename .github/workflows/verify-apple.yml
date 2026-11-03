@@ -30,6 +30,7 @@ jobs:
         flutter:
           - 3.35.7
           - 3.44.x
+          - 3.47.x
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -85,6 +86,11 @@ jobs:
           flutter pub get
           flutter test integration_test/webview_download_test.dart -d macos
 
+      - name: Test application resource URLs, ranges and streaming
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_resource_test.dart -d macos
+
       - name: Run macOS integration tests
         if: matrix.flutter == '3.44.x'
         working-directory: examples/platform
@@ -96,3 +102,55 @@ jobs:
         if: matrix.flutter == '3.44.x'
         working-directory: examples/platform
         run: flutter test integration_test/webview_session_test.dart -d macos
+
+      - name: Test iOS callbacks, gestures and application resources
+        if: matrix.flutter == '3.47.x'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > "$RUNNER_TEMP/webview-ios-simulator"
+          import json
+          import subprocess
+          devices = json.loads(subprocess.check_output(
+              ['xcrun', 'simctl', 'list', 'devices', 'available', '-j']))['devices']
+          iphones = [(runtime, device) for runtime, group in devices.items() if '.iOS-' in runtime
+                     for device in group if device['name'].startswith('iPhone')]
+          if not iphones:
+              raise SystemExit('No available iOS simulator')
+          runtime, device = max(iphones, key=lambda item:
+              tuple(map(int, item[0].rsplit('.iOS-', 1)[1].split('-'))))
+          simulator = subprocess.check_output([
+              'xcrun', 'simctl', 'create', 'webview_all_gesture_tests',
+              device['deviceTypeIdentifier'], runtime], text=True).strip()
+          print(simulator)
+          PY
+          simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
+          trap 'xcrun simctl delete "$simulator_id"' EXIT
+          xcrun simctl boot "$simulator_id"
+          xcrun simctl bootstatus "$simulator_id" -b
+          python3 tool/add_swift_tests_to_xcode_target.py \
+            webview_all/example/ios/Runner.xcodeproj \
+            RunnerTests \
+            webview_all_wkwebview/darwin/Tests
+          xcodebuild test \
+            -workspace webview_all/example/ios/Runner.xcworkspace \
+            -scheme Runner -configuration Debug \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            -only-testing:RunnerTests -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO -quiet
+          cd examples/platform
+          flutter pub get
+          flutter build ios --simulator --debug --target test_driver/webview_gesture_app.dart
+          cd ../..
+          ruby tool/add_ios_ui_test_target.rb \
+            examples/platform/ios/Runner.xcodeproj Runner \
+            examples/platform/ios/WebViewGestureUITests
+          xcodebuild test \
+            -workspace examples/platform/ios/Runner.xcworkspace \
+            -scheme WebViewGestureUITests -configuration Debug \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            FLUTTER_TARGET=test_driver/webview_gesture_app.dart \
+            -only-testing:WebViewGestureUITests -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO -quiet
+          cd examples/platform
+          flutter test integration_test/webview_resource_test.dart -d "$simulator_id"
