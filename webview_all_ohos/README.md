@@ -1,5 +1,70 @@
 # webview_all_ohos
 
-This package is part of [`webview_all`](https://github.com/abandoft/webview_all).
+> This package is part of [`webview_all`](https://github.com/abandoft/webview_all). Use [`webview_all`](https://pub.dev/packages/webview_all) directly in your application. Do not depend on this platform implementation package directly.
 
-Use [`webview_all`](https://pub.dev/packages/webview_all) directly in your application. Do not depend on this platform implementation package directly.
+A WebView component for all Flutter platforms, compatible with the
+[webview_flutter](https://pub.dev/packages/webview_flutter) API.
+
+|     Platform     | **Support** | **Implementation** |
+|-------------|--------------|--------------|
+|Android|API 24+|[WebView](https://developer.android.com/reference/android/webkit/WebView)|
+|iOS|13.0+|[WKWebView](https://developer.apple.com/documentation/webkit/wkwebview)|
+|macOS|10.15+|[WKWebView](https://developer.apple.com/documentation/webkit/wkwebview)|
+|Windows|Win10 1809+|[WebView2](https://developer.microsoft.com/microsoft-edge/webview2)|
+|Linux|webkit2gtk-4.1|[WebKitGTK](https://webkitgtk.org)|
+|OHOS|API 22+|[ArkWeb](https://developer.huawei.com/consumer/en/doc/harmonyos-references-V5/ts-basic-components-web-V5)|
+|Web|Any|[js-interop](https://dart.dev/interop/js-interop)|
+
+## Features
+
+- Comprehensive support for all platforms
+- Full compatibility with the `webview_flutter` API
+- Widely used in established commercial applications
+- Additional features:
+  - Promise-aware asynchronous JavaScript calls
+  - Custom JavaScript injection before page scripts execute
+  - Desktop download controls and Windows debugging and shortcut settings
+  - Richer Web interactions and iframe configuration
+  - Website data cleanup without a controller
+  - Offscreen WebView sessions that can be explicitly closed
+  - Custom download handling and progress callbacks
+
+## Quick Start
+
+1. Instantiate a `WebViewController`:
+
+```dart
+controller = WebViewController()
+  ..setJavaScriptMode(JavaScriptMode.unrestricted)
+  ..loadRequest(Uri.parse('https://flutter.dev'));
+```
+
+2. Pass `controller` to `WebViewWidget`:
+
+```dart
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    appBar: AppBar(title: const Text('Flutter Simple Example')),
+    body: WebViewWidget(controller: controller),
+  );
+}
+```
+
+For detailed usage, API coverage, and platform limits, see the [Documentation](https://abandoft.github.io/webview_all).
+
+## Who's Using It?
+
+- [Wildfire IM](https://github.com/wildfirechat) official Flutter client: A well-established commercial IM/RTC platform.
+- [GodotHub](https://godothub.com) official client: A much-loved Godot community platform.
+- [PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus): An open-source Bilibili client with 20K+ stars.
+- [Operit2](https://github.com/AAswordman/Operit2): An AI agent for all platforms.
+- [Miru](https://github.com/miru-project) new client: A popular video, manga, and novel aggregation app.
+- [SubDock](https://github.com/sub-store-org) desktop client: The official app for running and managing Sub-Store.
+- [OpenHarness](https://github.com/autonomous-ai/openharness) desktop client: An AI workspace for coding agents and remote machines.
+- [AnymeX](https://github.com/RyanYuuki/AnymeX): A cross-platform anime and manga tracking client.
+- [ChessEver](https://chessever.com) desktop client: A chess platform for live tournaments and game analysis.
+- [Dartotsu](https://github.com/aayush2622/Dartotsu): A cross-platform anime, manga, and novel tracking client.
+- [Bili-music](https://github.com/AprDeci/bili-music): A cross-platform music player for Bilibili.
+- [ShonenX](https://github.com/roshancodespace/ShonenX): Discover anime, track your progress, and stream, all in one app.
+- [AFAN](https://github.com/SX-Code/afan): An anime app with video slicing, web media detection, and custom playback sources.
