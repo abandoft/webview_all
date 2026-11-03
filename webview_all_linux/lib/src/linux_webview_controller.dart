@@ -9,6 +9,7 @@ import 'package:path/path.dart' as path;
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'linux_navigation_delegate.dart';
+import 'linux_resource_server.dart';
 import 'linux_webview_cookie_manager.dart';
 import 'linux_webview_data_manager.dart';
 import 'linux_webview_constants.dart';
@@ -38,7 +39,31 @@ Future<void> _disposeFinalizedLinuxWebView(
   }
 }
 
-class LinuxWebViewController extends PlatformWebViewController {
+class LinuxWebViewController extends PlatformWebViewController
+    with WebViewResourceControllerMixin {
+  @override
+  String get resourceUrlScheme => 'http';
+
+  @override
+  Future<void> configureResourceBridge(
+    String channel,
+    String host,
+    bool enabled,
+  ) async {
+    if (_disposed) throw StateError('The Linux WebView was disposed.');
+    await _readyFuture;
+    if (_disposed) throw StateError('The Linux WebView was disposed.');
+    if (_resourceServer == null && enabled) {
+      final server = await LinuxResourceServer.bind(resourceBridge);
+      if (_disposed) {
+        await server.close();
+        throw StateError('The Linux WebView was disposed.');
+      }
+      _resourceServer = server;
+    }
+  }
+
+  LinuxResourceServer? _resourceServer;
   LinuxWebViewController(PlatformWebViewControllerCreationParams params)
     : super.implementation(
         params is LinuxWebViewControllerCreationParams
@@ -888,6 +913,11 @@ class LinuxWebViewController extends PlatformWebViewController {
 
   Future<void> _dispose() async {
     _disposed = true;
+    final resourceServer = _resourceServer;
+    _resourceServer = null;
+    if (resourceServer != null) await resourceServer.close();
+    final resourceDisposal = disposeResourceBridge();
+    if (resourceDisposal != null) await resourceDisposal;
     _downloadDelegateGeneration++;
     for (final pending in _downloadDecisions.values) {
       if (!pending.isCompleted) pending.complete();
