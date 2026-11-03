@@ -34,6 +34,28 @@ final params = WebKitWebViewControllerCreationParams(
 | `limitsNavigationsToAppBoundDomains` | 在 iOS 14+、macOS 11+ 启用 App-Bound Domains；更早系统打印版本要求并保留默认值。 |
 | `javaScriptCanOpenWindowsAutomatically` | 控制 JS 自动打开窗口。 |
 
+## iOS 手势策略
+
+从 1.4.10 起，可在创建 Widget 时选择手势策略：
+
+```dart
+WebViewWidget.fromPlatformCreationParams(
+  params: WebKitWebViewWidgetCreationParams(
+    controller: controller.platform,
+    uiKitGestureBlockingPolicy:
+        WebKitGestureBlockingPolicy.doNotBlockGesture,
+  ),
+);
+```
+
+默认使用 `fallbackToPluginDefault`。`eager` 和 `waitUntilTouchesEnded` 可用于较早的受支持
+Flutter；`doNotBlockGesture` 需要 Flutter 3.47+，可用于规避部分触摸无响应
+问题，但可能让 WebView 识别本应交给 Flutter 的手势。仅在遇到问题时选择，
+并验证滚动和覆盖在 WebView 上的 Flutter 控件。
+
+也接受新版 Flutter 的 `UiKitViewGestureBlockingPolicy` 枚举。旧 Flutter 请求
+`doNotBlockGesture`，或在 macOS 请求非默认策略时，会打印说明并保留默认行为。
+
 ## 主要 API
 
 | API | 作用 |

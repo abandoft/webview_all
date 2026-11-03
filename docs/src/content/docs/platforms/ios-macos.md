@@ -39,6 +39,30 @@ final controller = WebViewController.fromPlatformCreationParams(params);
 | `limitsNavigationsToAppBoundDomains` | Enables App-Bound Domains on iOS 14+ and macOS 11+. Earlier systems log the requirement and keep the native default. |
 | `javaScriptCanOpenWindowsAutomatically` | Controls JavaScript popup permission. `null` uses the native default. |
 
+## iOS Gesture Policies
+
+From 1.4.10, a widget can select how Flutter blocks native gesture recognizers:
+
+```dart
+WebViewWidget.fromPlatformCreationParams(
+  params: WebKitWebViewWidgetCreationParams(
+    controller: controller.platform,
+    uiKitGestureBlockingPolicy:
+        WebKitGestureBlockingPolicy.doNotBlockGesture,
+  ),
+);
+```
+
+The default is `fallbackToPluginDefault`. `eager` and `waitUntilTouchesEnded` work with
+older supported Flutter versions. `doNotBlockGesture` requires Flutter 3.47+
+and can work around unresponsive touches, but may let the WebView recognize
+gestures that should belong to Flutter. Use it when needed and verify scrolling
+and Flutter controls displayed above the WebView.
+
+Flutter's newer `UiKitViewGestureBlockingPolicy` enum is also accepted. Older
+Flutter versions log a diagnostic and keep the default when asked to use
+`doNotBlockGesture`; macOS does the same for non-default policies.
+
 ## Controller API
 
 | API | Purpose |
