@@ -41,6 +41,25 @@ import 'webview_widget.dart';
 /// }
 /// ```
 class WebViewController {
+  /// Features supported by application resource URLs on this platform.
+  WebViewResourceCapabilities get resourceCapabilities =>
+      platform.resourceCapabilities;
+
+  /// Serves application resources for URLs issued by [getResourceUri].
+  ///
+  /// Defaults to disabled. Returning null from the delegate produces a 404;
+  /// ordinary network requests keep their existing behavior. Removing or
+  /// replacing the delegate cancels pending callbacks and Dart body streams.
+  Future<void> setResourceDelegate(WebViewResourceDelegate? delegate) =>
+      platform.setResourceDelegate(delegate);
+
+  /// Returns a controller-scoped URL for a resource path, or null on Web.
+  ///
+  /// Install a delegate first. Treat the returned URL as opaque: its scheme and
+  /// host are platform-dependent and its lifetime is owned by this controller.
+  /// Pass an unescaped path; literal percent signs are encoded automatically.
+  Uri? getResourceUri(String path) => platform.getResourceUri(path);
+
   /// Sets download handling without creating a download UI. Available actions
   /// are advertised on each request. Web iframe downloads may be browser-owned
   /// and cannot all be observed. Pass null to restore existing platform behavior.

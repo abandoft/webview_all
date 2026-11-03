@@ -35,6 +35,24 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   group('WebWebViewController', () {
+    test(
+      'unsupported application resources log without interrupting the app',
+      () async {
+        final controller = WebWebViewController(
+          WebWebViewControllerCreationParams(),
+        );
+        expect(controller.resourceCapabilities.supportsResources, isFalse);
+        expect(controller.resourceCapabilities.supportsStreaming, isFalse);
+        await controller.setResourceDelegate(
+          WebViewResourceDelegate(
+            onRequest: (_) =>
+                throw StateError('Browser resource callbacks must not run.'),
+          ),
+        );
+        expect(controller.getResourceUri('file.bin'), isNull);
+        await controller.setResourceDelegate(null);
+      },
+    );
     group('WebWebViewControllerCreationParams', () {
       test('sets iFrame fields', () {
         final params = WebWebViewControllerCreationParams();
