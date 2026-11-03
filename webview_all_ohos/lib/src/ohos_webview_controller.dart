@@ -237,7 +237,28 @@ class OhosWebViewPermissionResourceType extends WebViewPermissionResourceType {
 }
 
 /// Implementation of the [PlatformWebViewController] with the Ohos WebView API.
-class OhosWebViewController extends PlatformWebViewController {
+class OhosWebViewController extends PlatformWebViewController
+    with WebViewResourceControllerMixin {
+  @override
+  String get resourceUrlScheme => 'https';
+
+  @override
+  Future<void> configureResourceBridge(
+    String channel,
+    String host,
+    bool enabled,
+  ) async {
+    if (_sessionClose != null) throw StateError('The OHOS WebView was closed.');
+    await const MethodChannel(
+      'com.abandoft.webview_all_ohos/host_api',
+    ).invokeMethod<void>('WebView.configureResources', <String, Object?>{
+      'instanceId': webViewIdentifier,
+      'channel': channel,
+      'host': host,
+      'enabled': enabled,
+    });
+  }
+
   @override
   Future<void> prepareSession() => _webView.creation;
 
@@ -261,6 +282,8 @@ class OhosWebViewController extends PlatformWebViewController {
   Future<void> closeWebViewSession() => _sessionClose ??= _closeSession();
 
   Future<void> _closeSession() async {
+    final resourceDisposal = disposeResourceBridge();
+    if (resourceDisposal != null) await resourceDisposal;
     await _handleDownloadCall(const MethodCall('disposed'));
     await const MethodChannel(
       'com.abandoft.webview_all_ohos/host_api',

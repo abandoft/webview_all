@@ -148,6 +148,11 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
           this.webViewApi.closeSession(call.argument('instanceId'));
           result.success(null);
           return;
+        case 'WebView.configureResources':
+          this.webViewApi.configureResources(call.argument('instanceId'), call.argument('channel'),
+            call.argument('host'), call.argument('enabled'));
+          result.success(null);
+          return;
         case 'WebView.loadData':
           this.finishPromise(result, this.webViewApi.loadData(
             call.argument('instanceId'),

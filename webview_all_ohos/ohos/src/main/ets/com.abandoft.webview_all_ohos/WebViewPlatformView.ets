@@ -17,6 +17,7 @@ import { WebViewClient } from './WebViewClientHostApiImpl';
 import { WebViewFlutterApiImpl } from './WebViewFlutterApiImpl';
 import { WebViewSettings } from './WebViewSettings';
 import { WebDownloadCoordinator } from './WebDownloadCoordinator';
+import { WebResourceCoordinator } from './WebResourceCoordinator';
 
 const TAG: string = 'WebViewPlatformView';
 
@@ -86,6 +87,7 @@ export class WebViewPlatformView extends PlatformView {
   private url: string = '';
   private downloadListener: DownloadListener | null = null;
   private downloadCoordinator?: WebDownloadCoordinator;
+  private resourceCoordinator?: WebResourceCoordinator;
   private webChromeClient: WebChromeClient | null = null;
   private webViewClient: WebViewClient | null = null;
   private webSettings: WebSettings | null = null;
@@ -308,6 +310,7 @@ export class WebViewPlatformView extends PlatformView {
         this.setCustomUserAgent(this.userAgentString);
       }
       this.reRegisterJavaScriptChannels();
+      this.resourceCoordinator?.onAttached();
       this.downloadCoordinator?.onAttached();
       this.documentStartScripts.markControllerAttached();
     } catch (error) {
@@ -386,6 +389,7 @@ export class WebViewPlatformView extends PlatformView {
     }
     const attached = this.documentStartScripts.isControllerAttached();
     this.downloadCoordinator?.dispose();
+    this.resourceCoordinator?.dispose();
     this.documentStartScripts.dispose();
     this.isWebviewBinding = false;
     this.webSettings?.onSettingsChanged(undefined);
@@ -447,6 +451,11 @@ export class WebViewPlatformView extends PlatformView {
 
   getController(): web_webview.WebviewController {
     return this.controller;
+  }
+
+  configureResources(messenger: BinaryMessenger, name: string, host: string, enabled: boolean): void {
+    if (!this.resourceCoordinator) this.resourceCoordinator = new WebResourceCoordinator(messenger, this.controller);
+    this.resourceCoordinator.configure(name, host, enabled, this.documentStartScripts.isControllerAttached());
   }
 
   getWebCookieManager(): web_webview.WebCookieManager {
