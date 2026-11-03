@@ -56,6 +56,41 @@ await controller.loadFlutterAsset('assets/help/index.html');
 
 Windows 会为每个 controller 使用随机私有 HTTPS host 映射规范化后的 asset 目录，拒绝跨 origin 访问，并随导航替换或清理映射。Linux 只接受绝对文件路径，并会在加载前将其规范化；两者都会拒绝路径穿越和逃出 Flutter asset 目录的符号链接。Web 会解析为生成后的 `assets/` 路径。
 
+## 应用资源 URL
+
+需要让网页引用应用私有文件时，可通过资源代理提供内容，无需转成 Base64：
+
+```dart
+await controller.setResourceDelegate(
+  WebViewResourceDelegate(onRequest: (request) {
+    if (request.path != '/video.mp4') return null;
+    return WebViewResourceResponse.file(videoPath, mimeType: 'video/mp4');
+  }),
+);
+
+final url = controller.getResourceUri('video.mp4');
+if (url != null) {
+  await controller.loadHtmlString(
+    '<video controls src="$url"></video>',
+    baseUrl: controller.getResourceUri('/')!.toString(),
+  );
+}
+```
+
+`videoPath` 为应用已授权访问的绝对文件路径。资源路径按原始名称传入，无需预先进行 URL 编码。页面内可使用相对路径，或由 `getResourceUri` 生成的完整 URL 引用资源。代理默认关闭，只处理该 controller 生成的资源 URL；返回 `null` 会使该资源返回 404，普通网络请求不受影响。请使用返回的 URL，不要硬编码协议或域名。
+
+`WebViewResourceResponse.bytes` 提供字节数据，`.file` 按需读取文件，两者自动支持 HEAD 和单段 Range，包括音视频拖动需要的分段响应。`.stream` 支持持续输出数据，取消请求或更换代理时会取消订阅；需要定位读取的流应自行根据请求头返回对应的 206 响应。
+
+Android、iOS、macOS、Linux、OHOS 支持文件、字节及流响应。Windows 支持文件和字节响应，可通过 `controller.resourceCapabilities.supportsStreaming` 判断持续流能力；不支持的流响应会打印说明并使该资源加载失败，不会中断应用。Web 暂不支持，设置代理会打印说明，`getResourceUri` 返回 `null`。
+
+移除代理可调用 `setResourceDelegate(null)`。资源 URL 由所属 controller 管理，销毁后失效；网页的 CORS、CSP 和媒体格式限制仍然适用。代理应校验请求，只返回应用允许网页读取的文件。
+
+Linux 使用带随机访问路径的本机 HTTP 服务，以兼容 WebKitGTK 的音视频加载。服务只监听本机地址，随 controller 关闭；资源 URL 仅应交给获准读取资源的页面。
+
+使用 `loadHtmlString` 时，可将资源 URL 的根路径作为 `baseUrl`，让页面与资源保持同源。
+
+Android WebView 无法可靠处理 `If-Range` 不匹配时忽略 Range 的回退，且已知长度的资源不能超过 2,147,483,647 字节，遇到这些情况会打印说明并返回 501。前者可移除 Range 或 If-Range 后重试；更大的内容可用不指定长度的流顺序读取。
+
 ## 内联 HTML
 
 ```dart

@@ -139,5 +139,6 @@ origin 与 authenticator 安全语义。
 - 本地文件必须使用绝对路径，并会在加载前规范化；Flutter asset 中的路径穿越、绝对路径和逃出 asset bundle 的符号链接会被拒绝。
 - 不可信本地文件不要启用 universal file URL access。
 - 不同发行版 WebKitGTK 版本差异明显，媒体、权限和 dialog 需要在目标发行版验证。
+- 音视频依赖系统 GStreamer 组件；Ubuntu/Debian 播放 H.264 可安装 `gstreamer1.0-plugins-bad` 和 `gstreamer1.0-libav`，补齐解析器与解码器。
 - WebAuthn/Passkey 需要等待 WebKitGTK GTK port 实现平台 authenticator 集成。
 - frame 更新是异步且错误隔离的，组件销毁阶段不会泄漏未处理异常。

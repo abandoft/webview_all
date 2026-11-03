@@ -23,6 +23,8 @@ Legend:
 | `loadRequest` POST headers | No | Full | Full | Full | Full | No | Limited, CORS/fetch |
 | `loadFile` | Full | Full | Full | Full | Full | Full | No |
 | `loadFlutterAsset` | Full | Full | Full | Full | Full | Full | Full |
+| Application resource URLs, files and ranges | Supported; length and If-Range limits | Full | Full | Full | Full | Full | Unsupported; logs a diagnostic |
+| Incremental application resource streams | Full | Full | Full | Unsupported; logs a diagnostic | Full | Full | Unsupported; logs a diagnostic |
 | `loadHtmlString` | Full | Full | Full | Full | Full | Full | Full |
 | `currentUrl` | Full | Full | Full | Full | Full | Full | Limited, logical URL for synthetic loads |
 | History back/forward | Full | Full | Full | Full | Full | Full | Limited, controller-managed history |

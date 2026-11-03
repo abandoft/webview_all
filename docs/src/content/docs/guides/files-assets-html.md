@@ -62,6 +62,41 @@ await controller.loadFlutterAsset('assets/help/index.html');
 
 On Windows, each controller maps the canonical asset directory to a private randomized HTTPS host with cross-origin access denied. Mappings are replaced or cleared as navigation changes. Linux requires absolute file paths and canonicalizes them before loading. Both implementations reject traversal and symlink escapes outside the Flutter asset bundle. On web, assets resolve under the app's generated `assets/` path.
 
+## Application Resource URLs
+
+Use a resource delegate to let a page reference application-owned files without Base64:
+
+```dart
+await controller.setResourceDelegate(
+  WebViewResourceDelegate(onRequest: (request) {
+    if (request.path != '/video.mp4') return null;
+    return WebViewResourceResponse.file(videoPath, mimeType: 'video/mp4');
+  }),
+);
+
+final url = controller.getResourceUri('video.mp4');
+if (url != null) {
+  await controller.loadHtmlString(
+    '<video controls src="$url"></video>',
+    baseUrl: controller.getResourceUri('/')!.toString(),
+  );
+}
+```
+
+`videoPath` is an absolute file path the application has authorized. Pass resource paths as plain names without URL-encoding them first. Pages can reference resources using relative paths or complete URLs from `getResourceUri`. Handling is disabled by default and applies only to resource URLs issued by this controller. Returning `null` produces a 404 for that resource; ordinary network requests retain their existing behavior. Use the returned URL without hardcoding its scheme or host.
+
+`WebViewResourceResponse.bytes` serves bytes and `.file` reads a file on demand. Both automatically support HEAD and single byte ranges, including partial responses used for media seeking. `.stream` delivers incremental data and cancels its subscription when the request is cancelled or the delegate changes. Seekable stream producers must inspect request headers and return the appropriate 206 response themselves.
+
+Android, iOS, macOS, Linux, and OHOS support files, bytes, and streams. Windows supports files and bytes; check `controller.resourceCapabilities.supportsStreaming` before returning an incremental stream. An unsupported stream logs a diagnostic and fails that resource without stopping the application. Web is unsupported: setting a delegate logs a diagnostic and `getResourceUri` returns `null`.
+
+Call `setResourceDelegate(null)` to remove the delegate. Resource URLs are owned by their controller and expire when it is closed; normal CORS, CSP, and media format restrictions still apply. Validate requests and return only files the application permits the page to read.
+
+Linux uses a loopback HTTP server with a random access path to support WebKitGTK media loading. It listens only on the local machine and closes with the controller. Share resource URLs only with pages authorized to read those resources.
+
+With `loadHtmlString`, use the resource URL's root as `baseUrl` to keep the page and resources on the same origin.
+
+Android WebView cannot reliably ignore Range after an If-Range mismatch, and known-length resources cannot exceed 2,147,483,647 bytes. These cases log a diagnostic and return 501. Retry the former without Range or If-Range; larger content can use a stream without a declared length for sequential reads.
+
 ## Inline HTML
 
 ```dart

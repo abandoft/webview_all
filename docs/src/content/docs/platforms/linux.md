@@ -200,6 +200,7 @@ shim because it cannot reproduce WebAuthn's origin and authenticator security.
 - Local files must use absolute paths and are canonicalized before loading. Flutter asset keys containing traversal, absolute paths, or symlink escapes outside the asset bundle are rejected.
 - File URL universal access is powerful and should stay disabled for untrusted local content.
 - Distribution WebKitGTK versions differ; test media, permissions, and dialog flows on your target Linux distribution.
+- Media playback depends on system GStreamer components. For H.264 on Ubuntu/Debian, install `gstreamer1.0-plugins-bad` and `gstreamer1.0-libav` for the parser and decoder.
 - WebAuthn/passkeys are unavailable until the WebKitGTK port implements the
   required platform authenticator integration.
 - Frame updates are asynchronous and failure-isolated; stale widget teardown

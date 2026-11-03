@@ -23,6 +23,8 @@ description: webview_all latest 路由的跨平台能力覆盖。
 | POST 自定义 headers | 不支持 | 完整 | 完整 | 完整 | 完整 | 不支持 | 有限制，CORS/fetch |
 | `loadFile` | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 不支持 |
 | `loadFlutterAsset` | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 |
+| 应用资源 URL、文件及 Range 响应 | 支持；长度及 If-Range 回退有限制 | 完整 | 完整 | 完整 | 完整 | 完整 | 不支持，打印说明 |
+| 应用资源持续流响应 | 完整 | 完整 | 完整 | 不支持，打印说明 | 完整 | 完整 | 不支持，打印说明 |
 | `loadHtmlString` | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 |
 | 历史前进/后退 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 有限制，controller 维护逻辑历史 |
 | 无 controller 清理网站数据 | 旧版 System WebView 有限制 | 完整 | 完整 | 部分类型及旧 Runtime 有限制 | 完整 | 支持部分类型 | 不支持，结果会明确标记 |
