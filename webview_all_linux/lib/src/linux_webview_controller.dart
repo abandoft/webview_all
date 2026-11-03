@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' show RRect;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -790,7 +791,12 @@ class LinuxWebViewController extends PlatformWebViewController
     });
   }
 
-  Future<void> setFrame(Rect rect, {Rect? clipRect, required bool visible}) {
+  Future<void> setFrame(
+    Rect rect, {
+    Rect? clipRect,
+    List<RRect> roundedClips = const <RRect>[],
+    required bool visible,
+  }) {
     final Rect effectiveClip = clipRect ?? rect;
     final int sequence = ++_frameSequence;
     return _invoke<void>('setFrame', <String, Object?>{
@@ -802,6 +808,23 @@ class LinuxWebViewController extends PlatformWebViewController
       'clipY': effectiveClip.top,
       'clipWidth': effectiveClip.width,
       'clipHeight': effectiveClip.height,
+      'roundedClips': <List<double>>[
+        for (final clip in roundedClips.map((clip) => clip.scaleRadii()))
+          <double>[
+            clip.left,
+            clip.top,
+            clip.right,
+            clip.bottom,
+            clip.tlRadiusX,
+            clip.tlRadiusY,
+            clip.trRadiusX,
+            clip.trRadiusY,
+            clip.brRadiusX,
+            clip.brRadiusY,
+            clip.blRadiusX,
+            clip.blRadiusY,
+          ],
+      ],
       'visible': visible,
       'sequence': sequence,
     });

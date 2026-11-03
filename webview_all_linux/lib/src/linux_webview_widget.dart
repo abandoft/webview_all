@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:webview_platform_interface/webview_platform_interface.dart';
@@ -35,7 +36,11 @@ class _LinuxPlatformWebView extends StatefulWidget {
 }
 
 class _LinuxViewGeometry {
-  const _LinuxViewGeometry({required this.frame, required this.clip});
+  const _LinuxViewGeometry({
+    required this.frame,
+    required this.clip,
+    this.roundedClips = const <RRect>[],
+  });
 
   static const _LinuxViewGeometry hidden = _LinuxViewGeometry(
     frame: Rect.zero,
@@ -44,6 +49,7 @@ class _LinuxViewGeometry {
 
   final Rect frame;
   final Rect clip;
+  final List<RRect> roundedClips;
 
   bool get isVisible =>
       _isUsableRect(frame) && _isUsableRect(clip) && frame.overlaps(clip);
@@ -58,10 +64,13 @@ class _LinuxViewGeometry {
 
   @override
   bool operator ==(Object other) =>
-      other is _LinuxViewGeometry && other.frame == frame && other.clip == clip;
+      other is _LinuxViewGeometry &&
+      other.frame == frame &&
+      other.clip == clip &&
+      listEquals(other.roundedClips, roundedClips);
 
   @override
-  int get hashCode => Object.hash(frame, clip);
+  int get hashCode => Object.hash(frame, clip, Object.hashAll(roundedClips));
 }
 
 class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
@@ -199,6 +208,7 @@ class _LinuxPlatformWebViewState extends State<_LinuxPlatformWebView>
         await controller.setFrame(
           geometry.frame,
           clipRect: geometry.clip,
+          roundedClips: geometry.roundedClips,
           visible: visible,
         );
       } on StateError catch (error) {
@@ -380,20 +390,19 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
 
     final Rect frame = Rect.fromPoints(topLeft, bottomRight);
     Rect clip = frame.intersect(Offset.zero & renderView.size);
+    final roundedClips = <RRect>[];
+    final pathClips = <Path>[];
 
     RenderObject child = this;
     RenderObject? ancestor = parent;
     while (ancestor != null && ancestor != renderView) {
       final Rect? localClip = ancestor.describeApproximatePaintClip(child);
       if (localClip != null) {
-        if (_hasNonRectangularClip(ancestor)) {
-          _reportUnsupportedClip();
-          _onGeometryChanged(_LinuxViewGeometry.hidden);
-          return;
-        }
+        final paintClip = _readPaintClip(ancestor, localClip);
+        final clipTransform = ancestor.getTransformTo(renderRoot);
         final Rect? transformedClip = _transformAxisAlignedRect(
-          ancestor.getTransformTo(renderRoot),
-          localClip,
+          clipTransform,
+          paintClip.bounds,
         );
         if (transformedClip == null) {
           _reportUnsupportedClip();
@@ -405,12 +414,56 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
           _onGeometryChanged(_LinuxViewGeometry.hidden);
           return;
         }
+        if (paintClip.roundedRect case final roundedRect?) {
+          if (!roundedRect.isFinite || roundedRect.hasNaN) {
+            _reportUnsupportedClip();
+            _onGeometryChanged(_LinuxViewGeometry.hidden);
+            return;
+          }
+          if (!roundedRect.isRect) {
+            final transformed = _transformRoundedRect(
+              clipTransform,
+              roundedRect,
+              transformedClip,
+            );
+            if (transformed == null) {
+              _reportUnsupportedClip();
+              _onGeometryChanged(_LinuxViewGeometry.hidden);
+              return;
+            }
+            roundedClips.add(transformed);
+          }
+        } else if (paintClip.path case final path?) {
+          pathClips.add(path.transform(clipTransform.storage));
+        }
       }
       if (identical(ancestor, renderRoot)) {
         break;
       }
       child = ancestor;
       ancestor = ancestor.parent;
+    }
+
+    // Check containment after all ancestor bounds have been intersected. A
+    // rectangular outer clip can make a more complex inner clip irrelevant.
+    // Approximate bounds alone cannot prove containment of paths with holes.
+    for (final path in pathClips) {
+      try {
+        final outside = Path.combine(
+          PathOperation.difference,
+          Path()..addRect(clip),
+          path,
+        );
+        if (outside.computeMetrics().isNotEmpty) {
+          _reportUnsupportedClip();
+          _onGeometryChanged(_LinuxViewGeometry.hidden);
+          return;
+        }
+      } catch (_) {
+        _reportUnsupportedClip();
+        _onGeometryChanged(_LinuxViewGeometry.hidden);
+        return;
+      }
     }
 
     final double scale =
@@ -427,24 +480,132 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
       rect.bottom * scale,
     );
     _onGeometryChanged(
-      _LinuxViewGeometry(frame: gtkRect(frame), clip: gtkRect(clip)),
+      _LinuxViewGeometry(
+        frame: gtkRect(frame),
+        clip: gtkRect(clip),
+        roundedClips: <RRect>[
+          for (final rounded in roundedClips)
+            if (!_containsRect(rounded, clip))
+              RRect.fromRectAndCorners(
+                gtkRect(rounded.outerRect),
+                topLeft: rounded.tlRadius * scale,
+                topRight: rounded.trRadius * scale,
+                bottomRight: rounded.brRadius * scale,
+                bottomLeft: rounded.blRadius * scale,
+              ),
+        ],
+      ),
     );
   }
 
-  bool _hasNonRectangularClip(RenderObject ancestor) {
-    if (ancestor is RenderClipRRect ||
-        ancestor is RenderClipRSuperellipse ||
-        ancestor is RenderClipOval ||
-        ancestor is RenderClipPath ||
-        ancestor is RenderPhysicalShape) {
-      return true;
+  _LinuxPaintClip _readPaintClip(RenderObject ancestor, Rect approximate) {
+    if (ancestor is RenderClipRect) {
+      return _LinuxPaintClip.rect(
+        ancestor.clipper?.getClip(ancestor.size) ??
+            (Offset.zero & ancestor.size),
+      );
+    }
+    if (ancestor is RenderClipRRect) {
+      return _LinuxPaintClip.rounded(
+        ancestor.clipper?.getClip(ancestor.size) ??
+            ancestor.borderRadius
+                .resolve(ancestor.textDirection)
+                .toRRect(Offset.zero & ancestor.size),
+      );
+    }
+    if (ancestor is RenderClipOval) {
+      final rect =
+          ancestor.clipper?.getClip(ancestor.size) ??
+          (Offset.zero & ancestor.size);
+      return _LinuxPaintClip.rounded(
+        RRect.fromRectXY(rect, rect.width / 2, rect.height / 2),
+      );
     }
     if (ancestor is RenderPhysicalModel) {
-      return ancestor.shape != BoxShape.rectangle ||
-          (ancestor.borderRadius != null &&
-              ancestor.borderRadius != BorderRadius.zero);
+      final rect = Offset.zero & ancestor.size;
+      return _LinuxPaintClip.rounded(
+        ancestor.clipper?.getClip(ancestor.size) ??
+            (ancestor.shape == BoxShape.circle
+                ? RRect.fromRectXY(rect, rect.width / 2, rect.height / 2)
+                : (ancestor.borderRadius ?? BorderRadius.zero).toRRect(rect)),
+      );
     }
-    return false;
+    CustomClipper<Path>? pathClipper;
+    Size? clipSize;
+    if (ancestor is RenderClipPath) {
+      pathClipper = ancestor.clipper;
+      clipSize = ancestor.size;
+    } else if (ancestor is RenderPhysicalShape) {
+      pathClipper = ancestor.clipper;
+      clipSize = ancestor.size;
+    } else if (ancestor is RenderClipRSuperellipse) {
+      final shape =
+          ancestor.clipper?.getClip(ancestor.size) ??
+          ancestor.borderRadius
+              .resolve(ancestor.textDirection)
+              .toRSuperellipse(Offset.zero & ancestor.size);
+      return _LinuxPaintClip.path(Path()..addRSuperellipse(shape));
+    }
+    if (clipSize != null) {
+      final rect = Offset.zero & clipSize;
+      if (pathClipper == null) {
+        return _LinuxPaintClip.rect(rect);
+      }
+      // NavigationView and other ShapeBorder-based widgets use ClipPath even
+      // for ordinary rectangles and rounded rectangles.
+      if (pathClipper.runtimeType == ShapeBorderClipper &&
+          pathClipper is ShapeBorderClipper &&
+          pathClipper.shape.runtimeType == RoundedRectangleBorder) {
+        final shape = pathClipper.shape as RoundedRectangleBorder;
+        return _LinuxPaintClip.rounded(
+          shape.borderRadius.resolve(pathClipper.textDirection).toRRect(rect),
+        );
+      }
+      return _LinuxPaintClip.path(pathClipper.getClip(clipSize));
+    }
+    return _LinuxPaintClip.rect(approximate);
+  }
+
+  bool _containsRect(RRect shape, Rect rect) =>
+      shape.contains(rect.topLeft) &&
+      shape.contains(rect.topRight) &&
+      shape.contains(rect.bottomLeft) &&
+      shape.contains(rect.bottomRight);
+
+  RRect? _transformRoundedRect(Matrix4 matrix, RRect shape, Rect bounds) {
+    // Perspective can preserve a rectangular bounding box while changing its
+    // corner curves. Only affine, axis-aligned transforms preserve RRects.
+    if (matrix.entry(3, 0) != 0 ||
+        matrix.entry(3, 1) != 0 ||
+        matrix.entry(3, 3) != 1) {
+      return null;
+    }
+    final radii = <Radius>[Radius.zero, Radius.zero, Radius.zero, Radius.zero];
+    final corners = <(Offset, Radius)>[
+      (shape.outerRect.topLeft, shape.tlRadius),
+      (shape.outerRect.topRight, shape.trRadius),
+      (shape.outerRect.bottomRight, shape.brRadius),
+      (shape.outerRect.bottomLeft, shape.blRadius),
+    ];
+    for (final (point, radius) in corners) {
+      final transformed = MatrixUtils.transformPoint(matrix, point);
+      final left = (transformed.dx - bounds.left).abs() < 0.000001;
+      final top = (transformed.dy - bounds.top).abs() < 0.000001;
+      final index = top ? (left ? 0 : 1) : (left ? 3 : 2);
+      radii[index] = Radius.elliptical(
+        matrix.entry(0, 0).abs() * radius.x +
+            matrix.entry(0, 1).abs() * radius.y,
+        matrix.entry(1, 0).abs() * radius.x +
+            matrix.entry(1, 1).abs() * radius.y,
+      );
+    }
+    return RRect.fromRectAndCorners(
+      bounds,
+      topLeft: radii[0],
+      topRight: radii[1],
+      bottomRight: radii[2],
+      bottomLeft: radii[3],
+    ).scaleRadii();
   }
 
   Rect? _transformAxisAlignedRect(Matrix4 transform, Rect rect) {
@@ -488,9 +649,30 @@ class _LinuxGeometryRenderBox extends RenderProxyBox {
       return;
     }
     debugPrint(
-      'webview_all_linux: non-rectangular or transformed Flutter clips cannot '
-      'be represented by a native GTK overlay; the native WebView was hidden.',
+      'webview_all_linux: this Flutter clip cannot be represented by the '
+      'native GTK overlay. Rectangular, rounded-rectangular and oval clips '
+      'are supported; other paths must fully contain the visible WebView. '
+      'The native WebView was hidden to avoid drawing or receiving input '
+      'outside the clip.',
     );
     _reportedUnsupportedClip = true;
   }
+}
+
+class _LinuxPaintClip {
+  _LinuxPaintClip.rect(this.bounds) : roundedRect = null, path = null;
+
+  _LinuxPaintClip.rounded(RRect shape)
+    : roundedRect = shape.scaleRadii(),
+      bounds = shape.outerRect,
+      path = null;
+
+  _LinuxPaintClip.path(Path shape)
+    : path = shape,
+      bounds = shape.getBounds(),
+      roundedRect = null;
+
+  final Rect bounds;
+  final RRect? roundedRect;
+  final Path? path;
 }
