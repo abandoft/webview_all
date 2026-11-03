@@ -54,6 +54,27 @@ abstract class PlatformWebViewController extends PlatformInterface {
   /// Waits for native creation, including applying the requested data policy.
   Future<void> prepareSession() async {}
 
+  /// Features available for controller-issued application resource URLs.
+  WebViewResourceCapabilities get resourceCapabilities =>
+      const WebViewResourceCapabilities();
+
+  /// Supplies application resources without changing ordinary network requests.
+  Future<void> setResourceDelegate(WebViewResourceDelegate? delegate) async {
+    if (delegate != null) {
+      debugPrint(
+        'webview_all: Application resource URLs are unavailable on this '
+        'platform. Browser iframes cannot register native resource handlers. '
+        'Use assets hosted by your website instead.',
+      );
+    }
+  }
+
+  /// Creates a resource URL for this controller, or null when unsupported.
+  Uri? getResourceUri(String path) {
+    debugPrint('webview_all: getResourceUri is unavailable on this platform.');
+    return null;
+  }
+
   /// Permanently releases an owned controller, whether displayed or offscreen.
   Future<void> closeWebViewSession() => closeOffscreenWebView();
 

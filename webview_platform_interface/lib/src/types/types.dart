@@ -34,3 +34,4 @@ export 'webview_download.dart';
 export 'webview_session.dart';
 export 'webview_user_script.dart';
 export 'x509_certificate.dart';
+export 'webview_resource.dart';
