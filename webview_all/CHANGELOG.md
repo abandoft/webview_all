@@ -1,3 +1,9 @@
+## 1.4.10
+
+* Add resource delegates for on-demand local files and byte-range responses.
+* Fix potential iOS and macOS crashes when authentication or page callbacks return invalid responses.
+* Add optional iOS gesture policies to work around some cases of unresponsive touch input.
+
 ## 1.4.9
 
 * Add private WebView sessions and session data management APIs.
