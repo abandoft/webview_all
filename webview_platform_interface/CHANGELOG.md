@@ -1,3 +1,7 @@
+## 1.4.11
+
+* Fix Windows `loadHtmlString` reporting success when HTML loading fails.
+
 ## 1.4.10
 
 * Add resource delegates for on-demand local files and byte-range responses.
