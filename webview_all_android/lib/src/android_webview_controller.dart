@@ -202,7 +202,31 @@ class AndroidWebViewPermissionResourceType
 }
 
 /// Implementation of the [PlatformWebViewController] with the Android WebView API.
-class AndroidWebViewController extends PlatformWebViewController {
+class AndroidWebViewController extends PlatformWebViewController
+    with WebViewResourceControllerMixin {
+  @override
+  String get resourceUrlScheme => 'https';
+
+  @override
+  Future<void> configureResourceBridge(
+    String channel,
+    String host,
+    bool enabled,
+  ) async {
+    if (_offscreenCloseFuture != null) {
+      throw StateError('The Android WebView was closed.');
+    }
+    await _webView.getUrl();
+    await const MethodChannel(
+      'com.abandoft.webview_all/resources',
+    ).invokeMethod<void>('configure', <String, Object?>{
+      'webViewId': webViewIdentifier,
+      'channel': channel,
+      'host': host,
+      'enabled': enabled,
+    });
+  }
+
   /// Creates a new [AndroidWebViewController].
   AndroidWebViewController(PlatformWebViewControllerCreationParams params)
     : super.implementation(
@@ -914,6 +938,8 @@ class AndroidWebViewController extends PlatformWebViewController {
   }
 
   Future<void> _closeOffscreenWebView() async {
+    final resourceDisposal = disposeResourceBridge();
+    if (resourceDisposal != null) await resourceDisposal;
     _downloadDelegateGeneration++;
     _downloadDelegateCancelled.complete();
     _downloadDelegate = null;

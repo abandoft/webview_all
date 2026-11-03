@@ -20,6 +20,7 @@ public class WebviewAllAndroidPlugin implements FlutterPlugin, ActivityAware {
 
   private FlutterPluginBinding pluginBinding;
   private ProxyApiRegistrar proxyApiRegistrar;
+  private ResourceBridge.Registration resourceRegistration;
 
   /**
    * Add an instance of this to {@link io.flutter.embedding.engine.plugins.PluginRegistry} to
@@ -44,14 +45,19 @@ public class WebviewAllAndroidPlugin implements FlutterPlugin, ActivityAware {
     binding
         .getPlatformViewRegistry()
         .registerViewFactory(
-            VIEW_TYPE,
-            new FlutterViewFactory(proxyApiRegistrar.getInstanceManager()));
+            VIEW_TYPE, new FlutterViewFactory(proxyApiRegistrar.getInstanceManager()));
 
     proxyApiRegistrar.setUp();
+    resourceRegistration =
+        new ResourceBridge.Registration(proxyApiRegistrar, binding.getBinaryMessenger());
   }
 
   @Override
   public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+    if (resourceRegistration != null) {
+      resourceRegistration.close();
+      resourceRegistration = null;
+    }
     if (proxyApiRegistrar != null) {
       proxyApiRegistrar.tearDown();
       proxyApiRegistrar.getInstanceManager().stopFinalizationListener();

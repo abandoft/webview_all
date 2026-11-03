@@ -23,6 +23,11 @@ import androidx.annotation.Nullable;
 public class WebViewClientProxyApi extends PigeonApiWebViewClient {
   /** Implementation of {@link WebViewClient} that passes arguments of callback methods to Dart. */
   public static class WebViewClientImpl extends WebViewClient {
+    @Override
+    public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+      return ResourceBridge.intercept(view, request);
+    }
+
     private final WebViewClientProxyApi api;
     private boolean returnValueForShouldOverrideUrlLoading = false;
 

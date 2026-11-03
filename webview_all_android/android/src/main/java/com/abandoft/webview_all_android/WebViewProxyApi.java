@@ -83,6 +83,7 @@ public class WebViewProxyApi extends PigeonApiWebView {
     private final WebViewProxyApi api;
 
     private boolean destroyed;
+    ResourceBridge resourceBridge;
     boolean limitedIncognito;
 
     private WebViewClient currentWebViewClient;
@@ -92,7 +93,14 @@ public class WebViewProxyApi extends PigeonApiWebView {
     WebViewPlatformView(@NonNull WebViewProxyApi api) {
       super(api.getPigeonRegistrar().getContext());
       this.api = api;
-      currentWebViewClient = new WebViewClient();
+      currentWebViewClient =
+          new WebViewClient() {
+            @Override
+            public android.webkit.WebResourceResponse shouldInterceptRequest(
+                WebView view, android.webkit.WebResourceRequest request) {
+              return ResourceBridge.intercept(view, request);
+            }
+          };
       currentWebChromeClient = new WebChromeClientProxyApi.SecureWebChromeClient();
 
       setWebViewClient(currentWebViewClient);
@@ -124,6 +132,7 @@ public class WebViewProxyApi extends PigeonApiWebView {
         return;
       }
       destroyed = true;
+      if (resourceBridge != null) resourceBridge.close();
       api.removeAllDocumentStartJavaScripts(this);
       api.removeAllJavaScriptChannels(this);
       try {
