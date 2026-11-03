@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Normalizes generated Pigeon channels to webview_all-owned namespaces."""
+"""Normalizes generated channels and preserves required Pigeon compatibility fixes."""
 
 from __future__ import annotations
 
@@ -58,6 +58,13 @@ def normalize(repository_root: Path, target: NamespaceTarget) -> None:
         normalized_contents = contents.replace(
             target.generated_namespace, target.owned_namespace
         )
+        if target.package == "webview_all_wkwebview" and relative_path.endswith(".swift"):
+            # Pigeon 26 only checks nil before casting non-null callback replies.
+            # StandardMessageCodec also represents unresolved instances as NSNull.
+            normalized_contents = normalized_contents.replace(
+                "} else if listResponse[0] == nil {",
+                "} else if listResponse.isEmpty || isNullish(listResponse[0]) {",
+            )
         if normalized_contents != contents:
             generated_file.write_text(normalized_contents, encoding="utf-8")
         owned_count += normalized_contents.count(target.owned_namespace)
@@ -84,6 +91,14 @@ def check(repository_root: Path, target: NamespaceTarget) -> None:
         raise RuntimeError(
             f"Generated bindings for {target.package} do not contain "
             f"{target.owned_namespace!r}."
+        )
+    if (
+        target.package == "webview_all_wkwebview"
+        and "else if listResponse[0] == nil {" in combined_contents
+    ):
+        raise RuntimeError(
+            "WKWebView callback replies still use unsafe nil-only guards; "
+            "run tool/normalize_pigeon_namespaces.py wkwebview."
         )
 
 
