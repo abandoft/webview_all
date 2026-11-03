@@ -817,8 +817,8 @@ bool WebviewBridge::LoadRequest(const std::string &url,
   return webview_->LoadRequest(url, method, headers, body);
 }
 
-void WebviewBridge::LoadStringContent(const std::string &content) {
-  webview_->LoadStringContent(content);
+HRESULT WebviewBridge::LoadStringContent(const std::string &content) {
+  return webview_->LoadStringContent(content);
 }
 
 bool WebviewBridge::Reload() { return webview_->Reload(); }

@@ -1826,16 +1826,20 @@ bool Webview::LoadRequest(const std::string &url, const std::string &method,
   return true;
 }
 
-void Webview::LoadStringContent(const std::string &content) {
-  if (IsValid()) {
-    InvalidatePendingNavigationRequests();
-    constexpr auto kStringContentNavigationUrl = "about:blank";
-    MarkNavigationApproved(kStringContentNavigationUrl);
-    if (FAILED(
-            webview_->NavigateToString(util::Utf16FromUtf8(content).c_str()))) {
-      ConsumeApprovedNavigation(kStringContentNavigationUrl);
-    }
+HRESULT Webview::LoadStringContent(const std::string &content) {
+  if (!IsValid()) {
+    return E_UNEXPECTED;
   }
+
+  InvalidatePendingNavigationRequests();
+  constexpr auto kStringContentNavigationUrl = "about:blank";
+  MarkNavigationApproved(kStringContentNavigationUrl);
+  const HRESULT result =
+      webview_->NavigateToString(util::Utf16FromUtf8(content).c_str());
+  if (FAILED(result)) {
+    ConsumeApprovedNavigation(kStringContentNavigationUrl);
+  }
+  return result;
 }
 
 bool Webview::Stop() {

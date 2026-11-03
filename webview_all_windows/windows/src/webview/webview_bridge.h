@@ -48,7 +48,7 @@ public:
   bool LoadRequest(const std::string &url, const std::string &method,
                    const std::string &headers,
                    const std::vector<uint8_t> *body);
-  void LoadStringContent(const std::string &content);
+  HRESULT LoadStringContent(const std::string &content);
   bool Reload();
   bool Stop();
   bool GoBack();

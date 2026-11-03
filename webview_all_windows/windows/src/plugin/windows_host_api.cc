@@ -575,7 +575,18 @@ WindowsHostApi::LoadStringContent(int64_t texture_id,
   if (!bridge) {
     return InvalidIdError();
   }
-  bridge->LoadStringContent(content);
+  const HRESULT result = bridge->LoadStringContent(content);
+  if (FAILED(result)) {
+    return FlutterError(
+        kErrorMethodFailed,
+        "Loading HTML content failed (HRESULT: " + FormatHresult(result) + ").",
+        flutter::EncodableValue(flutter::EncodableMap{
+            {flutter::EncodableValue("operation"),
+             flutter::EncodableValue("NavigateToString")},
+            {flutter::EncodableValue("hresult"),
+             flutter::EncodableValue(FormatHresult(result))},
+        }));
+  }
   return std::nullopt;
 }
 
