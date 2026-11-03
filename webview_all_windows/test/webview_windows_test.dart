@@ -2970,6 +2970,43 @@ void main() {
     },
   );
 
+  test('HTML load failures reach Dart and allow a later load', () async {
+    var attempts = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMessageHandler(_hostApiChannel('loadStringContent'), (_) async {
+          if (attempts++ == 0) {
+            return _encodePigeonError(
+              PlatformException(
+                code: 'method_failed',
+                message: 'Loading HTML content failed (HRESULT: 0x80070057).',
+                details: <String, Object?>{
+                  'operation': 'NavigateToString',
+                  'hresult': '0x80070057',
+                },
+              ),
+            );
+          }
+          return _encodePigeonSuccess();
+        });
+    final controller = _createWindowsController(
+      const PlatformWebViewControllerCreationParams(),
+    );
+
+    await expectLater(
+      controller.loadHtmlString('<html>rejected</html>'),
+      throwsA(
+        isA<PlatformException>()
+            .having((error) => error.code, 'code', 'method_failed')
+            .having((error) => error.details, 'details', <String, Object?>{
+              'operation': 'NavigateToString',
+              'hresult': '0x80070057',
+            }),
+      ),
+    );
+    await controller.loadHtmlString('<html>accepted</html>');
+    expect(attempts, 2);
+  });
+
   test('escapes base URLs inserted into HTML', () async {
     final contents = <String>[];
     _mockWindowsWebViewCreation(onLoadStringContent: contents.add);
