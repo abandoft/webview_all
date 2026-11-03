@@ -56,6 +56,7 @@ Widget build(BuildContext context) {
 
 - [野火 IM](https://github.com/wildfirechat) 官方 Flutter 版：老牌的 IM/RTC 商业软件。
 - [GodotHub](https://godothub.com) 官方客户端：广受喜爱的 Godot 社区平台。
+- [PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus)：拥有 20K+ Star 的开源版哔哩哔哩。
 - [Operit2](https://github.com/AAswordman/Operit2)：全平台的 AI Agent 智能体。
 - [Miru](https://github.com/miru-project) 新版客户端：知名的视频、漫画和小说聚合应用。
 - [SubDock](https://github.com/sub-store-org) 桌面端：Sub-Store 官方的桌面运行与管理工具。

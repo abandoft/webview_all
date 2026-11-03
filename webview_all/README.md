@@ -57,6 +57,7 @@ For detailed usage, API coverage, and platform limits, see the [Documentation](h
 
 - [Wildfire IM](https://github.com/wildfirechat) official Flutter client: A well-established commercial IM/RTC platform.
 - [GodotHub](https://godothub.com) official client: A much-loved Godot community platform.
+- [PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus): An open-source Bilibili client with 20K+ stars.
 - [Operit2](https://github.com/AAswordman/Operit2): An AI agent for all platforms.
 - [Miru](https://github.com/miru-project) new client: A popular video, manga, and novel aggregation app.
 - [SubDock](https://github.com/sub-store-org) desktop client: The official app for running and managing Sub-Store.
