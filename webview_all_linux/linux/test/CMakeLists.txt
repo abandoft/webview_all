@@ -36,8 +36,24 @@ target_link_libraries(environment_test PRIVATE PkgConfig::WEBKIT)
 target_compile_options(environment_test PRIVATE -Wall -Wextra -Werror
   -Wno-unused-parameter)
 add_test(NAME environment COMMAND environment_test)
+add_executable(webview_clip_test
+  webview_clip_test.cc
+  ../src/platform/webview_clip.cc
+)
+target_link_libraries(webview_clip_test PRIVATE PkgConfig::WEBKIT)
+target_compile_options(webview_clip_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME webview_clip COMMAND webview_clip_test)
+add_executable(webview_clip_rendering_test
+  webview_clip_rendering_test.cc
+  ../src/platform/webview_clip.cc
+)
+target_link_libraries(webview_clip_rendering_test PRIVATE PkgConfig::WEBKIT)
+target_compile_options(webview_clip_rendering_test PRIVATE -Wall -Wextra -Werror
+  -Wno-unused-parameter)
+add_test(NAME webview_clip_rendering COMMAND webview_clip_rendering_test)
 # Download policy tests do not use the desktop accessibility service.
-set_tests_properties(download_policy message_bridge scroll_hook environment PROPERTIES
+set_tests_properties(download_policy message_bridge scroll_hook environment
+  webview_clip webview_clip_rendering PROPERTIES
   TIMEOUT 60
   ENVIRONMENT "NO_AT_BRIDGE=1"
 )
