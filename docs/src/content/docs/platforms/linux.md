@@ -188,9 +188,15 @@ shim because it cannot reproduce WebAuthn's origin and authenticator security.
 ## Known Limits
 
 - The WebView is a native GTK widget, not a Flutter texture. It follows
-  Flutter's logical position and size and is clipped at the Flutter viewport,
-  but arbitrary Flutter layer interleaving and clip shapes cannot be reproduced
-  by `GtkOverlay`.
+  Flutter's logical position and size and supports viewport and rectangular
+  ancestor clips. Rounded and oval clips are supported through `ClipRRect`,
+  `ClipOval`, `PhysicalModel`, and `ShapeBorderClipper` with
+  `RoundedRectangleBorder`, including `NavigationView`'s default content clip.
+  Drawing and input regions are clipped together on GTK's logical pixel grid.
+  `GtkOverlay` still cannot reproduce arbitrary Flutter layer interleaving.
+- Other paths, such as a custom `ClipPath`, must fully contain the current
+  visible rectangle. When a path cuts into it, for example through a hole, the plugin hides the native WebView
+  and logs the limitation to prevent drawing or receiving input outside the clip.
 - System HiDPI and application scaling configured through `ViewConfiguration`
   are supported.
 - Widget transforms support translation. Scale, rotation, skew, perspective, and mirrored

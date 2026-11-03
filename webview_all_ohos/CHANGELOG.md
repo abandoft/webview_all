@@ -1,3 +1,7 @@
+## 1.4.12
+
+* Fix Linux WebViews unexpectedly disappearing inside rectangular, rounded, or oval clipping containers.
+
 ## 1.4.11
 
 * Fix Windows `loadHtmlString` reporting success when HTML loading fails.

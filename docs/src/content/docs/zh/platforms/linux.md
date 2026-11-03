@@ -130,8 +130,12 @@ origin 与 authenticator 安全语义。
 ## 限制
 
 - WebView 是 GTK 原生 widget，而非 Flutter texture。它会跟随 Flutter
-  的逻辑位置和尺寸，并在 Flutter 视口边界裁剪；但 `GtkOverlay` 无法复现任意
-  Flutter 图层穿插和裁剪形状。
+  的逻辑位置和尺寸，支持视口边界及矩形祖先裁剪。圆角和椭圆可使用
+  `ClipRRect`、`ClipOval`、`PhysicalModel`，或 `ShapeBorderClipper` 配合
+  `RoundedRectangleBorder`（包括 `NavigationView` 的默认内容裁剪）。显示和
+  点击区域按 GTK 逻辑像素网格同步裁剪；`GtkOverlay` 仍无法复现任意 Flutter 图层穿插。
+- 自定义 `ClipPath` 等其他路径须完整包含当前可见矩形。路径切入该区域时（例如包含孔洞），
+  插件会隐藏原生 WebView 并打印限制说明，避免裁剪区域外仍可显示或点击。
 - 支持系统 HiDPI 和通过 `ViewConfiguration` 配置的应用界面缩放。
 - 组件变换支持平移；缩放、旋转、倾斜、透视和镜像无法由 GTK 原生子组件准确表示。
   遇到这些变换时，插件会隐藏 WebView 并打印限制说明，避免留下视觉错位但仍可交互
