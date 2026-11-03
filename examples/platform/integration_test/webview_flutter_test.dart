@@ -462,6 +462,50 @@ return {
     await expectLater(controller.currentUrl(), throwsStateError);
   });
 
+  testWidgets('Windows HTML loading reports native failures and recovers', (
+    WidgetTester tester,
+  ) async {
+    final controller = WebViewController();
+    final recovered = Completer<void>();
+    try {
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.addJavaScriptChannel(
+        'HtmlLoadResult',
+        onMessageReceived: (JavaScriptMessage message) {
+          if (message.message == 'recovered' && !recovered.isCompleted) {
+            recovered.complete();
+          }
+        },
+      );
+      await tester.pumpWidget(WebViewWidget(controller: controller));
+
+      final oversizedHtml =
+          '<!DOCTYPE html><html><body><!--${'x' * (3 * 1024 * 1024)}--></body></html>';
+      await expectLater(
+        controller.loadHtmlString(oversizedHtml),
+        throwsA(
+          isA<PlatformException>()
+              .having((error) => error.code, 'code', 'method_failed')
+              .having((error) => error.details, 'details', <String, Object?>{
+                'operation': 'NavigateToString',
+                'hresult': '0x80070057',
+              }),
+        ),
+      );
+
+      await controller.loadHtmlString('''
+<!DOCTYPE html><html><head><title>Recovered HTML</title></head><body>
+<script>HtmlLoadResult.postMessage('recovered');</script>
+</body></html>
+''');
+      await recovered.future.timeout(const Duration(seconds: 15));
+      expect(await controller.getTitle(), 'Recovered HTML');
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await (controller.platform as WindowsWebViewController).dispose();
+    }
+  }, skip: !Platform.isWindows);
+
   testWidgets('loadRequest', (WidgetTester tester) async {
     final pageFinished = Completer<void>();
 
