@@ -51,7 +51,7 @@ jobs:
         run: |
           cmake -S webview_all_linux/linux/test -B build/linux-native-tests
           cmake --build build/linux-native-tests
-          xvfb-run -a ctest --test-dir build/linux-native-tests --output-on-failure
+          xvfb-run -a env GDK_BACKEND=x11 ctest --test-dir build/linux-native-tests --output-on-failure
 
       - name: Build Linux example
         working-directory: examples/platform
@@ -88,14 +88,14 @@ jobs:
           xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
             flutter test integration_test/webview_resource_test.dart -d linux
 
-      - name: Run Linux HiDPI native input test
+      - name: Run Linux HiDPI native input and clipping tests
         if: matrix.flutter == '3.44.x'
         working-directory: examples/platform
         run: |
           xvfb-run -a -s '-screen 0 3840x2160x24' \
             env GDK_BACKEND=x11 GDK_SCALE=2 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
             flutter test integration_test/webview_flutter_test.dart -d linux \
-              --plain-name 'Linux native view receives system pointer and keyboard input'
+              --name 'Linux native view (receives system pointer and keyboard input|clips rounded Flutter containers)'
 
       - name: Test native download handling and file safety
         if: matrix.flutter == '3.44.x'
