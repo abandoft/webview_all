@@ -209,7 +209,31 @@ class WebKitWebViewControllerCreationParams
 }
 
 /// An implementation of [PlatformWebViewController] with the WebKit api.
-class WebKitWebViewController extends PlatformWebViewController {
+class WebKitWebViewController extends PlatformWebViewController
+    with WebViewResourceControllerMixin {
+  @override
+  String get resourceUrlScheme => 'webview-all-resource';
+
+  @override
+  Future<void> configureResourceBridge(
+    String channel,
+    String host,
+    bool enabled,
+  ) async {
+    if (_offscreenCloseFuture != null) {
+      throw StateError('The WebKit WebView was closed.');
+    }
+    await _webView.getUrl();
+    await const MethodChannel(
+      'com.abandoft.webview_all/resources',
+    ).invokeMethod<void>('configure', <String, Object?>{
+      'webViewId': webViewIdentifier,
+      'channel': channel,
+      'host': host,
+      'enabled': enabled,
+    });
+  }
+
   WebKitDownloadDelegateBridge? _downloadBridge;
   Future<void> _downloadUpdateTail = Future<void>.value();
 
@@ -865,6 +889,8 @@ ${params.functionBody}
   }
 
   Future<void> _closeOffscreenWebView() async {
+    final resourceDisposal = disposeResourceBridge();
+    if (resourceDisposal != null) await resourceDisposal;
     _navigationGeneration += 1;
     Object? firstError;
     StackTrace? firstStackTrace;

@@ -108,9 +108,10 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
   func pigeonDefaultConstructor(
     pigeonApi: PigeonApiUIViewWKWebView, initialConfiguration: WKWebViewConfiguration
   ) throws -> WKWebView {
+    let configuration = ResourceSchemeHandler.configuration(from: initialConfiguration)
     return WebViewImpl(
       api: pigeonApi.pigeonApiWKWebView, registrar: pigeonApi.pigeonRegistrar as! ProxyAPIRegistrar,
-      frame: CGRect(), configuration: initialConfiguration)
+      frame: CGRect(), configuration: configuration)
   }
 
   func pigeonDefaultConstructor(
@@ -411,6 +412,7 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
 
   func dispose(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView) throws {
     DownloadBridgeChannel.dispose(pigeonInstance)
+    ResourceSchemeHandler.close(pigeonInstance)
     pigeonInstance.stopLoading()
     pigeonInstance.navigationDelegate = nil
     pigeonInstance.uiDelegate = nil

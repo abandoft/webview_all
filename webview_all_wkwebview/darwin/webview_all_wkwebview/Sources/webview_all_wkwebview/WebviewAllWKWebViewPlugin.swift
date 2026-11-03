@@ -18,6 +18,7 @@ private let webviewAllWKWebViewPlatformViewType =
 public class WebviewAllWKWebViewPlugin: NSObject, FlutterPlugin {
   var proxyApiRegistrar: ProxyAPIRegistrar?
   private var downloadChannel: DownloadBridgeChannel?
+  private var resourceChannel: ResourceBridgeChannel?
   #if os(iOS)
     private weak var compatibilityBinaryMessenger: AnyObject?
   #endif
@@ -27,6 +28,7 @@ public class WebviewAllWKWebViewPlugin: NSObject, FlutterPlugin {
       binaryMessenger: binaryMessenger)
     proxyApiRegistrar?.setUp()
     downloadChannel = DownloadBridgeChannel(registrar: proxyApiRegistrar!, messenger: binaryMessenger)
+    resourceChannel = ResourceBridgeChannel(registrar: proxyApiRegistrar!, messenger: binaryMessenger)
   }
 
   public static func register(with registrar: FlutterPluginRegistrar) {
@@ -52,6 +54,8 @@ public class WebviewAllWKWebViewPlugin: NSObject, FlutterPlugin {
   }
 
   private func tearDownProxyAPIRegistrar() {
+    resourceChannel?.close()
+    resourceChannel = nil
     downloadChannel?.close()
     downloadChannel = nil
     #if os(iOS)

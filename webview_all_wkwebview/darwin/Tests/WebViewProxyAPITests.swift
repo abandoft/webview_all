@@ -41,6 +41,25 @@ class WebViewProxyAPITests: XCTestCase {
     XCTAssertEqual(value, instance.configuration)
   }
 
+  @MainActor func testResourceHandlersArePerWebViewWithSharedConfiguration() throws {
+    let registrar = TestProxyApiRegistrar()
+    let api = webViewProxyAPI(forRegistrar: registrar)
+    let configuration = WKWebViewConfiguration()
+    configuration.websiteDataStore = .nonPersistent()
+    let first = try api.pigeonDelegate.pigeonDefaultConstructor(
+      pigeonApi: api, initialConfiguration: configuration)
+    let second = try api.pigeonDelegate.pigeonDefaultConstructor(
+      pigeonApi: api, initialConfiguration: configuration)
+    let firstHandler = try XCTUnwrap(first.configuration.urlSchemeHandler(
+      forURLScheme: ResourceSchemeHandler.scheme) as? ResourceSchemeHandler)
+    let secondHandler = try XCTUnwrap(second.configuration.urlSchemeHandler(
+      forURLScheme: ResourceSchemeHandler.scheme) as? ResourceSchemeHandler)
+    XCTAssertFalse(firstHandler === secondHandler)
+    XCTAssertNil(configuration.urlSchemeHandler(forURLScheme: ResourceSchemeHandler.scheme))
+    XCTAssertTrue(first.configuration.websiteDataStore === configuration.websiteDataStore)
+    XCTAssertTrue(second.configuration.websiteDataStore === configuration.websiteDataStore)
+  }
+
   #if os(iOS)
     @MainActor func testScrollView() {
       let registrar = TestProxyApiRegistrar()
