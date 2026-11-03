@@ -1,6 +1,7 @@
 #pragma once
 
 #include <WebView2.h>
+#include "webview/resource_bridge.h"
 #include <wil/com.h>
 #include <windows.ui.composition.h>
 #include <winrt/base.h>
@@ -302,6 +303,9 @@ public:
   HRESULT SetBrowserAcceleratorKeysEnabled(bool enabled);
   HRESULT SetDownloadsEnabled(bool enabled);
   HRESULT SetDownloadDelegateEnabled(bool enabled);
+  HRESULT ConfigureResources(flutter::BinaryMessenger *messenger,
+                             const std::string &channel, const std::string &host,
+                             bool enabled);
   bool OpenDevTools();
   bool SetBackgroundColor(int32_t color);
   bool SetZoomFactor(double factor);
@@ -407,6 +411,7 @@ private:
   wil::com_ptr<ICoreWebView2CompositionController> composition_controller_;
   wil::com_ptr<ICoreWebView2Controller3> webview_controller_;
   wil::com_ptr<ICoreWebView2> webview_;
+  std::unique_ptr<ResourceBridgeWindows> resource_bridge_;
   wil::com_ptr<ICoreWebView2DevToolsProtocolEventReceiver>
       devtools_protocol_event_receiver_;
   wil::com_ptr<ICoreWebView2Settings> settings_;

@@ -149,7 +149,26 @@ class WindowsNavigationDelegateCreationParams
 }
 
 /// A WebView2-backed implementation of [PlatformWebViewController].
-class WindowsWebViewController extends PlatformWebViewController {
+class WindowsWebViewController extends PlatformWebViewController
+    with WebViewResourceControllerMixin {
+  @override
+  String get resourceUrlScheme => 'https';
+  @override
+  bool get supportsStreamingResources => false;
+  @override
+  bool get nativeResourceBodies => true;
+
+  @override
+  Future<void> configureResourceBridge(
+    String channel,
+    String host,
+    bool enabled,
+  ) async {
+    _throwIfDisposed();
+    await _ensureInitialized();
+    await _webviewController.configureResources(channel, host, enabled);
+  }
+
   /// Creates a [WindowsWebViewController].
   WindowsWebViewController(PlatformWebViewControllerCreationParams params)
     : _webviewController = native_webview.WebviewController(
@@ -677,6 +696,8 @@ class WindowsWebViewController extends PlatformWebViewController {
   }
 
   Future<void> _dispose() async {
+    final resourceDisposal = disposeResourceBridge();
+    if (resourceDisposal != null) await resourceDisposal;
     // Initialization errors are reported by the operation that initialized the
     // controller. Disposal still has to release every resource created before
     // that failure, without reporting the same initialization error again.

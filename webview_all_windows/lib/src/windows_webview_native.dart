@@ -231,6 +231,19 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   DownloadRequestedDelegate? _downloadRequested;
   int _downloadDelegateGeneration = 0;
 
+  Future<void> configureResources(
+    String channel,
+    String host,
+    bool enabled,
+  ) async {
+    if (_isDisposed) throw StateError('The Windows WebView was disposed.');
+    await ready;
+    await _methodChannel.invokeMethod<void>(
+      'configureResources',
+      <String, Object?>{'channel': channel, 'host': host, 'enabled': enabled},
+    );
+  }
+
   Future<void> setDownloadRequestedDelegate(
     DownloadRequestedDelegate? delegate,
   ) async {

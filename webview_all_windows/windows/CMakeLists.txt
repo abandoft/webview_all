@@ -51,6 +51,7 @@ set(PLUGIN_SOURCES
   "src/plugin/webview_all_windows_plugin.cc"
   "src/plugin/windows_host_api.cc"
   "src/webview/webview.cc"
+  "src/webview/resource_bridge.cc"
   "src/webview/webview_bridge.cc"
   "src/webview/webview_host.cc"
   "src/rendering/graphics_context.cc"
@@ -72,6 +73,7 @@ set_target_properties(${PLUGIN_NAME} PROPERTIES
 )
 
 target_link_libraries(${PLUGIN_NAME} PRIVATE
+  shlwapi
   ${CMAKE_BINARY_DIR}/packages/Microsoft.Web.WebView2/build/native/Microsoft.Web.WebView2.targets
   ${CMAKE_BINARY_DIR}/packages/Microsoft.Windows.ImplementationLibrary/build/native/Microsoft.Windows.ImplementationLibrary.targets
   flutter

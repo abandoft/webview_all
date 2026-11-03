@@ -348,6 +348,7 @@ Webview::Webview(
 }
 
 Webview::~Webview() {
+  resource_bridge_.reset();
   DisposeDownloads();
   InvalidatePendingNavigationRequests();
   lifetime_state_->owner = nullptr;
@@ -2039,6 +2040,14 @@ HRESULT Webview::SetDownloadDelegateEnabled(bool enabled) {
   CancelPendingDownloads();
   download_delegate_enabled_ = enabled;
   return S_OK;
+}
+
+HRESULT Webview::ConfigureResources(flutter::BinaryMessenger *messenger,
+                                    const std::string &channel,
+                                    const std::string &host, bool enabled) {
+  if (!resource_bridge_)
+    resource_bridge_ = std::make_unique<ResourceBridgeWindows>(webview_.get());
+  return resource_bridge_->Configure(messenger, channel, host, enabled);
 }
 
 HRESULT Webview::StartDownload(ICoreWebView2DownloadStartingEventArgs *args) {

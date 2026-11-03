@@ -144,9 +144,43 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
           messenger, channel_name,
           &flutter::StandardMethodCodec::GetInstance());
   method_channel_->SetMethodCallHandler(
-      [this](const flutter::MethodCall<flutter::EncodableValue> &call,
-             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
-                 result) {
+      [this, messenger](
+          const flutter::MethodCall<flutter::EncodableValue> &call,
+          std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+              result) {
+        if (call.method_name() == "configureResources") {
+          const auto *args =
+              call.arguments()
+                  ? std::get_if<flutter::EncodableMap>(call.arguments())
+                  : nullptr;
+          if (!args) {
+            result->Error("invalid_argument",
+                          "Expected resource configuration.");
+            return;
+          }
+          const auto name = args->find(flutter::EncodableValue("channel"));
+          const auto host = args->find(flutter::EncodableValue("host"));
+          const auto enabled = args->find(flutter::EncodableValue("enabled"));
+          if (name == args->end() || host == args->end() ||
+              enabled == args->end() ||
+              !std::holds_alternative<std::string>(name->second) ||
+              !std::holds_alternative<std::string>(host->second) ||
+              !std::holds_alternative<bool>(enabled->second)) {
+            result->Error("invalid_argument",
+                          "Invalid resource configuration.");
+            return;
+          }
+          const HRESULT hr = webview_->ConfigureResources(
+              messenger, std::get<std::string>(name->second),
+              std::get<std::string>(host->second),
+              std::get<bool>(enabled->second));
+          if (FAILED(hr))
+            result->Error("resource_configuration_failed",
+                          "The resource handler could not be configured.");
+          else
+            result->Success();
+          return;
+        }
         if (call.method_name() != "setDownloadDelegateEnabled") {
           result->NotImplemented();
           return;
