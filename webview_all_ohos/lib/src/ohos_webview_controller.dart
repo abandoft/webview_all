@@ -256,6 +256,7 @@ class OhosWebViewController extends PlatformWebViewController
       'channel': channel,
       'host': host,
       'enabled': enabled,
+      'requestTimeoutMillis': resourceBridge.requestTimeout.inMilliseconds,
     });
   }
 

@@ -87,6 +87,8 @@ if (url != null) {
 
 `WebViewResourceResponse.bytes` serves bytes and `.file` reads a file on demand. Both automatically support HEAD and single byte ranges, including partial responses used for media seeking. `.stream` delivers incremental data and cancels its subscription when the request is cancelled or the delegate changes. Seekable stream producers must inspect request headers and return the appropriate 206 response themselves.
 
+Set `WebViewResourceDelegate.requestTimeout` to allow slower application callbacks or stream reads, for example `requestTimeout: const Duration(seconds: 60)`. The default remains 30 seconds. This deadline applies separately to `onRequest` and to each subsequent stream read; it does not limit the total duration of a progressing stream or change ordinary network timeouts. Use a whole number of milliseconds between 1 and 2,147,483,647. Invalid values are rejected without replacing the active delegate. Removing or replacing the delegate still cancels pending requests.
+
 Android, iOS, macOS, Linux, and OHOS support files, bytes, and streams. Windows supports files and bytes; check `controller.resourceCapabilities.supportsStreaming` before returning an incremental stream. An unsupported stream logs a diagnostic and fails that resource without stopping the application. Web is unsupported: setting a delegate logs a diagnostic and `getResourceUri` returns `null`.
 
 Call `setResourceDelegate(null)` to remove the delegate. Resource URLs are owned by their controller and expire when it is closed; normal CORS, CSP, and media format restrictions still apply. Validate requests and return only files the application permits the page to read.

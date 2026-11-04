@@ -94,6 +94,12 @@ jobs:
         working-directory: examples/platform
         run: flutter test integration_test/webview_resource_test.dart -d macos
 
+      - name: Test configurable application resource deadlines
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: flutter test integration_test/resource_request_timeout_test.dart -d macos
+
       - name: Run macOS integration tests
         if: matrix.flutter == '3.44.x'
         timeout-minutes: 15
@@ -181,6 +187,7 @@ jobs:
           xcrun simctl boot "$simulator_id"
           xcrun simctl bootstatus "$simulator_id" -b
           flutter test integration_test/webview_resource_test.dart -d "$simulator_id"
+          flutter test integration_test/resource_request_timeout_test.dart -d "$simulator_id"
 
       - name: Clean up iOS test simulator
         if: always() && matrix.flutter == '3.47.x'

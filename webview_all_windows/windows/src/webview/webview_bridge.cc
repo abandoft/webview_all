@@ -170,10 +170,29 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
                           "Invalid resource configuration.");
             return;
           }
+          int64_t request_timeout_millis = 30000;
+          const auto timeout =
+              args->find(flutter::EncodableValue("requestTimeoutMillis"));
+          if (timeout != args->end()) {
+            if (const auto *value = std::get_if<int32_t>(&timeout->second)) {
+              request_timeout_millis = *value;
+            } else if (const auto *value = std::get_if<int64_t>(&timeout->second)) {
+              request_timeout_millis = *value;
+            } else {
+              result->Error("invalid_argument", "Invalid resource timeout.");
+              return;
+            }
+            if (request_timeout_millis < 1 ||
+                request_timeout_millis > 2147483647) {
+              result->Error("invalid_argument", "Invalid resource timeout.");
+              return;
+            }
+          }
           const HRESULT hr = webview_->ConfigureResources(
               messenger, std::get<std::string>(name->second),
               std::get<std::string>(host->second),
-              std::get<bool>(enabled->second));
+              std::get<bool>(enabled->second),
+              static_cast<UINT>(request_timeout_millis));
           if (FAILED(hr))
             result->Error("resource_configuration_failed",
                           "The resource handler could not be configured.");

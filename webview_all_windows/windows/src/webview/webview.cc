@@ -2048,10 +2048,12 @@ HRESULT Webview::SetDownloadDelegateEnabled(bool enabled) {
 
 HRESULT Webview::ConfigureResources(flutter::BinaryMessenger *messenger,
                                     const std::string &channel,
-                                    const std::string &host, bool enabled) {
+                                    const std::string &host, bool enabled,
+                                    UINT request_timeout_millis) {
   if (!resource_bridge_)
     resource_bridge_ = std::make_unique<ResourceBridgeWindows>(webview_.get());
-  return resource_bridge_->Configure(messenger, channel, host, enabled);
+  return resource_bridge_->Configure(messenger, channel, host, enabled,
+                                     request_timeout_millis);
 }
 
 HRESULT Webview::StartDownload(ICoreWebView2DownloadStartingEventArgs *args) {
