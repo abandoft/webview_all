@@ -23,15 +23,18 @@ concurrency:
 jobs:
   apple:
     name: Apple native builds (${{ matrix.flutter }})
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        flutter:
-          - 3.35.7
-          - 3.44.x
-          - 3.47.x
+        include:
+          - flutter: 3.35.7
+            runner: macos-26-intel
+          - flutter: 3.44.x
+            runner: macos-26-intel
+          - flutter: 3.47.x
+            runner: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@v5

@@ -47,6 +47,13 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Test Android integration runner
+        run: python3 -m unittest discover -s tool -p test_android_integration_runner.py
+
+      - name: Prepare Android resource test image
+        if: matrix.flutter == '3.44.x'
+        run: bash tool/prepare_android_test_image.sh
+
       - name: Resolve example
         working-directory: examples/platform
         run: flutter pub get
@@ -80,5 +87,14 @@ jobs:
           disable-animations: true
           working-directory: examples/platform
           script: |
-            flutter test integration_test/webview_resource_test.dart -d emulator-5554
-            flutter test integration_test/resource_request_timeout_test.dart -d emulator-5554
+            bash ../../tool/run_android_integration_test.sh integration_test/webview_resource_test.dart
+            bash ../../tool/run_android_integration_test.sh integration_test/resource_request_timeout_test.dart
+
+      - name: Upload Android failure diagnostics
+        if: failure() && matrix.flutter == '3.44.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-integration-diagnostics
+          path: ${{ runner.temp }}/webview-all-android-diagnostics
+          if-no-files-found: ignore
+          retention-days: 1
