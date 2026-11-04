@@ -7,8 +7,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:webview_all/webview_all.dart';
 
-void main() {
+Future<void> main() async {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  var androidApiLevel = 0;
+  if (Platform.isAndroid) {
+    final result = await Process.run('/system/bin/getprop', [
+      'ro.build.version.sdk',
+    ]);
+    if (result.exitCode != 0) {
+      throw StateError('Unable to read the Android API level.');
+    }
+    androidApiLevel = int.parse(result.stdout.toString().trim());
+  }
 
   testWidgets(
     'renderer crashes do not terminate the app and views can be replaced',
@@ -118,6 +128,6 @@ void main() {
       }
       expect(retained, hasLength(6));
     },
-    skip: !Platform.isAndroid,
+    skip: androidApiLevel < 26,
   );
 }

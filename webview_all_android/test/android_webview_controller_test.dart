@@ -375,6 +375,77 @@ void main() {
     android_webview.PigeonOverrides.pigeon_reset();
   });
 
+  test(
+    'renderer loss during bridge initialization prevents JavaScript evaluation',
+    () async {
+      final ready = Completer<void>();
+      final view = MockWebView();
+      when(view.addJavaScriptChannel(any)).thenAnswer((_) => ready.future);
+      void Function(android_webview.WebView, bool, String?)? terminated;
+      final controller = createControllerWithMocks(
+        mockWebView: view,
+        onRendererCallbackCreated: (callback) => terminated = callback,
+      );
+      final pending = controller.callAsyncJavaScript(
+        JavaScriptInvocationParams(
+          functionBody: 'return 42;',
+          timeout: const Duration(milliseconds: 200),
+        ),
+      );
+      final aborted = expectLater(
+        pending,
+        throwsA(
+          isA<JavaScriptExecutionException>().having(
+            (error) => error.name,
+            'name',
+            'AbortError',
+          ),
+        ),
+      );
+      terminated!(view, true, 'https://example.test/');
+      try {
+        await aborted.timeout(const Duration(seconds: 1));
+        verifyNever(view.evaluateJavascript(any));
+      } finally {
+        ready.complete();
+      }
+    },
+  );
+
+  test(
+    'closing during bridge initialization prevents JavaScript evaluation',
+    () async {
+      final ready = Completer<void>();
+      final view = MockWebView();
+      when(view.addJavaScriptChannel(any)).thenAnswer((_) => ready.future);
+      final controller = createControllerWithMocks(mockWebView: view);
+      final pending = controller.callAsyncJavaScript(
+        JavaScriptInvocationParams(
+          functionBody: 'return 42;',
+          timeout: const Duration(milliseconds: 200),
+        ),
+      );
+      final aborted = expectLater(
+        pending,
+        throwsA(
+          isA<JavaScriptExecutionException>().having(
+            (error) => error.name,
+            'name',
+            'AbortError',
+          ),
+        ),
+      );
+      final closing = controller.closeWebViewSession();
+      try {
+        await aborted.timeout(const Duration(seconds: 1));
+        verifyNever(view.evaluateJavascript(any));
+      } finally {
+        ready.complete();
+        await closing;
+      }
+    },
+  );
+
   for (final didCrash in <bool>[true, false]) {
     test(
       'renderer loss reports a main-frame termination and aborts JavaScript ($didCrash)',
