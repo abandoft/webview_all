@@ -323,7 +323,8 @@ class WebViewResourceBridge {
     if (_requests.length >= 64 || _requests.containsKey(id)) {
       return _emptyResponse(503);
     }
-    final body = _ResourceBody(requestTimeout);
+    // A longer request deadline must not extend delegate/session cleanup.
+    final body = _ResourceBody(_defaultRequestTimeout);
     _requests[id] = body;
     final headers = <String, String>{};
     for (final entry

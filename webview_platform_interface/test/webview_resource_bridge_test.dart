@@ -104,6 +104,45 @@ void main() {
     },
   );
 
+  for (final operation in <String>['cancel', 'replace', 'close']) {
+    test(
+      '$operation keeps the cleanup deadline with a long request timeout',
+      () async {
+        await bridge.close();
+        bridge = WebViewResourceBridge(
+          scheme: 'webview-all-resource',
+          configure: (_, _, _) async {},
+          requestTimeout: const Duration(milliseconds: 10),
+        );
+        final cancellation = Completer<void>();
+        final source = StreamController<List<int>>(
+          onCancel: () => cancellation.future,
+        );
+        await bridge.update(
+          WebViewResourceDelegate(
+            requestTimeout: const Duration(hours: 1),
+            onRequest: (_) => WebViewResourceResponse.stream(
+              source.stream,
+              mimeType: 'application/octet-stream',
+            ),
+          ),
+        );
+        expect((await open())['statusCode'], 200);
+        final cleanup = switch (operation) {
+          'cancel' => native('cancel', <String, Object?>{'id': 'one'}),
+          'replace' => bridge.update(null),
+          _ => bridge.close(),
+        };
+        try {
+          await cleanup.timeout(const Duration(seconds: 2));
+        } finally {
+          cancellation.complete();
+          unawaited(source.close());
+        }
+      },
+    );
+  }
+
   test('invalid delegate deadlines preserve the active delegate', () async {
     await serve(
       (_) => WebViewResourceResponse.bytes(
