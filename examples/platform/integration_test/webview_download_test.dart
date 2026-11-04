@@ -175,7 +175,15 @@ void main() {
       await installNavigationDelegate();
       await controller.loadRequest(origin.resolve('page'));
       await loaded.future.timeout(const Duration(seconds: 20));
-      expect(await controller.getTitle(), 'download origin');
+      // WebKit can finish navigation before its native title has updated.
+      final titleWait = Stopwatch()..start();
+      String? title;
+      do {
+        title = await controller.getTitle();
+        if (title == 'download origin') break;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      } while (titleWait.elapsed < const Duration(seconds: 10));
+      expect(title, 'download origin');
 
       await controller.loadRequest(origin.resolve('attachment'));
       final saved = await next.future.timeout(const Duration(seconds: 25));
