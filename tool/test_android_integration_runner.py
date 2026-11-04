@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -45,7 +46,8 @@ class AndroidIntegrationRunnerTest(unittest.TestCase):
             file.write_text(FAKE)
             file.chmod(0o700)
         self.state = self.root / 'calls'
-        self.env = dict(os.environ, PATH=f'{self.root}{os.pathsep}{os.environ["PATH"]}',
+        test_path = os.pathsep.join([str(self.root), str(Path(sys.executable).parent), os.defpath])
+        self.env = dict(os.environ, PATH=test_path,
                         RUNNER_TEMP=str(self.root), FAKE_STATE=str(self.state))
 
     def run_tool(self, name, *args):
