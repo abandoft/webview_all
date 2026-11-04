@@ -62,6 +62,17 @@ class AndroidIntegrationRunnerTest(unittest.TestCase):
         self.assertNotEqual(self.run_tool('prepare_android_test_image.sh').returncode, 0)
         self.assertEqual(self.state.read_text(), '3')
 
+    def test_sdk_tools_resolve_from_android_home_when_absent_from_path(self):
+        tools = self.root / 'android-sdk/cmdline-tools/latest/bin'
+        tools.mkdir(parents=True)
+        (self.root / 'sdkmanager').rename(tools / 'sdkmanager')
+        self.env.pop('ANDROID_SDK_ROOT', None)
+        self.env['ANDROID_HOME'] = str(self.root / 'android-sdk')
+        self.env['SDK_SUCCESS_AT'] = '1'
+        result = self.run_tool('prepare_android_test_image.sh')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.state.read_text(), '1')
+
     def test_license_failure_is_reported_before_installation(self):
         self.env['LICENSE_STATUS'] = '2'
         self.assertEqual(self.run_tool('prepare_android_test_image.sh').returncode, 2)
