@@ -24,6 +24,7 @@ import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebView.WebViewTransport;
 import android.webkit.WebViewClient;
 import com.abandoft.webview_all_android.WebChromeClientProxyApi.WebChromeClientImpl;
@@ -99,6 +100,11 @@ public class WebChromeClientTest {
         onCreateWindowWebViewClient.shouldOverrideUrlLoading(
             mockOnCreateWindowWebView, mockRequest));
     verify(mockWebView).loadUrl("https://www.google.com");
+
+    assertTrue(onCreateWindowWebViewClient.onRenderProcessGone(
+        mockOnCreateWindowWebView, mock(RenderProcessGoneDetail.class)));
+    verify(mockOnCreateWindowWebView).destroy();
+    verify(mockWebView, never()).destroy();
   }
 
   @Test

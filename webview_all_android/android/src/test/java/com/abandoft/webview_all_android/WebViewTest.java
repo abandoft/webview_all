@@ -23,6 +23,9 @@ import android.webkit.DownloadListener;
 import android.webkit.ValueCallback;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.RenderProcessGoneDetail;
+import android.view.ViewGroup;
+import java.lang.reflect.Field;
 import android.webkit.WebViewClient;
 import androidx.webkit.WebViewFeature;
 import io.flutter.embedding.android.FlutterView;
@@ -33,6 +36,39 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 
 public class WebViewTest {
+  @Test
+  public void defaultClientHandlesRendererLossAndReleasesOnlyTheAffectedView() throws Exception {
+    for (boolean didCrash : new boolean[] {true, false}) {
+      final WebViewProxyApi api = mock(WebViewProxyApi.class);
+      when(api.getPigeonRegistrar()).thenReturn(new TestProxyApiRegistrar());
+      final WebViewProxyApi.WebViewPlatformView view =
+          new WebViewProxyApi.WebViewPlatformView(api);
+      final RenderProcessGoneDetail detail = mock(RenderProcessGoneDetail.class);
+      when(detail.didCrash()).thenReturn(didCrash);
+      view.setWebViewClient(null);
+      final Field field = WebViewProxyApi.WebViewPlatformView.class.getDeclaredField("currentWebViewClient");
+      field.setAccessible(true);
+      final WebViewClient client = (WebViewClient) field.get(view);
+
+      assertTrue(client.onRenderProcessGone(view, detail));
+      assertTrue(client.onRenderProcessGone(view, detail));
+
+      verify(api).onRenderProcessGone(eq(view), eq(didCrash), eq(null), any());
+    }
+  }
+
+  @Test
+  public void rendererCleanupDetachesAndDestroysTheAffectedView() {
+    final WebView view = mock(WebView.class);
+    final ViewGroup parent = mock(ViewGroup.class);
+    when(view.getParent()).thenReturn(parent);
+
+    WebViewProxyApi.destroyAfterRendererLoss(view);
+
+    verify(parent).removeView(view);
+    verify(view).destroy();
+  }
+
   @SuppressWarnings("deprecation")
   @Test
   public void limitedIncognitoUsesPerViewSettingsWithoutClearingSharedCache() {

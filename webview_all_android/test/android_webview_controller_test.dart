@@ -112,6 +112,8 @@ void main() {
     })?
     createWebChromeClient,
     android_webview.WebView? mockWebView,
+    void Function(void Function(android_webview.WebView, bool, String?)?)?
+    onRendererCallbackCreated,
     android_webview.WebViewClient? mockWebViewClient,
     android_webview.WebStorage? mockWebStorage,
     android_webview.WebSettings? mockSettings,
@@ -201,6 +203,8 @@ void main() {
         }) => MockWebChromeClient();
     android_webview.PigeonOverrides.webView_new =
         ({
+          void Function(android_webview.WebView, bool, String?)?
+          onRenderProcessGone,
           dynamic Function(
             android_webview.WebView,
             int left,
@@ -209,7 +213,10 @@ void main() {
             int oldTop,
           )?
           onScrollChanged,
-        }) => nonNullMockWebView;
+        }) {
+          onRendererCallbackCreated?.call(onRenderProcessGone);
+          return nonNullMockWebView;
+        };
     android_webview.PigeonOverrides.webViewClient_new =
         ({
           void Function(
@@ -367,6 +374,62 @@ void main() {
   setUp(() {
     android_webview.PigeonOverrides.pigeon_reset();
   });
+
+  for (final didCrash in <bool>[true, false]) {
+    test(
+      'renderer loss reports a main-frame termination and aborts JavaScript ($didCrash)',
+      () async {
+        void Function(android_webview.WebView, bool, String?)? terminated;
+        final view = MockWebView();
+        final controller = createControllerWithMocks(
+          mockWebView: view,
+          onRendererCallbackCreated: (callback) => terminated = callback,
+        );
+        final errors = <WebResourceError>[];
+        android_webview.PigeonOverrides.downloadListener_new =
+            ({required onDownloadStart}) =>
+                android_webview.DownloadListener.pigeon_detached(
+                  onDownloadStart: onDownloadStart,
+                );
+        final delegate = AndroidNavigationDelegate(
+          const PlatformNavigationDelegateCreationParams(),
+        );
+        await delegate.setOnWebResourceError(errors.add);
+        await controller.setPlatformNavigationDelegate(delegate);
+        final pending = controller.callAsyncJavaScript(
+          JavaScriptInvocationParams(
+            functionBody: 'return new Promise(() => {});',
+          ),
+        );
+        final aborted = expectLater(
+          pending,
+          throwsA(isA<JavaScriptExecutionException>()),
+        );
+        await Future<void>.delayed(Duration.zero);
+        terminated!(view, didCrash, 'https://example.test/');
+        await aborted;
+        expect(errors, hasLength(1));
+        expect(
+          errors.single.errorType,
+          WebResourceErrorType.webContentProcessTerminated,
+        );
+        expect(errors.single.isForMainFrame, isTrue);
+        expect(errors.single.url, 'https://example.test/');
+        expect(
+          errors.single.description,
+          contains(didCrash ? 'crashed' : 'system'),
+        );
+        terminated!(view, didCrash, 'https://example.test/');
+        expect(errors, hasLength(1));
+        await expectLater(
+          controller.callAsyncJavaScript(
+            JavaScriptInvocationParams(functionBody: 'return 1;'),
+          ),
+          throwsA(isA<JavaScriptExecutionException>()),
+        );
+      },
+    );
+  }
 
   group('AndroidWebViewController', () {
     AndroidJavaScriptChannelParams

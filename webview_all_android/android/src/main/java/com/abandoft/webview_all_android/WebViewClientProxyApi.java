@@ -7,6 +7,7 @@ package com.abandoft.webview_all_android;
 import android.graphics.Bitmap;
 import android.view.KeyEvent;
 import android.webkit.HttpAuthHandler;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -26,6 +27,14 @@ public class WebViewClientProxyApi extends PigeonApiWebViewClient {
     @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
       return ResourceBridge.intercept(view, request);
+    }
+
+    @Override
+    public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+      if (view instanceof WebViewProxyApi.WebViewPlatformView) {
+        return ((WebViewProxyApi.WebViewPlatformView) view).handleRenderProcessGone(detail);
+      }
+      return super.onRenderProcessGone(view, detail);
     }
 
     private final WebViewClientProxyApi api;
