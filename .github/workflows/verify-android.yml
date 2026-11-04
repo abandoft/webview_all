@@ -78,4 +78,7 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
-          script: cd examples/platform && flutter test integration_test/webview_resource_test.dart -d emulator-5554
+          script: |
+            cd examples/platform
+            flutter test integration_test/webview_resource_test.dart -d emulator-5554
+            flutter test integration_test/android_renderer_recovery_test.dart -d emulator-5554
