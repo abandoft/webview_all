@@ -24,6 +24,7 @@ jobs:
   apple:
     name: Apple native builds (${{ matrix.flutter }})
     runs-on: macos-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -81,6 +82,7 @@ jobs:
 
       - name: Test native downloads and safe file destinations
         if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
         working-directory: examples/platform
         run: |
           flutter pub get
@@ -88,11 +90,13 @@ jobs:
 
       - name: Test application resource URLs, ranges and streaming
         if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
         working-directory: examples/platform
         run: flutter test integration_test/webview_resource_test.dart -d macos
 
       - name: Run macOS integration tests
         if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
         working-directory: examples/platform
         run: |
           flutter pub get
@@ -100,11 +104,13 @@ jobs:
 
       - name: Test session isolation, cleanup and titles
         if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
         working-directory: examples/platform
         run: flutter test integration_test/webview_session_test.dart -d macos
 
-      - name: Test iOS callbacks, gestures and application resources
+      - name: Prepare iOS test simulator
         if: matrix.flutter == '3.47.x'
+        timeout-minutes: 10
         shell: bash
         run: |
           set -euo pipefail
@@ -125,9 +131,14 @@ jobs:
           print(simulator)
           PY
           simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
-          trap 'xcrun simctl delete "$simulator_id"' EXIT
           xcrun simctl boot "$simulator_id"
           xcrun simctl bootstatus "$simulator_id" -b
+
+      - name: Run iOS native Swift tests
+        if: matrix.flutter == '3.47.x'
+        timeout-minutes: 15
+        run: |
+          simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
           python3 tool/add_swift_tests_to_xcode_target.py \
             webview_all/example/ios/Runner.xcodeproj \
             RunnerTests \
@@ -138,6 +149,12 @@ jobs:
             -destination "platform=iOS Simulator,id=$simulator_id" \
             -only-testing:RunnerTests -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO -quiet
+
+      - name: Test iOS gestures
+        if: matrix.flutter == '3.47.x'
+        timeout-minutes: 20
+        run: |
+          simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
           cd examples/platform
           flutter pub get
           flutter build ios --simulator --debug --target test_driver/webview_gesture_app.dart
@@ -152,5 +169,25 @@ jobs:
             FLUTTER_TARGET=test_driver/webview_gesture_app.dart \
             -only-testing:WebViewGestureUITests -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO -quiet
-          cd examples/platform
+
+      - name: Test iOS application resources
+        if: matrix.flutter == '3.47.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: |
+          simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
+          # Start Flutter's log reader after XCTest has released the simulator.
+          xcrun simctl shutdown "$simulator_id" || true
+          xcrun simctl boot "$simulator_id"
+          xcrun simctl bootstatus "$simulator_id" -b
           flutter test integration_test/webview_resource_test.dart -d "$simulator_id"
+
+      - name: Clean up iOS test simulator
+        if: always() && matrix.flutter == '3.47.x'
+        timeout-minutes: 3
+        run: |
+          if [[ -s "$RUNNER_TEMP/webview-ios-simulator" ]]; then
+            simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
+            xcrun simctl shutdown "$simulator_id" || true
+            xcrun simctl delete "$simulator_id"
+          fi
