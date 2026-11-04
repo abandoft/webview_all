@@ -174,10 +174,11 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
           const auto timeout =
               args->find(flutter::EncodableValue("requestTimeoutMillis"));
           if (timeout != args->end()) {
-            if (const auto *value = std::get_if<int32_t>(&timeout->second)) {
-              request_timeout_millis = *value;
-            } else if (const auto *value = std::get_if<int64_t>(&timeout->second)) {
-              request_timeout_millis = *value;
+            if (const auto *timeout32 = std::get_if<int32_t>(&timeout->second)) {
+              request_timeout_millis = *timeout32;
+            } else if (const auto *timeout64 =
+                           std::get_if<int64_t>(&timeout->second)) {
+              request_timeout_millis = *timeout64;
             } else {
               result->Error("invalid_argument", "Invalid resource timeout.");
               return;
