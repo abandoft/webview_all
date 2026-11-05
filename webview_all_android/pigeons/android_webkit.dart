@@ -320,6 +320,10 @@ abstract class CookieManager {
 abstract class WebView extends View {
   WebView();
 
+  /// Reports renderer termination. The native view has been destroyed and must
+  /// be replaced; it cannot be reused after this callback.
+  late void Function(bool didCrash, String? url)? onRenderProcessGone;
+
   /// This is called in response to an internal scroll in this view (i.e., the
   /// view scrolled its own contents).
   late void Function(int left, int top, int oldLeft, int oldTop)?

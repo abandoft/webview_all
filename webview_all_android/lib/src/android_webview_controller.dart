@@ -262,6 +262,12 @@ class AndroidWebViewController extends PlatformWebViewController
   }
 
   Future<void>? _limitedIncognitoReady;
+  bool _rendererGone = false;
+  final Completer<void> _unavailableSignal = Completer<void>();
+  // Share this wait so repeated invocations do not retain termination listeners.
+  late final Future<void> _asyncJavaScriptInitialization = Future.any<void>(
+    <Future<void>>[_asyncJavaScriptBridgeReady, _unavailableSignal.future],
+  );
 
   @override
   Future<void> prepareSession() async {
@@ -276,6 +282,39 @@ class AndroidWebViewController extends PlatformWebViewController
 
   /// The native [android_webview.WebView] being controlled.
   late final android_webview.WebView _webView = android_webview.WebView(
+    onRenderProcessGone: withWeakReferenceTo(this, (weakThis) {
+      return (_, bool didCrash, String? url) {
+        final target = weakThis.target;
+        if (target == null ||
+            target._rendererGone ||
+            target._offscreenCloseFuture != null) {
+          return;
+        }
+        target._rendererGone = true;
+        if (!target._unavailableSignal.isCompleted) {
+          target._unavailableSignal.complete();
+        }
+        target._cancelPendingAsyncJavaScriptInvocations(
+          const JavaScriptExecutionException(
+            name: 'AbortError',
+            message: 'The WebView renderer terminated.',
+          ),
+        );
+        final disposal = target.disposeResourceBridge();
+        if (disposal != null) unawaited(disposal);
+        target._currentNavigationDelegate?._onWebResourceError?.call(
+          WebResourceError(
+            errorCode: -1,
+            errorType: WebResourceErrorType.webContentProcessTerminated,
+            description: didCrash
+                ? 'The WebView renderer crashed.'
+                : 'The WebView renderer was terminated by the system.',
+            isForMainFrame: true,
+            url: url,
+          ),
+        );
+      };
+    }),
     onScrollChanged: withWeakReferenceTo(this, (
       WeakReference<AndroidWebViewController> weakReference,
     ) {
@@ -881,9 +920,26 @@ class AndroidWebViewController extends PlatformWebViewController
     return num.tryParse(result) ?? result;
   }
 
+  void _throwIfWebViewUnavailable() {
+    if (_rendererGone) {
+      throw const JavaScriptExecutionException(
+        name: 'AbortError',
+        message: 'The WebView renderer terminated.',
+      );
+    }
+    if (_offscreenCloseFuture != null) {
+      throw const JavaScriptExecutionException(
+        name: 'AbortError',
+        message: 'The WebView session was closed.',
+      );
+    }
+  }
+
   @override
   Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
-    await _asyncJavaScriptBridgeReady;
+    _throwIfWebViewUnavailable();
+    await _asyncJavaScriptInitialization;
+    _throwIfWebViewUnavailable();
     final String identifier = _createAndroidOpaqueIdentifier(
       'async_${++_nextAsyncJavaScriptInvocationIdentifier}',
     );
@@ -938,6 +994,7 @@ class AndroidWebViewController extends PlatformWebViewController
   }
 
   Future<void> _closeOffscreenWebView() async {
+    if (!_unavailableSignal.isCompleted) _unavailableSignal.complete();
     final resourceDisposal = disposeResourceBridge();
     if (resourceDisposal != null) await resourceDisposal;
     _downloadDelegateGeneration++;

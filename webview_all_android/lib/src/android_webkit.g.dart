@@ -64,6 +64,8 @@ List<Object?> wrapResponse({
 class PigeonOverrides {
   /// Overrides [WebView.new].
   static WebView Function({
+    void Function(WebView pigeon_instance, bool didCrash, String? url)?
+    onRenderProcessGone,
     void Function(
       WebView pigeon_instance,
       int left,
@@ -1751,6 +1753,8 @@ class WebView extends View {
   factory WebView({
     BinaryMessenger? pigeon_binaryMessenger,
     PigeonInstanceManager? pigeon_instanceManager,
+    void Function(WebView pigeon_instance, bool didCrash, String? url)?
+    onRenderProcessGone,
     void Function(
       WebView pigeon_instance,
       int left,
@@ -1761,11 +1765,15 @@ class WebView extends View {
     onScrollChanged,
   }) {
     if (PigeonOverrides.webView_new != null) {
-      return PigeonOverrides.webView_new!(onScrollChanged: onScrollChanged);
+      return PigeonOverrides.webView_new!(
+        onRenderProcessGone: onRenderProcessGone,
+        onScrollChanged: onScrollChanged,
+      );
     }
     return WebView.pigeon_new(
       pigeon_binaryMessenger: pigeon_binaryMessenger,
       pigeon_instanceManager: pigeon_instanceManager,
+      onRenderProcessGone: onRenderProcessGone,
       onScrollChanged: onScrollChanged,
     );
   }
@@ -1774,6 +1782,7 @@ class WebView extends View {
   WebView.pigeon_new({
     super.pigeon_binaryMessenger,
     super.pigeon_instanceManager,
+    this.onRenderProcessGone,
     this.onScrollChanged,
   }) : super.pigeon_detached() {
     final int pigeonVar_instanceIdentifier = pigeon_instanceManager
@@ -1810,11 +1819,35 @@ class WebView extends View {
   WebView.pigeon_detached({
     super.pigeon_binaryMessenger,
     super.pigeon_instanceManager,
+    this.onRenderProcessGone,
     this.onScrollChanged,
   }) : super.pigeon_detached();
 
   late final _PigeonInternalProxyApiBaseCodec _pigeonVar_codecWebView =
       _PigeonInternalProxyApiBaseCodec(pigeon_instanceManager);
+
+  /// Reports renderer termination. The native view has been destroyed and must
+  /// be replaced; it cannot be reused after this callback.
+  ///
+  /// For the associated Native object to be automatically garbage collected,
+  /// it is required that the implementation of this `Function` doesn't have a
+  /// strong reference to the encapsulating class instance. When this `Function`
+  /// references a non-local variable, it is strongly recommended to access it
+  /// with a `WeakReference`:
+  ///
+  /// ```dart
+  /// final WeakReference weakMyVariable = WeakReference(myVariable);
+  /// final WebView instance = WebView(
+  ///  onRenderProcessGone: (WebView pigeon_instance, ...) {
+  ///    print(weakMyVariable?.target);
+  ///  },
+  /// );
+  /// ```
+  ///
+  /// Alternatively, [PigeonInstanceManager.removeWeakReference] can be used to
+  /// release the associated Native object manually.
+  final void Function(WebView pigeon_instance, bool didCrash, String? url)?
+  onRenderProcessGone;
 
   /// This is called in response to an internal scroll in this view (i.e., the
   /// view scrolled its own contents).
@@ -1853,6 +1886,8 @@ class WebView extends View {
     BinaryMessenger? pigeon_binaryMessenger,
     PigeonInstanceManager? pigeon_instanceManager,
     WebView Function()? pigeon_newInstance,
+    void Function(WebView pigeon_instance, bool didCrash, String? url)?
+    onRenderProcessGone,
     void Function(
       WebView pigeon_instance,
       int left,
@@ -1889,6 +1924,35 @@ class WebView extends View {
                       ),
                   arg_pigeon_instanceIdentifier,
                 );
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'com.abandoft.pigeon.webview_all_android.WebView.onRenderProcessGone',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (pigeon_clearHandlers) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final WebView arg_pigeon_instance = args[0]! as WebView;
+          final bool arg_didCrash = args[1]! as bool;
+          final String? arg_url = args[2] as String?;
+          try {
+            (onRenderProcessGone ?? arg_pigeon_instance.onRenderProcessGone)
+                ?.call(arg_pigeon_instance, arg_didCrash, arg_url);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
@@ -2628,6 +2692,7 @@ class WebView extends View {
     return WebView.pigeon_detached(
       pigeon_binaryMessenger: pigeon_binaryMessenger,
       pigeon_instanceManager: pigeon_instanceManager,
+      onRenderProcessGone: onRenderProcessGone,
       onScrollChanged: onScrollChanged,
     );
   }

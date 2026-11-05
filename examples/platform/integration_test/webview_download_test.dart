@@ -106,7 +106,8 @@ void main() {
       addTearDown(session.close);
       final controller = session.controller;
       final results = <WebViewDownloadResult>[];
-      final errors = <WebResourceError>[];
+      final errors = <Map<String, Object?>>[];
+      var requestedUrl = '';
       var next = Completer<WebViewDownloadResult>();
       var target = '${root.path}/saved.txt';
       var action = WebViewDownloadAction.saveToFile;
@@ -160,8 +161,21 @@ void main() {
       Future<void> installNavigationDelegate() =>
           controller.setNavigationDelegate(
             NavigationDelegate(
-              onNavigationRequest: (_) => NavigationDecision.navigate,
-              onWebResourceError: errors.add,
+              onNavigationRequest: (request) {
+                requestedUrl = request.url;
+                return NavigationDecision.navigate;
+              },
+              onWebResourceError: (error) {
+                errors.add(<String, Object?>{
+                  'errorCode': error.errorCode,
+                  'errorType': error.errorType?.name,
+                  'description': error.description,
+                  'url': error.url,
+                  'isForMainFrame': error.isForMainFrame,
+                  'requestedUrl': requestedUrl,
+                  'completedDownloads': results.length,
+                });
+              },
               onPageFinished: (url) {
                 if (url == origin.resolve('page').toString() &&
                     !loaded.isCompleted) {

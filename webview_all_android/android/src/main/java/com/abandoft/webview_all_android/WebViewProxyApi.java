@@ -12,12 +12,14 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewParent;
 import android.webkit.DownloadListener;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.webkit.ScriptHandler;
 import androidx.webkit.WebMessageCompat;
 import androidx.webkit.WebViewCompat;
@@ -83,6 +85,7 @@ public class WebViewProxyApi extends PigeonApiWebView {
     private final WebViewProxyApi api;
 
     private boolean destroyed;
+    private boolean renderProcessGone;
     ResourceBridge resourceBridge;
     boolean limitedIncognito;
 
@@ -90,21 +93,44 @@ public class WebViewProxyApi extends PigeonApiWebView {
 
     private WebChromeClientProxyApi.SecureWebChromeClient currentWebChromeClient;
 
+    private final WebViewClient defaultWebViewClient =
+        new WebViewClient() {
+          @Override
+          public android.webkit.WebResourceResponse shouldInterceptRequest(
+              WebView view, android.webkit.WebResourceRequest request) {
+            return ResourceBridge.intercept(view, request);
+          }
+
+          @Override
+          public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+            return handleRenderProcessGone(detail);
+          }
+        };
+
     WebViewPlatformView(@NonNull WebViewProxyApi api) {
       super(api.getPigeonRegistrar().getContext());
       this.api = api;
-      currentWebViewClient =
-          new WebViewClient() {
-            @Override
-            public android.webkit.WebResourceResponse shouldInterceptRequest(
-                WebView view, android.webkit.WebResourceRequest request) {
-              return ResourceBridge.intercept(view, request);
-            }
-          };
+      currentWebViewClient = defaultWebViewClient;
       currentWebChromeClient = new WebChromeClientProxyApi.SecureWebChromeClient();
 
       setWebViewClient(currentWebViewClient);
       setWebChromeClient(currentWebChromeClient);
+    }
+
+    // Every associated WebView must acknowledge renderer loss, including views
+    // without a navigation delegate and views that are no longer mounted.
+    @RequiresApi(26)
+    boolean handleRenderProcessGone(@NonNull RenderProcessGoneDetail detail) {
+      if (destroyed) {
+        return true;
+      }
+      renderProcessGone = true;
+      final String url = getUrl();
+      final boolean didCrash = detail.didCrash();
+      destroyAfterRendererLoss(this);
+      api.getPigeonRegistrar()
+          .runOnMainThread(() -> api.onRenderProcessGone(this, didCrash, url, reply -> null));
+      return true;
     }
 
     @Nullable
@@ -136,7 +162,7 @@ public class WebViewProxyApi extends PigeonApiWebView {
       api.removeAllDocumentStartJavaScripts(this);
       api.removeAllJavaScriptChannels(this);
       try {
-        if (limitedIncognito) {
+        if (limitedIncognito && !renderProcessGone) {
           clearHistory();
           clearFormData();
         }
@@ -176,7 +202,10 @@ public class WebViewProxyApi extends PigeonApiWebView {
     }
 
     @Override
-    public void setWebViewClient(@NonNull WebViewClient webViewClient) {
+    public void setWebViewClient(@Nullable WebViewClient webViewClient) {
+      if (webViewClient == null) {
+        webViewClient = defaultWebViewClient;
+      }
       super.setWebViewClient(webViewClient);
       currentWebViewClient = webViewClient;
       currentWebChromeClient.setWebViewClient(webViewClient);
@@ -210,6 +239,14 @@ public class WebViewProxyApi extends PigeonApiWebView {
                   api.onScrollChanged(
                       this, (long) left, (long) top, (long) oldLeft, (long) oldTop, reply -> null));
     }
+  }
+
+  static void destroyAfterRendererLoss(@NonNull WebView view) {
+    final android.view.ViewParent parent = view.getParent();
+    if (parent instanceof android.view.ViewGroup) {
+      ((android.view.ViewGroup) parent).removeView(view);
+    }
+    view.destroy();
   }
 
   public WebViewProxyApi(@NonNull ProxyApiRegistrar pigeonRegistrar) {

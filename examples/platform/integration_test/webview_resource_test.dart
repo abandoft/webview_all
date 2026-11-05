@@ -5,13 +5,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:integration_test/integration_test.dart';
 import 'package:webview_all/webview_all.dart';
 import 'package:webview_all_linux/webview_all_linux.dart';
 import 'package:webview_all_wkwebview/webview_all_wkwebview.dart';
 
+import 'support/resource_test_binding.dart';
+
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  initializeResourceTestBinding();
 
   testWidgets(
     'application resources preserve ranges, streaming and cancellation',

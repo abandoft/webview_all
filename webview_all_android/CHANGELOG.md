@@ -1,3 +1,7 @@
+## Unreleased
+
+* Handle Android renderer termination without terminating the host application, and report it through `onWebResourceError` as `webContentProcessTerminated`.
+
 ## 1.4.12
 
 * Fix Linux WebViews unexpectedly disappearing inside rectangular, rounded, or oval clipping containers.

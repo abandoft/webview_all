@@ -20,10 +20,23 @@ import android.webkit.SslErrorHandler;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
+import android.webkit.RenderProcessGoneDetail;
 import com.abandoft.webview_all_android.WebViewClientProxyApi.WebViewClientImpl;
 import org.junit.Test;
 
 public class WebViewClientTest {
+  @Test
+  public void delegatedClientHandlesRendererLossForOwnedWebViews() {
+    final WebViewClientImpl client = new WebViewClientImpl(mock(WebViewClientProxyApi.class));
+    final WebViewProxyApi.WebViewPlatformView view = mock(WebViewProxyApi.WebViewPlatformView.class);
+    final RenderProcessGoneDetail detail = mock(RenderProcessGoneDetail.class);
+    when(view.handleRenderProcessGone(detail)).thenReturn(true);
+
+    assertTrue(client.onRenderProcessGone(view, detail));
+
+    verify(view).handleRenderProcessGone(detail);
+  }
+
   @Test
   public void onPageStarted() {
     final WebViewClientProxyApi mockApi = mock(WebViewClientProxyApi.class);

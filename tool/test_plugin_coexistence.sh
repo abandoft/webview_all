@@ -67,7 +67,10 @@ case "$target" in
   android)
     (
       cd "$project_directory"
-      flutter build apk --debug --target-platform android-arm64
+      bash "$repository_root/tool/build_android_example.sh" --target-platform android-arm64
+      if [[ "${CI:-}" == true ]]; then
+        android/gradlew -p android --stop
+      fi
     )
     ;;
   apple)

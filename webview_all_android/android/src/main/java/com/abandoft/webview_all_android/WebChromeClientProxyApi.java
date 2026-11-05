@@ -282,6 +282,13 @@ public class WebChromeClientProxyApi extends PigeonApiWebChromeClient {
       final WebViewClient windowWebViewClient =
           new WebViewClient() {
             @Override
+            public boolean onRenderProcessGone(
+                WebView windowWebView, android.webkit.RenderProcessGoneDetail detail) {
+              WebViewProxyApi.destroyAfterRendererLoss(windowWebView);
+              return true;
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(
                 @NonNull WebView windowWebView, @NonNull WebResourceRequest request) {
               if (!webViewClient.shouldOverrideUrlLoading(view, request)) {
