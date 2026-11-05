@@ -453,9 +453,10 @@ export class WebViewPlatformView extends PlatformView {
     return this.controller;
   }
 
-  configureResources(messenger: BinaryMessenger, name: string, host: string, enabled: boolean): void {
+  configureResources(messenger: BinaryMessenger, name: string, host: string, enabled: boolean,
+    requestTimeoutMillis: number = 30000): void {
     if (!this.resourceCoordinator) this.resourceCoordinator = new WebResourceCoordinator(messenger, this.controller);
-    this.resourceCoordinator.configure(name, host, enabled, this.documentStartScripts.isControllerAttached());
+    this.resourceCoordinator.configure(name, host, enabled, this.documentStartScripts.isControllerAttached(), requestTimeoutMillis);
   }
 
   getWebCookieManager(): web_webview.WebCookieManager {

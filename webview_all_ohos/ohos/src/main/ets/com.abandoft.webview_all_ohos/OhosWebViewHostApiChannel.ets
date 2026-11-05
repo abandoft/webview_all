@@ -150,7 +150,7 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
           return;
         case 'WebView.configureResources':
           this.webViewApi.configureResources(call.argument('instanceId'), call.argument('channel'),
-            call.argument('host'), call.argument('enabled'));
+            call.argument('host'), call.argument('enabled'), call.argument('requestTimeoutMillis') ?? 30000);
           result.success(null);
           return;
         case 'WebView.loadData':

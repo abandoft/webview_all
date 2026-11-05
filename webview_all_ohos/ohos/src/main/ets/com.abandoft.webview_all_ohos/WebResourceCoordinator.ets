@@ -29,6 +29,7 @@ export class WebResourceCoordinator {
   private channel?: MethodChannel;
   private host: string = '';
   private enabled: boolean = false;
+  private requestTimeoutMillis: number = 30000;
   private installed: boolean = false;
   private disposed: boolean = false;
   private nextId: number = 0;
@@ -55,9 +56,14 @@ export class WebResourceCoordinator {
     });
   }
 
-  configure(name: string, host: string, enabled: boolean, attached: boolean): void {
+  configure(name: string, host: string, enabled: boolean, attached: boolean,
+    requestTimeoutMillis: number = 30000): void {
     if (this.disposed) throw new Error('The resource coordinator was disposed.');
+    if (!Number.isInteger(requestTimeoutMillis) || requestTimeoutMillis < 1 || requestTimeoutMillis > 2147483647) {
+      throw new Error('Invalid resource timeout.');
+    }
     this.cancelAll();
+    this.requestTimeoutMillis = requestTimeoutMillis;
     this.channel = new MethodChannel(this.messenger, name);
     this.host = host;
     this.enabled = enabled;
@@ -72,7 +78,7 @@ export class WebResourceCoordinator {
 
   private arm(task: ResourceTask): void {
     if (task.timer >= 0) clearTimeout(task.timer);
-    task.timer = setTimeout((): void => this.fail(task), 30000);
+    task.timer = setTimeout((): void => this.fail(task), this.requestTimeoutMillis);
   }
 
   private begin(task: ResourceTask): void {

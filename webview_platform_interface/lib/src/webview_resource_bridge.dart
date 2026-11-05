@@ -74,9 +74,10 @@ class WebViewResourceBridge {
     required ResourceBridgeConfiguration configure,
     this.supportsStreaming = true,
     this.nativeBodies = false,
-    this.requestTimeout = const Duration(seconds: 30),
+    Duration requestTimeout = const Duration(seconds: 30),
     BinaryMessenger? binaryMessenger,
-  }) : _scheme = scheme,
+  }) : _defaultRequestTimeout = requestTimeout,
+       _scheme = scheme,
        _configure = configure,
        host = _newHost() {
     _baseUri = Uri(scheme: _scheme, host: host, path: '/');
@@ -114,7 +115,11 @@ class WebViewResourceBridge {
 
   /// Whether the native engine reads file/byte bodies without Dart chunk calls.
   final bool nativeBodies;
-  final Duration requestTimeout;
+  final Duration _defaultRequestTimeout;
+
+  /// Effective deadline shared with the native resource transport.
+  Duration get requestTimeout =>
+      _delegate?.requestTimeout ?? _defaultRequestTimeout;
   final String host;
   late final MethodChannel _channel;
   late Uri _baseUri;
@@ -168,6 +173,19 @@ class WebViewResourceBridge {
   }
 
   Future<void> update(WebViewResourceDelegate? delegate) {
+    final timeout = delegate?.requestTimeout;
+    if (timeout != null &&
+        (timeout.inMilliseconds < 1 ||
+            timeout.inMilliseconds > 2147483647 ||
+            timeout.inMicroseconds % 1000 != 0)) {
+      return Future<void>.error(
+        ArgumentError.value(
+          timeout,
+          'requestTimeout',
+          'Use a whole number of milliseconds between 1 and 2147483647.',
+        ),
+      );
+    }
     if (_closed) {
       return Future<void>.error(
         StateError('The resource bridge has been closed.'),
@@ -305,7 +323,8 @@ class WebViewResourceBridge {
     if (_requests.length >= 64 || _requests.containsKey(id)) {
       return _emptyResponse(503);
     }
-    final body = _ResourceBody(requestTimeout);
+    // A longer request deadline must not extend delegate/session cleanup.
+    final body = _ResourceBody(_defaultRequestTimeout);
     _requests[id] = body;
     final headers = <String, String>{};
     for (final entry

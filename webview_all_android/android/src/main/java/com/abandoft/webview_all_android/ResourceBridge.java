@@ -59,11 +59,19 @@ final class ResourceBridge {
               bridges.put(view, bridge);
               view.resourceBridge = bridge;
             }
+            Object timeoutValue = args.get("requestTimeoutMillis");
+            long requestTimeoutMillis =
+                timeoutValue instanceof Number ? ((Number) timeoutValue).longValue() : 30000;
+            if (requestTimeoutMillis < 1 || requestTimeoutMillis > 2147483647L) {
+              result.error("invalid_resource_configuration", "Invalid resource timeout.", null);
+              return;
+            }
             bridge.configure(
                 messenger,
                 (String) args.get("channel"),
                 (String) args.get("host"),
-                (Boolean) args.get("enabled"));
+                (Boolean) args.get("enabled"),
+                requestTimeoutMillis);
             result.success(null);
           });
     }
@@ -80,12 +88,19 @@ final class ResourceBridge {
   private volatile String host = "";
   private volatile boolean enabled;
   private volatile int generation;
+  private volatile long requestTimeoutMillis = 30000;
 
-  private void configure(BinaryMessenger messenger, String name, String host, boolean enabled) {
+  private void configure(
+      BinaryMessenger messenger,
+      String name,
+      String host,
+      boolean enabled,
+      long requestTimeoutMillis) {
     generation++;
     channel = new MethodChannel(messenger, name);
     this.host = host;
     this.enabled = enabled;
+    this.requestTimeoutMillis = requestTimeoutMillis;
   }
 
   static WebResourceResponse intercept(WebView view, WebResourceRequest request) {
@@ -233,7 +248,9 @@ final class ResourceBridge {
                   }
                 }));
     try {
-      if (!latch.await(30, TimeUnit.SECONDS)) throw new IOException("Resource callback timed out.");
+      if (!latch.await(requestTimeoutMillis, TimeUnit.MILLISECONDS)) {
+        throw new IOException("Resource callback timed out.");
+      }
     } catch (InterruptedException exception) {
       Thread.currentThread().interrupt();
       throw new IOException(exception);

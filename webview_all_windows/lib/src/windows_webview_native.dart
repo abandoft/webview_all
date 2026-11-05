@@ -234,13 +234,19 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   Future<void> configureResources(
     String channel,
     String host,
-    bool enabled,
-  ) async {
+    bool enabled, {
+    Duration requestTimeout = const Duration(seconds: 30),
+  }) async {
     if (_isDisposed) throw StateError('The Windows WebView was disposed.');
     await ready;
     await _methodChannel.invokeMethod<void>(
       'configureResources',
-      <String, Object?>{'channel': channel, 'host': host, 'enabled': enabled},
+      <String, Object?>{
+        'channel': channel,
+        'host': host,
+        'enabled': enabled,
+        'requestTimeoutMillis': requestTimeout.inMilliseconds,
+      },
     );
   }
 

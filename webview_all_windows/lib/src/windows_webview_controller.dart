@@ -166,7 +166,12 @@ class WindowsWebViewController extends PlatformWebViewController
   ) async {
     _throwIfDisposed();
     await _ensureInitialized();
-    await _webviewController.configureResources(channel, host, enabled);
+    await _webviewController.configureResources(
+      channel,
+      host,
+      enabled,
+      requestTimeout: resourceBridge.requestTimeout,
+    );
   }
 
   /// Creates a [WindowsWebViewController].

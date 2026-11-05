@@ -305,7 +305,7 @@ public:
   HRESULT SetDownloadDelegateEnabled(bool enabled);
   HRESULT ConfigureResources(flutter::BinaryMessenger *messenger,
                              const std::string &channel, const std::string &host,
-                             bool enabled);
+                             bool enabled, UINT request_timeout_millis = 30000);
   bool OpenDevTools();
   bool SetBackgroundColor(int32_t color);
   bool SetZoomFactor(double factor);

@@ -35,7 +35,14 @@ final class ResourceBridgeChannel {
             message: "Unknown WebView or resource configuration.", details: nil))
         return
       }
-      handler.configure(name: name, host: host, enabled: enabled, messenger: self.messenger)
+      let timeoutMillis = (args["requestTimeoutMillis"] as? NSNumber)?.int64Value ?? 30000
+      guard timeoutMillis >= 1 && timeoutMillis <= 2147483647 else {
+        result(FlutterError(code: "invalid_resource_configuration",
+          message: "Invalid resource timeout.", details: nil))
+        return
+      }
+      handler.configure(name: name, host: host, enabled: enabled, messenger: self.messenger,
+        requestTimeout: TimeInterval(timeoutMillis) / 1000)
       self.handlers.add(handler)
       result(nil)
     }
@@ -55,6 +62,7 @@ final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
   private var channel: FlutterMethodChannel?
   private var host = ""
   private var enabled = false
+  private var requestTimeout: TimeInterval = 30
   private var requests: [ObjectIdentifier: ResourceTask] = [:]
 
   private final class ResourceTask {
@@ -85,11 +93,13 @@ final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     (view.configuration.urlSchemeHandler(forURLScheme: scheme) as? ResourceSchemeHandler)?.close()
   }
 
-  func configure(name: String, host: String, enabled: Bool, messenger: FlutterBinaryMessenger) {
+  func configure(name: String, host: String, enabled: Bool, messenger: FlutterBinaryMessenger,
+    requestTimeout: TimeInterval = 30) {
     cancelAll()
     self.channel = FlutterMethodChannel(name: name, binaryMessenger: messenger)
     self.host = host
     self.enabled = enabled
+    self.requestTimeout = requestTimeout
   }
 
   func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
@@ -162,7 +172,7 @@ final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
       if let request { self?.fail(request, code: .timedOut) }
     }
     request.timeout = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: work)
+    DispatchQueue.main.asyncAfter(deadline: .now() + requestTimeout, execute: work)
   }
 
   private func remove(_ request: ResourceTask) -> Bool {

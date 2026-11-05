@@ -266,8 +266,9 @@ export class WebViewHostApiImpl {
     this.webView(instanceId).setDownloadDelegate(enabled, this.binaryMessenger, instanceId, this.context);
   }
 
-  configureResources(instanceId: number, channel: string, host: string, enabled: boolean): void {
-    this.webView(instanceId).configureResources(this.binaryMessenger, channel, host, enabled);
+  configureResources(instanceId: number, channel: string, host: string, enabled: boolean,
+    requestTimeoutMillis: number = 30000): void {
+    this.webView(instanceId).configureResources(this.binaryMessenger, channel, host, enabled, requestTimeoutMillis);
   }
 
   setWebChromeClient(instanceId: number, clientInstanceId: number): void {

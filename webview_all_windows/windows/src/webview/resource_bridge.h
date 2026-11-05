@@ -12,7 +12,7 @@ public:
   ~ResourceBridgeWindows();
   HRESULT Configure(flutter::BinaryMessenger *messenger,
                     const std::string &channel, const std::string &host,
-                    bool enabled);
+                    bool enabled, UINT request_timeout_millis = 30000);
 
 private:
   struct State;

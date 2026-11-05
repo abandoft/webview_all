@@ -79,6 +79,11 @@ jobs:
         working-directory: examples/platform
         run: flutter test integration_test/webview_resource_test.dart -d windows
 
+      - name: Test configurable application resource deadlines
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: flutter test integration_test/resource_request_timeout_test.dart -d windows
+
       - name: Test WebView2 scrolling after document rewrites
         if: matrix.flutter == '3.44.x'
         shell: powershell

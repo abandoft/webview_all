@@ -1,3 +1,7 @@
+## Unreleased
+
+* Add `WebViewResourceDelegate.requestTimeout` for callback and stream-read deadlines; the default remains 30 seconds.
+
 ## 1.4.12
 
 * Fix Linux WebViews unexpectedly disappearing inside rectangular, rounded, or oval clipping containers.

@@ -63,6 +63,130 @@ void main() {
   });
   tearDown(() async => bridge.close());
 
+  testWidgets(
+    'delegate deadlines override the bridge default for callbacks and reads',
+    (tester) async {
+      await bridge.close();
+      bridge = WebViewResourceBridge(
+        scheme: 'webview-all-resource',
+        configure: (_, _, _) async {},
+        requestTimeout: const Duration(milliseconds: 5),
+      );
+      await bridge.update(
+        WebViewResourceDelegate(
+          requestTimeout: const Duration(milliseconds: 30),
+          onRequest: (_) async {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+            return WebViewResourceResponse.stream(
+              Stream<List<int>>.fromFuture(
+                Future<List<int>>.delayed(
+                  const Duration(milliseconds: 20),
+                  () => <int>[1, 2, 3],
+                ),
+              ),
+              mimeType: 'application/octet-stream',
+            );
+          },
+        ),
+      );
+      expect(bridge.requestTimeout, const Duration(milliseconds: 30));
+      final response = open();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
+      expect((await response)['statusCode'], 200);
+      final body = readAll();
+      await tester.pump();
+      // The overall request takes 40 ms, but each operation stays below 30 ms.
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(await body, <int>[1, 2, 3]);
+      await bridge.update(null);
+      expect(bridge.requestTimeout, const Duration(milliseconds: 5));
+    },
+  );
+
+  for (final operation in <String>['cancel', 'replace', 'close']) {
+    test(
+      '$operation keeps the cleanup deadline with a long request timeout',
+      () async {
+        await bridge.close();
+        bridge = WebViewResourceBridge(
+          scheme: 'webview-all-resource',
+          configure: (_, _, _) async {},
+          requestTimeout: const Duration(milliseconds: 10),
+        );
+        final cancellation = Completer<void>();
+        final source = StreamController<List<int>>(
+          onCancel: () => cancellation.future,
+        );
+        await bridge.update(
+          WebViewResourceDelegate(
+            requestTimeout: const Duration(hours: 1),
+            onRequest: (_) => WebViewResourceResponse.stream(
+              source.stream,
+              mimeType: 'application/octet-stream',
+            ),
+          ),
+        );
+        expect((await open())['statusCode'], 200);
+        final cleanup = switch (operation) {
+          'cancel' => native('cancel', <String, Object?>{'id': 'one'}),
+          'replace' => bridge.update(null),
+          _ => bridge.close(),
+        };
+        try {
+          await cleanup.timeout(const Duration(seconds: 2));
+        } finally {
+          cancellation.complete();
+          unawaited(source.close());
+        }
+      },
+    );
+  }
+
+  test('invalid delegate deadlines preserve the active delegate', () async {
+    await serve(
+      (_) => WebViewResourceResponse.bytes(
+        Uint8List.fromList(<int>[42]),
+        mimeType: 'application/octet-stream',
+      ),
+    );
+    for (final timeout in <Duration>[
+      Duration.zero,
+      const Duration(milliseconds: -1),
+      const Duration(microseconds: 1001),
+      const Duration(milliseconds: 2147483648),
+    ]) {
+      await expectLater(
+        bridge.update(
+          WebViewResourceDelegate(
+            requestTimeout: timeout,
+            onRequest: (_) => null,
+          ),
+        ),
+        throwsArgumentError,
+      );
+    }
+    expect(bridge.requestTimeout, const Duration(seconds: 30));
+    expect((await open())['statusCode'], 200);
+    expect(await readAll(), <int>[42]);
+  });
+
+  test(
+    'a configured deadline expires without blocking a later request',
+    () async {
+      await bridge.update(
+        WebViewResourceDelegate(
+          requestTimeout: const Duration(milliseconds: 20),
+          onRequest: (_) => Completer<WebViewResourceResponse?>().future,
+        ),
+      );
+      expect((await open())['statusCode'], 504);
+      await serve((_) => null);
+      expect(bridge.requestTimeout, const Duration(seconds: 30));
+      expect((await open(id: 'next'))['statusCode'], 404);
+    },
+  );
+
   test(
     'isolates controllers and rejects unrelated URLs before invoking application code',
     () async {
