@@ -159,16 +159,13 @@ jobs:
             -only-testing:WebViewGestureUITests -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO -quiet
 
-      - name: Shut down the XCTest simulator before Flutter integration tests
-        if: matrix.flutter == '3.47.x'
-        timeout-minutes: 2
-        run: xcrun simctl shutdown "$(cat "$RUNNER_TEMP/webview-ios-simulator")"
-
       - name: Test iOS application resources
         if: matrix.flutter == '3.47.x'
         timeout-minutes: 15
         working-directory: examples/platform
-        run: bash ../../tool/run_ios_integration_test.sh integration_test/webview_resource_test.dart
+        run: |
+          simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
+          bash ../../tool/run_ios_integration_test.sh integration_test/webview_resource_test.dart "$simulator_id"
 
       - name: Upload iOS failure diagnostics
         if: failure() && matrix.flutter == '3.47.x'
