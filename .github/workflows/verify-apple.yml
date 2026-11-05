@@ -151,13 +151,16 @@ jobs:
           ruby tool/add_ios_ui_test_target.rb \
             examples/platform/ios/Runner.xcodeproj Runner \
             examples/platform/ios/WebViewGestureUITests
+          diagnostics="$RUNNER_TEMP/webview-all-ios-diagnostics/gestures"
+          mkdir -p "$diagnostics"
           xcodebuild test \
             -workspace examples/platform/ios/Runner.xcworkspace \
             -scheme WebViewGestureUITests -configuration Debug \
             -destination "platform=iOS Simulator,id=$simulator_id" \
             FLUTTER_TARGET=test_driver/webview_gesture_app.dart \
             -only-testing:WebViewGestureUITests -parallel-testing-enabled NO \
-            CODE_SIGNING_ALLOWED=NO -quiet
+            -resultBundlePath "$diagnostics/gestures.xcresult" \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$diagnostics/xcodebuild.log"
 
       - name: Test iOS application resources
         if: matrix.flutter == '3.47.x'

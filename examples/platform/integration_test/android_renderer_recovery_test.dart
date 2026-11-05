@@ -7,11 +7,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:webview_all/webview_all.dart';
 
-Future<void> main() async {
+void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   var androidApiLevel = 0;
   if (Platform.isAndroid) {
-    final result = await Process.run('/system/bin/getprop', [
+    final result = Process.runSync('/system/bin/getprop', [
       'ro.build.version.sdk',
     ]);
     if (result.exitCode != 0) {
