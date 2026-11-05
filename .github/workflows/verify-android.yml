@@ -24,6 +24,9 @@ jobs:
   android:
     name: Android native tests and build (${{ matrix.flutter }})
     runs-on: ubuntu-latest
+    env:
+      GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g -Dorg.gradle.workers.max=2 -Dorg.gradle.project.kotlin.compiler.execution.strategy=in-process
+      ANDROID_INTEGRATION_TARGET: integration_test/android_resource_integration_test.dart
     strategy:
       fail-fast: false
       matrix:
@@ -47,8 +50,8 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Test Android integration runner
-        run: python3 -m unittest discover -s tool -p test_android_integration_runner.py
+      - name: Test Android CI runners
+        run: python3 -m unittest discover -s tool -p 'test_android_*runner.py'
 
       - name: Reclaim space for the Android emulator
         if: matrix.flutter == '3.44.x'
@@ -68,7 +71,7 @@ jobs:
 
       - name: Build Android example
         working-directory: examples/platform
-        run: flutter build apk --debug
+        run: bash ../../tool/build_android_example.sh
 
       - name: Run Android plugin unit tests
         working-directory: examples/platform
@@ -77,6 +80,14 @@ jobs:
       - name: Verify coexistence with the official Android plugin
         if: matrix.flutter == '3.44.x'
         run: tool/test_plugin_coexistence.sh android
+
+      - name: Build Android integration APK before starting the emulator
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: |
+          bash ../../tool/build_android_example.sh --target "$ANDROID_INTEGRATION_TARGET" \
+            --dart-define=INTEGRATION_TEST_SHOULD_REPORT_RESULTS_TO_NATIVE=false
+          android/gradlew -p android --stop
 
       - name: Enable KVM for resource integration tests
         if: matrix.flutter == '3.44.x'
@@ -93,17 +104,20 @@ jobs:
           api-level: 35
           target: google_apis
           arch: x86_64
+          profile: pixel_4
+          emulator-options: -no-window -gpu swiftshader -no-snapshot -no-audio -no-boot-anim -memory 2560 -cores 2
           disable-animations: true
           working-directory: examples/platform
           script: |
-            bash ../../tool/run_android_integration_test.sh integration_test/webview_resource_test.dart
-            bash ../../tool/run_android_integration_test.sh integration_test/resource_request_timeout_test.dart
+            bash ../../tool/run_android_integration_test.sh "$ANDROID_INTEGRATION_TARGET" emulator-5554 build/app/outputs/flutter-apk/app-debug.apk
 
       - name: Upload Android failure diagnostics
         if: failure() && matrix.flutter == '3.44.x'
         uses: actions/upload-artifact@v4
         with:
           name: android-integration-diagnostics
-          path: ${{ runner.temp }}/webview-all-android-diagnostics
+          path: |
+            ${{ runner.temp }}/webview-all-android-diagnostics
+            ${{ runner.temp }}/webview-all-android-build.*
           if-no-files-found: ignore
           retention-days: 1

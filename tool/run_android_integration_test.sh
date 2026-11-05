@@ -3,10 +3,15 @@ set -euo pipefail
 
 target="${1:?Specify an integration test}"
 device="${2:-emulator-5554}"
+application="${3:-}"
 case "$target" in
   integration_test/*_test.dart) ;;
   *) echo 'Expected an integration_test/*_test.dart target.' >&2; exit 64 ;;
 esac
+if [[ -n "$application" && ! -f "$application" ]]; then
+  echo 'Prebuilt integration APK does not exist.' >&2
+  exit 66
+fi
 logs="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/webview-all-android-diagnostics/$(basename "$target" .dart)"
 mkdir -p "$logs"
 adb -s "$device" logcat -v threadtime > "$logs/logcat.txt" 2>&1 &
@@ -29,5 +34,9 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 # Reuse the SDK integration driver without flutter test's DDS golden proxy.
-flutter drive --driver=test_driver/integration_test.dart --target="$target" \
-  -d "$device" --no-dds --debug-logs-dir="$logs/flutter"
+arguments=(--driver=test_driver/integration_test.dart --target="$target"
+  -d "$device" --no-dds --debug-logs-dir="$logs/flutter")
+if [[ -n "$application" ]]; then
+  arguments+=(--no-pub --use-application-binary="$application")
+fi
+flutter drive "${arguments[@]}"

@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -8,7 +9,7 @@ import unittest
 
 TOOLS = Path(__file__).resolve().parent
 FAKE = '''#!/usr/bin/env python3
-import os, pathlib, sys, time
+import json, os, pathlib, sys, time
 name = pathlib.Path(sys.argv[0]).name
 state = pathlib.Path(os.environ['FAKE_STATE'])
 if name == 'sdkmanager':
@@ -28,6 +29,7 @@ if name == 'adb':
         print('native diagnostic snapshot')
     sys.exit(0)
 state.write_text(state.read_text() + 'test\\n' if state.exists() else 'test\\n')
+state.with_suffix('.arguments').write_text(json.dumps(sys.argv[1:]))
 for _ in range(100):
     if state.with_suffix('.logcat').exists():
         break
@@ -93,6 +95,27 @@ class AndroidIntegrationRunnerTest(unittest.TestCase):
         result = self.run_tool('run_android_integration_test.sh', 'integration_test/resource_test.dart')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.state.read_text(), 'test\n')
+
+    def test_missing_prebuilt_apk_fails_before_starting_tools(self):
+        result = self.run_tool('run_android_integration_test.sh',
+                               'integration_test/resource_test.dart',
+                               'emulator-5554', str(self.root / 'missing.apk'))
+        self.assertEqual(result.returncode, 66)
+        self.assertFalse(self.state.exists())
+        self.assertFalse(self.state.with_suffix('.logcat').exists())
+
+    def test_prebuilt_apk_uses_driver_without_build_or_dependency_resolution(self):
+        apk = self.root / 'integration application.apk'
+        apk.touch()
+        result = self.run_tool('run_android_integration_test.sh',
+                               'integration_test/resource_test.dart',
+                               'emulator-5554', str(apk))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        arguments = json.loads(self.state.with_suffix('.arguments').read_text())
+        self.assertEqual(arguments[0], 'drive')
+        self.assertIn('--no-pub', arguments)
+        self.assertIn('--no-dds', arguments)
+        self.assertIn('--use-application-binary=' + str(apk), arguments)
 
 
 if __name__ == '__main__':
