@@ -4,8 +4,9 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:integration_test/integration_test.dart';
 import 'package:webview_all/webview_all.dart';
+
+import 'support/resource_test_binding.dart';
 
 WebViewResourceResponse bytes(String value, {String mimeType = 'text/plain'}) =>
     WebViewResourceResponse.bytes(
@@ -14,7 +15,7 @@ WebViewResourceResponse bytes(String value, {String mimeType = 'text/plain'}) =>
     );
 
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  initializeResourceTestBinding();
 
   testWidgets(
     'resource deadlines cover slow callbacks and stream reads',

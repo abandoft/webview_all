@@ -28,4 +28,6 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-flutter test "$target" -d "$device" --debug-logs-dir="$logs/flutter" --reporter expanded
+# Reuse the SDK integration driver without flutter test's DDS golden proxy.
+flutter drive --driver=test_driver/integration_test.dart --target="$target" \
+  -d "$device" --no-dds --debug-logs-dir="$logs/flutter"
