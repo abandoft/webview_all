@@ -127,3 +127,54 @@ same-origin content and plugin-managed isolated HTML by wrapping the page API.
 It can report camera and microphone requests to `onPermissionRequest`.
 
 The browser still owns the final permission prompt. `request.grant()` only allows the page call to continue to the browser permission layer.
+
+## Unified file selection
+
+```dart
+final capabilities = await controller.getBrowserCapabilities();
+if (capabilities.fileSelector) {
+  await controller.setFileSelector((request) async {
+    // Use your application's picker. Return paths; Android also accepts content URIs.
+    // request.mode, acceptTypes, and isCaptureEnabled describe this request.
+    return <String>[]; // An empty list cancels.
+  });
+}
+await controller.setFileSelector(null); // Restore the engine's default behavior.
+```
+
+Android, Linux, OHOS, and macOS support custom selection. iOS requires 18.4+ and a
+compatible build SDK; earlier systems retain native selection. Windows and Web
+currently print a diagnostic when a custom callback is requested. Apple does not
+expose MIME or capture hints. Missing hints are `null` or empty lists. Picker
+exceptions cancel the selection.
+
+## Popup policies
+
+```dart
+await controller.setPopupPolicy(WebViewPopupWindowPolicy.deny);
+await controller.setPopupPolicy(WebViewPopupWindowPolicy.platformDefault);
+```
+
+`platformDefault` restores the platform's existing policy, `deny` rejects popups,
+and `sameView` loads the target in the current view. Query
+`getBrowserCapabilities().popupWindowPolicies` for available policies. OHOS supports
+default and deny; Web has no unified override. `sameView` does not create a child
+window and cannot guarantee `window.opener` or form POST semantics. Retain platform
+defaults when those semantics are required.
+
+## Media playback policy
+
+Choose a policy before creating the view:
+
+```dart
+final controller = WebViewController(
+  mediaPlaybackPolicy: WebViewMediaPlaybackPolicy.requireUserGesture,
+);
+```
+
+Android, iOS, macOS, Linux, and OHOS support creation-time configuration. Omitting
+the option keeps defaults. Android, Linux, and OHOS also support dynamic changes
+with `setMediaPlaybackRequiresUserGesture`. Apple requires a new WebView to change
+this configuration. Windows and Web print a diagnostic and retain engine policy
+when per-view configuration is unavailable. Allowing autoplay remains subject to
+engine, site, and system policies.

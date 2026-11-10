@@ -68,7 +68,7 @@ onSslAuthError: (SslAuthError error) async {
 
 ## Cookies
 
-Use `Secure`, `HttpOnly`, and `SameSite` attributes from your server for authentication cookies. Client-side cookie setters in `WebViewCookieManager` cannot mark every attribute on every platform. Windows exposes more local metadata through `WindowsWebViewCookie`, but server-set cookies remain the safest source of truth.
+Use server-set `Secure`, `HttpOnly`, and `SameSite` cookies for authentication. Check `WebViewCookieManager.getCapabilities()` for supported client-side operations and readable attributes.
 
 On logout, revoke the server-side session first, then call `WebViewDataManager.clearAllWebsiteData()` and inspect its result. Do not treat a partial result as a complete local wipe without mitigating every unsupported category. Partial results are expected on older Android System WebView versions, Windows, OHOS, and Web. On Windows, also release active controllers so their browsing-context-scoped session storage cannot remain accessible.
 

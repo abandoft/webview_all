@@ -1,6 +1,6 @@
 ---
 title: Capability Matrix
-description: Cross-platform feature support on the latest webview_all route.
+description: Compare WebView features and limitations across platforms.
 ---
 
 Legend:
@@ -28,10 +28,22 @@ Legend:
 | `loadHtmlString` | Full | Full | Full | Full | Full | Full | Full |
 | `currentUrl` | Full | Full | Full | Full | Full | Full | Limited, logical URL for synthetic loads |
 | History back/forward | Full | Full | Full | Full | Full | Full | Limited, controller-managed history |
+| Stop loading | Full | Full | Full | Full | Full, including custom requests | Full | Cancels plugin requests; iframe stop is origin-limited |
+| Query history / navigate to an index | Full | Full | Full | Full | Full | Full | Controller-managed logical history |
 | `reload` | Full | Full | Full | Full | Full | Full | Limited, reloads last controller load |
 | `clearCache` | Full | Full | Full | Full | Full | Full | Limited, host-origin cache storage |
 | `clearLocalStorage` | Full | Full | Full | Full | Full | Full | Limited, host-origin storage |
 | Controller-independent website-data clearing | Limited on older System WebView | Full | Full | Limited categories and older runtimes | Full | Limited categories | No, reports unsupported |
+| Cookie expiry, Secure, HttpOnly and SameSite writes | Full | Full | Full | Full | Full | Full | Host cookies only; no HttpOnly |
+| Cookie metadata reads | Native attributes on newer providers; names/values on older ones | Full | Full | Full | Full | Names/values only | Names/values only |
+| Delete a cookie by identity | Full | Full | Full | Full | Full | Full | Visible host cookies only |
+| Viewport PNG screenshots | Full | Full | Full | Full | Full | WebView surface | Unsupported, logs a limitation |
+| PDF byte export | Unsupported, requires system print flow | Full | Full | Runtime-dependent | Requires GTK Print to File backend | Full | Unsupported |
+| Selective website-data clearing | Cookies/cache; full native group on newer WebViews | Full | Full | Six native categories, Runtime-dependent | Full | Cookies and available shared cache | Unsupported |
+| Native child-window attachment | Matching session; limited incognito shares data | Matching store, request factory | Matching store, request factory | Matching profile | Matching store, request factory | Unsupported | Unsupported |
+| Native window.close notifications | Full | Full | Full | Full | Full | Unsupported | Unsupported |
+| Fullscreen events and exit requests | Can supply a separate widget | iOS 16+; limited system video exit | macOS 13+; limited system video exit | Full | Full | Full | Iframe permissions and gestures |
+| Renderer process failures | Android 8+; recreate | Reload | Reload | Recovery depends on process kind | Reload | Reload | Unsupported |
 
 ## Navigation and Errors
 
@@ -56,6 +68,10 @@ Legend:
 | `runJavaScriptReturningResult` | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML; JSON-serializable |
 | `callAsyncJavaScript` with named arguments | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML; cross-origin iframe unavailable |
 | Document-start user scripts | Runtime capability | Full | Full | Full | Full | Full | No, capability returns false |
+| Document-end user scripts | Runtime capability; DOM-ready fallback | Full | Full | DOM-ready listener | Full | Full | Plugin-loaded HTML only |
+| Promise handlers (`callHandler`) | Runtime capability | Main document | Main document | Main document | Main document | Main document | Same-origin or plugin-controlled HTML |
+| Named isolated worlds | Runtime capability | Full | Full | No; logs and skips | Full | No; logs and skips | No; logs and skips |
+| Handler origin restrictions | Runtime capability | Full | Full | No; registration skipped | Page world only | No; registration skipped | Full for controllable content |
 | JavaScript channels | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
 | Console message callback | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
 | `alert` callback | Full | Full | Full | Full | Full | Full | Same-origin or managed isolated HTML |
@@ -63,9 +79,15 @@ Legend:
 | `prompt` callback | Full | Full | Full | Full | Full | Full | Same-origin synchronous callback; isolated uses browser dialog |
 | Permission request callback | Full | Full | Full | Full | Full | Full | Controllable HTML media hook plus browser prompt |
 | WebAuthn/passkeys | Limited, explicit opt-in and app association | Limited, OS and Associated Domains | Limited, OS and Associated Domains | Limited, Runtime/OS/provider | No, WebKitGTK port | Not claimed; no documented ArkWeb host API | Limited, browser and iframe policy |
-| File selector callback | Full | No common callback | No common callback | No common callback | No common callback | Full | Browser-owned |
+| Unified file selector callback | Full | iOS 18.4+ with a compatible build SDK | Full | No unified callback; logs | Full | Full | Browser-owned; logs |
+| Text search | Case-insensitive, wrapping | No match count | No match count | Runtime capability, wrapping | Full, no active index | Case-insensitive, wrapping | Controllable HTML and browser support; no count |
+| Unified popup policies | Default, deny, same view | Default, deny, same view | Default, deny, same view | Default, deny, same view | Default, deny, same view | Default, deny | No; logs |
+| Creation-time media gesture policy | Full | Full | Full | No; logs | Full | Full | Browser-controlled; logs |
+| Dynamic media gesture setting | Full | Requires a new view | Requires a new view | No; logs | Full | Full | Browser-controlled; logs |
 | Geolocation prompt callback | Full | No platform API | No platform API | Browser/engine-owned | Browser/engine-owned | Full | Browser-owned |
-| Fullscreen custom widget | Full | Engine-owned | Engine-owned | Engine-owned | Engine-owned | Full | Browser-owned |
+| Separate fullscreen widget | Full | Engine-owned | Engine-owned | Engine-owned | Engine-owned | Engine-owned | Browser-owned |
+
+See the [JavaScript guide](/webview_all/guides/javascript/) for registration order, access policies and runtime capability checks.
 
 ## View State and Styling
 
@@ -103,3 +125,28 @@ Legend:
 
 Query `WebViewSession.getCapabilities()` for the running environment. Unsupported
 creation requests print a diagnostic and return `null`.
+
+## Profiles, network and page tools (1.5.x)
+
+| Feature | Android | iOS | macOS | Windows | Linux | OHOS | Web |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Named persistent profiles | Runtime MULTI_PROFILE | 17+ | 14+ | Runtime profile options | Full | No | No |
+| List/delete named profiles | New providers; loaded profiles require restart | 17+, release native references | 14+, release native references | 120+; pending until browser exit | Supported; checks occupancy | Unsupported | Unsupported |
+| Explicitly related private pages | Limited, ordinary data | Full | Full | Full | Full | Shared native private store | No |
+| Native navigation state | Full | 15+ | 12+ | No | Full | Bounded native state | No |
+| Clear native history | Full | No | No | Full | No | Full | No |
+| Native full-document screenshots | Unsupported | Unsupported | Unsupported | Supported | Supported | Unsupported | Unsupported |
+| Screenshot crop/scale | Full | Full | Full | Full | Full | Full | No |
+| PDF paper/margins/orientation | No | Full | Full | Runtime-dependent | GTK Print to File | Full | No |
+| System printing | Query/cancel job | Query/cancel job | Query; ambiguous cancel/failure | UI presented only | Query job | Query job | Same-origin, request only |
+| Page archive | MHTML | WebArchive | WebArchive | MHTML | MHTML | MHTML | No |
+| Scoped website data | Whole site group on newer WebViews | Domain records | Domain records | Exact origin | Domain records | No | No |
+| Static content rules | URL only | Types, site conditions, CSS hiding, HTTPS upgrade | Types, site conditions, CSS hiding, HTTPS upgrade | Native types | Types, site conditions, CSS hiding, HTTPS upgrade | URL only | No |
+| HTTP allow/block/respond | Limited | No | No | Full | No | No | No |
+| Declared custom schemes | Limited bodies | Available native bodies | Available native bodies | At environment creation, file/bytes | Streaming; body 2.40+ | Before engine initialization | No |
+| Native context menu toggle | No | No | Full | Full | Full | No | No |
+| Mute audio | No | No | No | Full | Full | Full | No |
+| Pause media / suspend playback | No | 15+ / 15+ | 12+ / 12+ | No | No | Pause only | No |
+
+See [Profiles and Page Tools](/webview_all/guides/profiles-and-tools/) and
+[Network Control](/webview_all/guides/network/) for scope, lifecycle and engine limitations.

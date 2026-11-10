@@ -7,35 +7,13 @@ Add the app-facing package:
 
 ```yaml
 dependencies:
-  webview_all: ^1.4.0
+  webview_all: ^1.5.0
 ```
 
 Run:
 
 ```sh
 flutter pub get
-```
-
-The main package registers platform implementations through Flutter's federated plugin mechanism:
-
-```yaml
-flutter:
-  plugin:
-    platforms:
-      android:
-        default_package: webview_all_android
-      ios:
-        default_package: webview_all_wkwebview
-      macos:
-        default_package: webview_all_wkwebview
-      linux:
-        default_package: webview_all_linux
-      windows:
-        default_package: webview_all_windows
-      ohos:
-        default_package: webview_all_ohos
-      web:
-        default_package: webview_all_web
 ```
 
 ## When to Add Platform Packages Directly
@@ -46,13 +24,13 @@ If you cast to a platform implementation, add that package explicitly so the imp
 
 ```yaml
 dependencies:
-  webview_all: ^1.4.0
-  webview_all_windows: ^1.4.0
-  webview_all_linux: ^1.4.0
-  webview_all_ohos: ^1.4.0
-  webview_all_web: ^1.4.0
-  webview_all_android: ^1.4.0
-  webview_all_wkwebview: ^1.4.0
+  webview_all: ^1.5.0
+  webview_all_windows: ^1.5.0
+  webview_all_linux: ^1.5.0
+  webview_all_ohos: ^1.5.0
+  webview_all_web: ^1.5.0
+  webview_all_android: ^1.5.0
+  webview_all_wkwebview: ^1.5.0
 ```
 
 Then import only the packages you need:
@@ -66,12 +44,3 @@ import 'package:webview_all_web/webview_all_web.dart';
 import 'package:webview_all_android/webview_all_android.dart';
 import 'package:webview_all_wkwebview/webview_all_wkwebview.dart';
 ```
-
-## Version Contract
-
-The `1.4.0` release is aligned across `webview_platform_interface` and all
-`webview_all_*` packages. The wrapper depends on
-`webview_platform_interface ^1.4.0`, `webview_all_android ^1.4.0`, and
-`webview_all_wkwebview ^1.4.0`.
-
-Keep the platform packages on the same minor line as the wrapper unless you are intentionally testing a platform package in isolation.

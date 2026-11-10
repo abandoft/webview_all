@@ -35,7 +35,7 @@ Then check platform limits in the [Capability Matrix](/webview_all/platforms/cap
 
 If your old code imported `webview_flutter_android` or
 `webview_flutter_wkwebview`, replace those imports with `webview_all_android`
-and `webview_all_wkwebview`. The `1.3.0` line uses the forked implementations
+and `webview_all_wkwebview`. The `1.3.x` line uses the forked implementations
 for Android, iOS, and macOS.
 
 For new desktop, OHOS, or web-specific code, add the relevant package and import it:
@@ -47,13 +47,17 @@ import 'package:webview_all_ohos/webview_all_ohos.dart';
 import 'package:webview_all_web/webview_all_web.dart';
 ```
 
-## Version 1.4
+## Version 1.5.x
+
+The minimum targets are now iOS 14 and macOS 11. JavaScript handlers, document-end scripts and isolated worlds are new APIs; existing string channels remain available. Applications targeting older Apple systems should follow the [1.4.x documentation](/webview_all/1.4.x/).
+
+## Version 1.4.x
 
 Flutter-managed registration requires no application changes. If an Add-to-App
 integration manually registers plugins or calls the native External APIs, update
 the affected symbols:
 
-| Platform | Before | 1.4 |
+| Platform | Before | 1.4.x |
 | --- | --- | --- |
 | Android plugin | `WebViewFlutterPlugin` | `WebviewAllAndroidPlugin` |
 | Apple plugin | `WebViewFlutterPlugin` | `WebviewAllWKWebViewPlugin` |
@@ -66,9 +70,9 @@ The old Apple External API name remains available as a deprecated Swift
 must use `WebviewAllWKWebViewExternalAPI`; the old Objective-C runtime symbol is
 not exported because it conflicts with the official WKWebView plugin.
 
-## Version 1.3
+## Version 1.3.x
 
-When upgrading from `1.2`:
+When upgrading from `1.2.x`:
 
 - Replace direct imports of `webview_flutter_android` and
   `webview_flutter_wkwebview` with the forked packages shown above.
@@ -76,13 +80,13 @@ When upgrading from `1.2`:
   `linux/runner/my_application.cc` to the Flutter default. An existing
   `GtkOverlay` wrapper remains compatible and can also be kept.
 
-Patch releases within the `1.3` line do not require additional migration work.
+Patch releases within the `1.3.x` line do not require additional migration work.
 
-## Version 1.2
+## Version 1.2.x
 
 Applications that remain on `1.2.1` should follow the frozen
-[1.2 documentation](/webview_all/1.2/). Its Linux setup requires the runner
-attachment described there; do not add that runner change to a new `1.3`
+[1.2.x documentation](/webview_all/1.2.x/). Its Linux setup requires the runner
+attachment described there; do not add that runner change to a new `1.3.x`
 application.
 
 ## Behavioral Differences to Audit

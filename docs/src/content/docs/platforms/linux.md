@@ -68,9 +68,10 @@ persistence behavior are unchanged.
 ## Incognito Sessions
 
 Set `LinuxWebViewControllerCreationParams(incognito: true)` when creating a
-controller to use a separate ephemeral WebKitGTK context. Each such controller
-has its own cookies and website storage, independent of normal WebViews and
-other incognito controllers. Its data is not persisted to the shared profile.
+controller to use a separate ephemeral WebKitGTK context. Independently created
+incognito controllers have separate cookies and website storage, also separate
+from normal WebViews. Related sessions created from the same `WebViewProfile`
+share that profile's temporary store. The data is not persisted to the shared profile.
 
 Shared cookie and website-data managers do not access these sessions. Creating
 an incognito controller does not select or lock the shared environment's data
@@ -204,6 +205,9 @@ shim because it cannot reproduce WebAuthn's origin and authenticator security.
   plugin hides the WebView and logs the limitation instead of leaving a
   visually misaligned interactive surface.
 - Local files must use absolute paths and are canonicalized before loading. Flutter asset keys containing traversal, absolute paths, or symlink escapes outside the asset bundle are rejected.
+- After `loadHtmlString` without a `baseUrl`, `reload()` may load `about:blank`
+  and display an empty page. Call `loadHtmlString` again to refresh this content,
+  or use an application resource URL for normal URL-based reloads.
 - File URL universal access is powerful and should stay disabled for untrusted local content.
 - Distribution WebKitGTK versions differ; test media, permissions, and dialog flows on your target Linux distribution.
 - Media playback depends on system GStreamer components. For H.264 on Ubuntu/Debian, install `gstreamer1.0-plugins-bad` and `gstreamer1.0-libav` for the parser and decoder.

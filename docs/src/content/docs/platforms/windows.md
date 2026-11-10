@@ -60,10 +60,9 @@ final manager = WebViewDataManager.fromPlatformCreationParams(
 final result = await manager.clearAllWebsiteData();
 ```
 
-Session cookies follow WebView2's browser-session lifetime. Keep a WebView
-(or an `OffscreenWebViewSession`) initialized and alive while setting and using
-session cookies. Closing the last WebView can end that session and discard its
-session cookies, even though the shared environment configuration is retained.
+The default cookie manager supports setting session cookies before creating a
+page. Session cookies still expire when the native browser session ends; set an
+expiry date for cookies that need to survive application restarts.
 
 Check runtime version:
 
@@ -270,9 +269,17 @@ Windows-specific response classes add request and response detail:
   through native assertions.
 - Windows initialization exceptions include a stable failure stage, HRESULT,
   remote-session flag, and the detected WebView2 Runtime version when
-  available. See [Errors and Limits](/reference/errors-and-limits/).
+  available. See [Errors and Limits](/webview_all/reference/errors-and-limits/).
 - Initialization is retryable and idempotent. Native channels, event
   subscriptions, streams, and delegates are released exactly once by explicit
   disposal or fallback finalization.
 - Surface resize updates are generation-checked and follow runtime display/DPI
   changes, so stale work cannot overwrite the current texture size.
+
+## Input methods and native popups
+
+The widget synchronizes WebView2 placement, size and DPI so IME candidates
+follow the page caret through movement, uniform scaling and hide/show changes.
+Flutter rotation, non-uniform scaling and perspective can make native popup placement
+approximate; the plugin logs a diagnostic and keeps rendering. When using the
+low-level `Webview` directly, retain automatic `scaleFactor` for accurate placement.

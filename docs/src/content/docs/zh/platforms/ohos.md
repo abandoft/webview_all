@@ -3,7 +3,7 @@ title: OHOS
 description: ArkWeb 实现、API 和 HarmonyOS/OpenHarmony 限制。
 ---
 
-OHOS 由 `webview_all_ohos` 提供，底层使用 ArkWeb。从 1.4.5 起，宿主应用的最低兼容版本必须设置为 API 22 或更新版本，详见[平台配置](/zh/getting-started/platform-setup/#ohos)。
+OHOS 由 `webview_all_ohos` 提供，底层使用 ArkWeb。从 1.4.5 起，宿主应用的最低兼容版本必须设置为 API 22 或更新版本，详见[平台配置](/webview_all/zh/getting-started/platform-setup/#ohos)。
 
 | 项 | 值 |
 | --- | --- |
@@ -66,13 +66,13 @@ JavaScript、DOM storage、file access、媒体手势策略、缩放、视口、
 
 ArkWeb 会在页面 JavaScript 之前，按注册顺序执行用户脚本。可在 `WebViewWidget` 挂载前注册；开始导航前必须等待 `addUserScript` 完成，确保首个页面也能收到脚本。
 
-注册和移除只影响后续文档及刷新，不会在当前文档补执行，也不会撤销已经运行的脚本效果。详见 [JavaScript 指南](/zh/guides/javascript/#document-start-用户脚本)。
+注册和移除只影响后续文档及刷新，不会在当前文档补执行，也不会撤销已经运行的脚本效果。详见 [JavaScript 指南](/webview_all/zh/guides/javascript/#document-start-用户脚本)。
 
 导航会取消尚未完成的 `callAsyncJavaScript` 调用并返回 `JavaScriptExecutionException`，避免返回旧文档的结果。等待视图就绪的操作会在视图被移除时失败。
 
 ## 网站数据
 
-`WebViewDataManager.clearAllWebsiteData()` 无需创建 WebView，即可清理 Cookie、所有 WebView 共享的资源缓存、local storage 和 WebSQL。session storage、IndexedDB、Cache Storage 和 service worker 注册返回不支持。应检查返回的清理结果，详见[网站数据清理](/zh/guides/cookies/#清理全部网站数据)。
+`WebViewDataManager.clearAllWebsiteData()` 无需创建 WebView，即可清理 Cookie、所有 WebView 共享的资源缓存、local storage 和 WebSQL。session storage、IndexedDB、Cache Storage 和 service worker 注册返回不支持。应检查返回的清理结果，详见[网站数据清理](/webview_all/zh/guides/cookies/#清理全部网站数据)。
 
 ## 混合内容
 
@@ -130,3 +130,7 @@ OHOS_FLUTTER=/absolute/path/to/ohos/flutter \
 
 脚本要求显式的绝对 SDK 路径，复制时排除 cache/generated 目录，结束后始终删除
 临时工作区，因此真实仓库的 `.dart_tool` 不会被污染。
+
+## 页面工具与网络控制
+
+ArkWeb 支持 WebView 表面 PNG 截图、PDF 纸张和边距设置、MHTML 归档、原生导航状态及媒体暂停／静音。系统打印需要在宿主应用的 `requestPermissions` 声明 `ohos.permission.PRINT`，缺少权限时打印错误并返回 `null`。不支持命名 Profile 和现代 origin 存储精细清理。自定义协议须在首次 WebEngine 初始化前声明，每个进程最多 10 个；不支持异步 HTTP 放行代理。见 [网络控制](/webview_all/zh/guides/network/)和 [Profile 与页面工具](/webview_all/zh/guides/profiles-and-tools/)。

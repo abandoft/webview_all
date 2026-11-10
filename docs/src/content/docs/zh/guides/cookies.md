@@ -27,9 +27,11 @@ final hadCookies = await cookies.clearCookies();
 
 | 方法 | 作用 |
 | --- | --- |
-| `setCookie` | 设置 name/value/domain/path。 |
-| `getCookies` | 返回指定域名可见的 cookie。 |
+| `setCookie` | 设置 Cookie 及可选的过期时间、安全属性和 SameSite。 |
+| `getCookies` | 返回指定 URL 可见的 Cookie。 |
 | `clearCookies` | 清空 cookie，并在平台可报告时返回清空前是否存在 cookie。 |
+| `getCapabilities` | 查询属性读取和删除能力。 |
+| `deleteCookie` | 按 name/domain/path 删除 Cookie。 |
 
 cookie 名称、domain 和 path 会做基本校验。非空 path 必须以 `/` 开头。
 
@@ -69,37 +71,41 @@ Windows 和 Linux 的自定义目录应在首次创建 WebView、操作 Cookie �
 | 平台 | 存储 | 说明 |
 | --- | --- | --- |
 | Android | Android WebView `CookieManager` | 保留编码 name/value 和值中的 `=`，支持第三方 cookie 策略。 |
-| iOS/macOS | `WKWebsiteDataStore.defaultDataStore` | 按 domain matching 过滤。 |
-| Windows | WebView2 cookie manager | 提供扩展元数据。 |
-| Linux | WebKitGTK cookie bridge | 支持通用字段。 |
+| iOS/macOS | `WKWebsiteDataStore.defaultDataStore` | 按域名、路径、协议和过期时间过滤。 |
+| Windows | WebView2 cookie manager | 支持通用属性及原有平台扩展。 |
+| Linux | WebKitGTK cookie bridge | 支持常用属性及定向删除。 |
 | OHOS | ArkWeb `CookieManager` | 支持第三方 cookie 策略。 |
 | Web | `document.cookie` | 只能访问宿主页可见 cookie。 |
 
-## Windows 完整 cookie
-
-Windows 使用会话 Cookie 时，应保留已初始化的 WebView 或
-`OffscreenWebViewSession`。关闭最后一个 WebView 可能结束底层浏览器会话并丢弃这些
-Cookie；自定义数据目录不会改变 Cookie 的会话或持久化设置。
-
+## Cookie 属性与定向删除
 
 ```dart
-final manager = WebViewCookieManager().platform
-    as WindowsWebViewCookieManager;
-
-await manager.setWindowsCookie(
-  WindowsWebViewCookie(
-    name: 'session',
-    value: 'abc',
-    domain: 'example.com',
-    path: '/',
-    isHttpOnly: true,
-    isSecure: true,
-    sameSite: WindowsWebViewCookieSameSite.lax,
-  ),
-);
+final capabilities = await cookies.getCapabilities();
+await cookies.setCookie(WebViewCookie(
+  name: 'session', value: 'abc', domain: '.example.com', path: '/',
+  expires: DateTime.now().toUtc().add(const Duration(days: 7)),
+  isSecure: true,
+  isHttpOnly: true,
+  sameSite: WebViewCookieSameSite.lax,
+));
+await cookies.deleteCookie(name: 'session', domain: '.example.com', path: '/');
 ```
 
-Windows 还支持按完整 cookie、name+url、name+domain+path 删除。
+`expires`、`isSecure`、`isHttpOnly`、`sameSite` 用于写入，`isSession` 是读取元数据。
+`SameSite=None` 需同时设置 `isSecure: true`。删除时须提供实际的名称、域名和路径；
+返回 `true` 表示操作已完成，不代表该 Cookie 原先一定存在。
+
+Android 的 System WebView 支持 `GET_COOKIE_INFO` 时，可读取原生路径、HttpOnly、过期时间
+及可用的 SameSite 等属性，并区分同名不同路径的 Cookie；缺失的 SameSite 保留为未知。
+旧版 Android 内核和 OHOS 仍只提供名称和值，其余属性保留 `null`；此时返回的 domain/path
+是兼容字段，不能用来推断存储中的 Cookie 身份。
+iOS、macOS、Windows、Linux 可读取原生属性，具体见 `readableAttributes`。
+Web 只可操作宿主页可见 Cookie，无法操作 `HttpOnly` Cookie；请求创建它时会打印
+说明并跳过，避免设置成普通 Cookie。
+
+Windows 的全局 Cookie 接口会在应用的浏览器会话内保留会话 Cookie，包括首次加载页面之前。
+需要跨应用启动保留时请设置过期时间；会话 manager 遵循所属 Profile 的生命周期。
+原有 Windows 专用 Cookie 接口继续可用。
 
 ## 第三方 cookie
 
@@ -135,3 +141,29 @@ Web 实现使用 `document.cookie`：
 - `document.cookie` 不提供原始 domain/path，因此返回项使用当前 host 和 `/`。
 - `clearCookies` 会对可见父 domain/path 做尽力清理，只有至少一个可见 Cookie
   消失时才返回 `true`。
+
+
+## 分类清理网站数据
+
+```dart
+final manager = WebViewDataManager(); // 会话内使用 session.dataManager。
+final types = {WebViewDataType.cookies, WebViewDataType.cache};
+final capabilities = await manager.getCapabilities();
+final result = await manager.clearWebsiteData(dataTypes: types);
+if (!result.isComplete) {
+  debugPrint('${result.unsupportedDataTypes}: ${result.failures}');
+}
+```
+
+只会处理请求的类别，不能独立清理的类别会标记为不支持，不会扩大删除范围。
+`isComplete` 表示本次请求的全部类别都已成功清理；空集合不执行清理并返回成功。
+`capabilities.canClear(types)` 可提前检查某种组合，`clearingGroups` 描述必须一起
+请求的原生类别组。会话 manager 操作其对应的数据区。
+
+iOS、macOS、Linux 支持单独清理全部列出的类别；Windows 支持 Cookie、磁盘缓存、
+local storage、IndexedDB、WebSQL 和 Cache Storage，受 Runtime 版本限制。
+Android、OHOS 可单独清理 Cookie 和可用的缓存；Android 新版 WebView 还支持
+完整清理，但其他存储类别不能因此单独删除。OHOS 会话内不清理共享缓存。
+Web 不支持任意网站数据清理。网页仍可继续写入数据，应用应先停止相关页面活动。
+
+删除单个 Cookie 时应使用实际存储的 domain/path，保留 domain 的前导 `.`；不要用读取结果中的兼容占位值猜测其身份。Android、OHOS、Web 使用过期 Cookie 删除时会区分仅主机与域 Cookie，并保留安全前缀要求的标记。

@@ -85,6 +85,66 @@ if (await controller.isUserScriptInjectionSupported(
 | OHOS | 通过 ArkWeb 支持；按注册顺序执行，可在组件挂载前注册。 |
 | Web | iframe API 无法保证早于页面脚本执行，能力检查返回 false。 |
 
+## Document-end 与独立执行环境
+
+使用 `tryAddUserScript` 注册可选脚本；不支持时打印说明并返回 `null`：
+
+```dart
+const world = WebViewJavaScriptWorld.isolated('app');
+final scriptId = await controller.tryAddUserScript(
+  const WebViewUserScript(
+    source: 'globalThis.appReady = document.body != null;',
+    injectionTime: WebViewUserScriptInjectionTime.documentEnd,
+    world: world,
+  ),
+);
+```
+
+`documentEnd` 在 DOM 就绪阶段执行，无须等待图片等资源加载完成；相对于网页 `DOMContentLoaded` 监听器的先后顺序可能因内核而异。Windows 和部分旧 Android WebView 通过提前注册 DOM 就绪监听实现。Web 仅支持插件加载的 HTML，普通 URL 加载无法保证这一注入时机。
+
+Android（取决于实际 WebView 内核）、iOS、macOS 和 Linux 支持命名的独立执行环境。不同环境的 JavaScript 全局变量分离，仍共享 DOM、Cookie 和网站存储。Windows、OHOS、Web 的独立环境操作会打印说明并跳过。Android 需要在加载文档前注册独立环境。
+
+向 `callAsyncJavaScript` 传入相同的 `world` 可在该环境中执行代码。不支持时打印说明并返回 `null`，不会改为在页面环境执行。现有 `addUserScript` 保留严格的失败行为，可选能力使用 `tryAddUserScript`。
+
+## 支持返回值的 JavaScript 调用
+
+在用户脚本和页面加载之前注册处理器：
+
+```dart
+final registered = await controller.addJavaScriptHandler(
+  'appInfo',
+  accessPolicy: WebViewJavaScriptAccessPolicy.origins(
+    {'https://app.example.com'},
+    mainFrameOnly: true,
+  ),
+  onCall: (call) async => {'name': 'Example', 'arguments': call.arguments},
+);
+```
+
+页面侧可以等待 Dart 的异步返回值：
+
+```js
+async function callApp() {
+  await window.webviewAll.ready;
+  return await window.webviewAll.callHandler('appInfo', {language: 'zh'});
+}
+if (window.webviewAll) {
+  callApp().catch(console.warn);
+} else {
+  window.addEventListener('webviewAllReady', () => callApp().catch(console.warn), {once: true});
+}
+```
+
+参数和结果只接受 JSON 兼容值。请求和返回值的 UTF-8 JSON 大小上限为 1 MiB，每个 controller 最多有 128 个未完成调用。
+
+处理器异常、结果无法序列化、移除处理器或超时，会使 Promise reject，并提供 `handler_error`、`serialization_error`、`aborted`、`timeout` 等错误码。默认超时 30 秒，最多可设为 5 分钟；不会向网页暴露 Dart 异常的内部细节。
+
+来源策略按原生提供的安全 origin 匹配 HTTP(S) 的协议、主机和端口，拒绝未知或不透明 origin。Windows、OHOS 无法执行这类来源策略；Linux 独立环境的处理器也缺少可靠的来源与帧信息。无法执行策略时，注册返回 `false` 并打印原因。对于自行控制的内容，可显式使用 `const WebViewJavaScriptAccessPolicy.unrestricted()`；插件不会自动放宽受限策略。
+
+Promise 处理器目前只在主文档中运行。Web 支持同源页面和插件可控制的 HTML，任意跨域 URL 无法注入。使用 `getJavaScriptCapabilities(world: world)` 查询时机、独立环境、来源信息及内容限制；处理器通过可选 `world` 参数选择执行环境。
+
+使用 `removeJavaScriptHandler(name, world: world)` 或 `removeAllJavaScriptHandlers()` 移除处理器。页面跳转和销毁会取消未完成调用，迟到结果不会进入新文档；`pushState` 等同文档地址变化不影响调用。回调可等待 `call.cancelled` 停止自己的工作，已经发生的 Dart 副作用不会自动撤销。清空用户脚本会保留内部 Promise 桥及现有字符串通道。
+
 ## JavaScript Channel
 
 ```dart

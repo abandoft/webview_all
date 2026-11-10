@@ -57,8 +57,9 @@ await LinuxWebViewController.ensureEnvironment(
 ## 无痕会话
 
 创建 controller 时设置 `LinuxWebViewControllerCreationParams(incognito: true)`，
-即可使用独立的临时 WebKitGTK context。每个无痕 controller 的 Cookie 和网站存储
-彼此隔离，也不与普通 WebView 共用；数据不会写入共享配置的持久化目录。
+即可使用独立的临时 WebKitGTK context。独立创建的无痕 controller 的 Cookie 和网站
+存储彼此隔离，也不与普通 WebView 共用；通过同一 `WebViewProfile` 创建的关联会话
+共享该 Profile 的临时存储。数据不会写入共享配置的持久化目录。
 
 共享 Cookie 和网站数据管理器不访问这些会话。创建无痕 controller 不会选择或锁定
 共享环境的数据目录。会话结束时调用 controller 的 `dispose()`。
@@ -141,6 +142,8 @@ origin 与 authenticator 安全语义。
   遇到这些变换时，插件会隐藏 WebView 并打印限制说明，避免留下视觉错位但仍可交互
   的原生区域。
 - 本地文件必须使用绝对路径，并会在加载前规范化；Flutter asset 中的路径穿越、绝对路径和逃出 asset bundle 的符号链接会被拒绝。
+- `loadHtmlString` 未指定 `baseUrl` 时，`reload()` 可能重载 `about:blank` 而显示空白页。
+  刷新这类内容应重新调用 `loadHtmlString`；需要常规 URL 刷新行为时可使用应用资源 URL。
 - 不可信本地文件不要启用 universal file URL access。
 - 不同发行版 WebKitGTK 版本差异明显，媒体、权限和 dialog 需要在目标发行版验证。
 - 音视频依赖系统 GStreamer 组件；Ubuntu/Debian 播放 H.264 可安装 `gstreamer1.0-plugins-bad` 和 `gstreamer1.0-libav`，补齐解析器与解码器。

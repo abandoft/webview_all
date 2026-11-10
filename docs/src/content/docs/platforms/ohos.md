@@ -3,7 +3,7 @@ title: OHOS
 description: ArkWeb implementation, APIs, and HarmonyOS/OpenHarmony limits.
 ---
 
-OHOS is provided by `webview_all_ohos` and uses ArkWeb through the OHOS Flutter SDK. Starting with 1.4.5, the host application's minimum compatible SDK must be API 22 or newer; see [platform setup](/getting-started/platform-setup/#ohos).
+OHOS is provided by `webview_all_ohos` and uses ArkWeb through the OHOS Flutter SDK. Starting with 1.4.5, the host application's minimum compatible SDK must be API 22 or newer; see [platform setup](/webview_all/getting-started/platform-setup/#ohos).
 
 ## Engine
 
@@ -75,13 +75,13 @@ The plugin keeps page-requested windows in the current WebView. `supportMultiple
 
 ArkWeb runs user scripts before page JavaScript, in registration order. Scripts can be registered before `WebViewWidget` is attached. Await `addUserScript` before starting navigation so the first page receives them.
 
-Registration and removal apply to future documents and reloads. They neither execute scripts in the current document nor undo effects from scripts that already ran. See the [JavaScript guide](/guides/javascript/#document-start-user-scripts).
+Registration and removal apply to future documents and reloads. They neither execute scripts in the current document nor undo effects from scripts that already ran. See the [JavaScript guide](/webview_all/guides/javascript/#document-start-user-scripts).
 
 Navigation cancels pending `callAsyncJavaScript` invocations with `JavaScriptExecutionException` instead of returning a result from the previous document. Operations waiting for the view to become ready fail if the view is removed.
 
 ## Website Data
 
-`WebViewDataManager.clearAllWebsiteData()` works without creating a WebView. It clears cookies, the resource cache shared by all WebViews, local storage, and WebSQL. Session storage, IndexedDB, Cache Storage, and service worker registrations are reported as unsupported. Inspect the returned clearing result; see [website data cleanup](/guides/cookies/#clear-all-website-data).
+`WebViewDataManager.clearAllWebsiteData()` works without creating a WebView. It clears cookies, the resource cache shared by all WebViews, local storage, and WebSQL. Session storage, IndexedDB, Cache Storage, and service worker registrations are reported as unsupported. Inspect the returned clearing result; see [website data cleanup](/webview_all/guides/cookies/#clear-all-website-data).
 
 ## Mixed Content
 
@@ -175,3 +175,7 @@ OHOS_FLUTTER=/absolute/path/to/ohos/flutter \
 The helper requires an explicit absolute SDK path, excludes generated/cache
 directories while copying, and always removes the temporary workspace. The
 real repository's `.dart_tool` directories are untouched.
+
+## Page tools and network control
+
+ArkWeb supports WebView-surface PNG capture, PDF paper/margin options, MHTML archives, native navigation state and media pause/mute. System printing requires `ohos.permission.PRINT` in the host app’s `requestPermissions`; missing permission logs a failure and returns `null`. Named profiles and modern origin-scoped storage clearing are unavailable. Custom schemes must be declared before the first WebEngine initialization, up to 10 per process; asynchronous HTTP pass-through is unavailable. See [Network Control](/webview_all/guides/network/) and [Profiles and Page Tools](/webview_all/guides/profiles-and-tools/).

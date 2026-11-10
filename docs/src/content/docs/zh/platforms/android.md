@@ -3,7 +3,7 @@ title: Android
 description: Android WebView 实现、API 和限制。
 ---
 
-Android 由 `webview_all_android ^1.4.0` 提供，`webview_all` 将它注册为默认 Android 实现。
+Android 由 `webview_all_android ^1.5.0` 提供，`webview_all` 将它注册为默认 Android 实现。
 
 | 项 | 值 |
 | --- | --- |
@@ -80,9 +80,10 @@ await (controller.platform as AndroidWebViewController)
 
 ## Cookie 与 native 访问
 
-`getCookies` 先按分号拆分，再只按每条 Cookie 的第一个等号拆分，因此能保留
-值中的 `=` 和编码内容。非法百分号编码会按原文返回，不会让整次查询失败；结果
-使用请求 URL 的 host 和 `/`。
+System WebView 支持 `GET_COOKIE_INFO` 时，`getCookies` 返回原生 domain/path、
+过期时间及安全属性，缺失的 SameSite 保留为未知。旧版内核只返回名称和值，
+domain/path 使用请求 URL 的 host 和 `/` 作为兼容占位；删除时不能用占位值推测实际身份。
+值中的 `=` 会保留，非法百分号编码按原文返回。
 
 Android native 代码可通过 `WebViewFlutterAndroidExternalApi` 的
 `FlutterPluginBinding` 入口获取插件持有的 `WebView`；旧

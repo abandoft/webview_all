@@ -3,7 +3,7 @@ title: iOS 和 macOS
 description: WKWebView 实现、WebKit API 和 Apple 平台差异。
 ---
 
-iOS 和 macOS 由 `webview_all_wkwebview ^1.4.0` 提供。
+iOS 和 macOS 由 `webview_all_wkwebview ^1.5.0` 提供。
 
 | 项 | 值 |
 | --- | --- |
@@ -13,8 +13,8 @@ iOS 和 macOS 由 `webview_all_wkwebview ^1.4.0` 提供。
 | Delegate | `WebKitNavigationDelegate` |
 | Cookie manager | `WebKitWebViewCookieManager` |
 | 引擎 | `WKWebView` |
-| 最低 iOS | 13.0+ |
-| 最低 macOS | 10.15+ |
+| 最低 iOS | 14.0+ |
+| 最低 macOS | 11.0+ |
 
 ## 创建参数
 

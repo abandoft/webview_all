@@ -237,3 +237,147 @@ and session managers cannot be reused afterward. `OffscreenWebViewSession` manag
 an offscreen controller's lifetime and uses ordinary storage by default.
 Private mode does not promise zero OS temporary files, hide network identity, or remove
 data saved separately by the app.
+
+## Loading controls, history, and text search
+
+```dart
+await controller.stopLoading();
+final capabilities = await controller.getBrowserCapabilities();
+final history = await controller.getNavigationHistory();
+if (history != null && history.currentIndex > 0) {
+  await controller.goToHistoryIndex(history.currentIndex - 1);
+}
+
+if (capabilities.findText) {
+  final result = await controller.findText('keyword');
+  debugPrint('Found: ${result?.matchFound}, count: ${result?.matchCount}');
+  await controller.findText('keyword'); // The same query advances to the next match.
+  await controller.findText('keyword', forward: false);
+  await controller.clearFindMatches();
+}
+```
+
+History is a snapshot of this view's back/forward list, with zero-based indices;
+query it again after navigation. Native platforms navigate through engine history.
+Web includes controller-managed loads and cannot enumerate arbitrary iframe or
+in-page history. `goToHistoryIndex` reports acceptance, not page completion.
+
+Apple and Web do not report match counts; unavailable counts and positions are
+`null`. Android and OHOS searches are case-insensitive and wrap around. Windows
+requires a Runtime with the Find API and also requires wrapping. Query
+`findCaseSensitive` and `findWithoutWrapping` before using those options.
+Web search and stopping the iframe itself require same-origin or plugin-controlled
+HTML. Plugin-managed fetch loads can be cancelled; the browser controls arbitrary
+cross-origin iframe loads.
+
+Unsupported new operations print a diagnostic and return `null`, `false`, or no-op
+without interrupting the application.
+
+
+## Page screenshots and PDF
+
+```dart
+final capabilities = await controller.getBrowserCapabilities();
+if (capabilities.viewportScreenshot) {
+  final png = await controller.takeScreenshot();
+  // Save or display the PNG bytes in your app.
+}
+if (capabilities.pdfExport) {
+  final pdf = await controller.createPdf();
+  // Save the PDF bytes in your app.
+}
+```
+
+Screenshots capture the native page viewport after layout has settled, excluding
+Flutter overlays. Protected video may be omitted. Android, iOS, macOS, Windows,
+Linux and OHOS support screenshots; iOS, macOS, Windows, Linux and OHOS support PDF.
+Use `WebViewScreenshotOptions` for pixel-region/scale and `WebViewPdfOptions` for paper size, orientation and margins; engine pagination may differ.
+Linux requires GTK's Print to File backend. Android's system print flow cannot
+return PDF bytes directly. Web provides neither export API.
+Unsupported or failed exports, including closed pages, log a diagnostic and
+return `null`. Captures are serialized and have an output size limit.
+
+## Native child windows
+
+```dart
+await controller.setNewWindowDelegate((request) async {
+  final child = await request.createController();
+  if (child == null) return;
+  var attached = false;
+  try {
+    await child.setJavaScriptMode(JavaScriptMode.unrestricted);
+    await child.setNavigationDelegate(NavigationDelegate());
+    attached = await request.attach(child);
+    if (attached) {
+      // Display WebViewWidget(controller: child) in a new tab or route.
+    }
+  } finally {
+    if (!attached) await child.platform.closeWebViewSession();
+  }
+});
+```
+
+Shared and private sessions on Android, iOS, macOS, Windows and Linux support native child
+windows, preserving form POST requests and `window.opener`. Use
+`request.createController()` to obtain a matching child. Configure settings,
+callbacks and scripts without loading a page before attachment. Apple and Linux
+require this factory because an
+independent controller lacks the native request's related configuration.
+Repeated factory calls return the same controller.
+
+Your app owns the child's UI and lifetime. Handle `setOnWindowCloseRequested`,
+remove the widget, then call `child.platform.closeWebViewSession()`. The app also
+owns a returned controller when the request expires or attachment fails.
+
+Android does not expose `request.url`; POST loads may bypass navigation-policy
+callbacks. Enable delegation only for trusted openers. An opener can write to
+the child's initial blank document before Dart receives the event.
+
+Complete the delegate within 20 seconds. Returning without attachment rejects
+the request. The `deny` policy takes priority; a null delegate restores the
+configured popup policy. OHOS and Web currently log a limitation and retain their existing popup behavior.
+Android's limited incognito mode still shares ordinary website data. `sameView`
+only loads a URL in the current page and cannot guarantee opener or POST semantics.
+
+## Fullscreen and renderer failures
+
+```dart
+await controller.setFullscreenDelegate(WebViewFullscreenDelegate(
+  onEnter: (request) {
+    // Display request.content when provided; otherwise resize the current view.
+    // Keep the request and call await request.exit() to leave fullscreen.
+  },
+  onExit: () {
+    // Remove fullscreen content and restore your application's layout.
+  },
+));
+await controller.setOnProcessFailed((failure) {
+  // Use failure.recovery to choose reloading, rebuilding, or waiting.
+});
+```
+
+Query `fullscreenEvents`, `fullscreenCustomContent` and `processFailureEvents`
+using `getBrowserCapabilities()`. The app owns routes, system bars and orientation;
+the plugin does not change them while a delegate is installed. Android can supply
+a separate fullscreen widget. Other backends retain the current view or system
+media presentation. Apple notifications require iOS 16 / macOS 13; system video UI
+remains system-managed and may have no DOM exit API. Web observes only this iframe's
+browser fullscreen state, retains browser gesture and iframe permissions, and
+never exits another element's fullscreen. Replacing or removing a delegate requests
+exit and finishes the old presentation callbacks.
+
+`true` from `exitFullscreen()` or `request.exit()` means an exit was requested.
+`onExit` ends this presentation when the native view exits, the delegate changes
+or is removed, or the controller is released. Without a delegate, existing platform
+behavior remains.
+
+Android 8+, Apple, Windows, Linux and OHOS can report renderer process failures.
+Browsers do not expose these events to the Web backend. Android requires a new
+controller after renderer loss. Apple, Linux, OHOS and a failed Windows main renderer
+can recover by reloading; a failed Windows browser process requires recreation.
+The plugin cancels invalid script calls and fullscreen presentations without
+reloading or resubmitting POST requests. Auxiliary process failures may leave the
+main page working; `recovery: none` does not require a reload.
+Unsupported operations log a diagnostic and retain existing behavior.
+
+See [Profiles and Page Tools](/webview_all/guides/profiles-and-tools/) for named stores, navigation state, printing, archives and scoped data, and [Network Control](/webview_all/guides/network/) for request delegates and custom schemes.

@@ -3,7 +3,7 @@ title: JavaScript
 description: Execute JavaScript, receive messages, handle dialogs, and capture console output.
 ---
 
-JavaScript support is split into four areas: execution, return values, channels, and browser-style dialogs.
+Execute JavaScript, exchange asynchronous calls with Dart, install user scripts, and handle console output and dialogs.
 
 ## Enable or Disable JavaScript
 
@@ -93,6 +93,66 @@ if (await controller.isUserScriptInjectionSupported(
 | Linux | Supported by WebKitGTK. |
 | OHOS | Supported by ArkWeb; scripts run in registration order and can be registered before the widget is attached. |
 | Web | Browser iframe APIs cannot guarantee execution before page scripts; capability returns false. |
+
+## Document-End Scripts and Isolated Worlds
+
+Use `tryAddUserScript` to warn and return `null` when a requested feature is unavailable:
+
+```dart
+const world = WebViewJavaScriptWorld.isolated('app');
+final scriptId = await controller.tryAddUserScript(
+  const WebViewUserScript(
+    source: 'globalThis.appReady = document.body != null;',
+    injectionTime: WebViewUserScriptInjectionTime.documentEnd,
+    world: world,
+  ),
+);
+```
+
+`documentEnd` runs when the DOM is ready, without waiting for all subresources. Its order relative to the website's `DOMContentLoaded` listeners can differ between engines. Windows and older supported Android WebViews install an early DOM-ready listener. Web supports this timing only in HTML loaded by the plugin, rather than ordinary URL loads.
+
+Android (with a supporting System WebView), iOS, macOS and Linux support named isolated worlds. They separate JavaScript globals while sharing the DOM; cookies and website storage are not isolated. Windows, OHOS and Web skip isolated-world operations with a warning. Register Android worlds before loading the document.
+
+Pass the same `world` to `callAsyncJavaScript` to execute in that environment. Unsupported worlds return `null` with a warning and never execute in the page world. The existing `addUserScript` keeps its strict failure contract; use `tryAddUserScript` for optional features.
+
+## JavaScript Calls with Dart Return Values
+
+Register handlers before user scripts and before loading the document:
+
+```dart
+final registered = await controller.addJavaScriptHandler(
+  'appInfo',
+  accessPolicy: WebViewJavaScriptAccessPolicy.origins(
+    {'https://app.example.com'},
+    mainFrameOnly: true,
+  ),
+  onCall: (call) async => {'name': 'Example', 'arguments': call.arguments},
+);
+```
+
+Page JavaScript can await the result:
+
+```js
+async function callApp() {
+  await window.webviewAll.ready;
+  return await window.webviewAll.callHandler('appInfo', {language: 'en'});
+}
+if (window.webviewAll) {
+  callApp().catch(console.warn);
+} else {
+  window.addEventListener('webviewAllReady', () => callApp().catch(console.warn), {once: true});
+}
+```
+
+Arguments and return values accept only JSON-compatible values. Requests and result values are limited to 1 MiB of UTF-8 JSON, with up to 128 pending calls per controller.
+
+Handler failures, invalid results, removal and timeouts reject the Promise with a `code`, such as `handler_error`, `serialization_error`, `aborted` or `timeout`. The default handler timeout is 30 seconds, configurable up to five minutes. Dart errors do not expose private exception details to the page.
+
+Origin policies match exact HTTP(S) security origins, including ports, using engine-verified information. Unknown and opaque origins are rejected. Windows and OHOS cannot enforce these origin policies; Linux isolated-world handlers also lack verified sender metadata. Registration returns `false` and prints a warning when a policy cannot be enforced. For content you control, explicitly select `const WebViewJavaScriptAccessPolicy.unrestricted()` when no origin/frame restriction is needed; the plugin never weakens a restricted policy automatically.
+
+Promise handlers currently run in the main document. Web requires same-origin pages or plugin-controlled HTML, and cannot inject into arbitrary cross-origin URLs. `getJavaScriptCapabilities(world: world)` reports the supported timing, worlds, metadata and content restrictions. World-aware handlers use the optional `world` argument.
+
+Use `removeJavaScriptHandler(name, world: world)` or `removeAllJavaScriptHandlers()` to unregister callbacks. Navigation and disposal cancel pending calls; late results cannot enter a replacement document. Same-document history changes keep calls alive. A callback can await `call.cancelled` to stop its own work; the plugin cannot undo Dart side effects. Removing user scripts preserves the internal Promise bridge and existing string channels.
 
 ## JavaScript Channels
 

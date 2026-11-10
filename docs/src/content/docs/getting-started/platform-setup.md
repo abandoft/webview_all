@@ -23,7 +23,7 @@ For file chooser or media capture flows, implement `AndroidWebViewController.set
 
 ## iOS
 
-Set the deployment target to iOS 13.0 or newer. Add `Info.plist` keys for any resource that web content can request:
+Set the deployment target to iOS 14.0 or newer. Add `Info.plist` keys for any resource that web content can request:
 
 ```xml
 <key>NSCameraUsageDescription</key>
@@ -38,7 +38,7 @@ For App-Bound Domains, configure the domains in the host app and construct the c
 
 ## macOS
 
-Set the deployment target to macOS 10.15 or newer. For network access in a sandboxed app, enable the outgoing network entitlement:
+Set the deployment target to macOS 11.0 or newer. For network access in a sandboxed app, enable the outgoing network entitlement:
 
 ```xml
 <key>com.apple.security.network.client</key>

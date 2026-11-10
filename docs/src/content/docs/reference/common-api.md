@@ -15,7 +15,7 @@ Constructors:
 
 | Constructor | Use |
 | --- | --- |
-| `WebViewController({onPermissionRequest})` | Creates a controller using generic platform params. |
+| `WebViewController({onPermissionRequest, mediaPlaybackPolicy})` | Creates a controller using generic platform params. |
 | `WebViewController.fromPlatformCreationParams(params, {onPermissionRequest})` | Creates a controller with platform-specific creation params. |
 | `WebViewController.fromPlatform(platform, {onPermissionRequest})` | Wraps an existing `PlatformWebViewController`. |
 
@@ -34,26 +34,6 @@ Loading:
 | `loadFlutterAsset(String key)` | `Future<void>` | Loads a Flutter asset. |
 | `loadHtmlString(String html, {String? baseUrl})` | `Future<void>` | Loads in-memory HTML. |
 | `isOffscreenWebViewSupported()` | `Future<bool>` | Whether controller operations can run without `WebViewWidget`. |
-
-## `WebViewSession` (1.4.9)
-
-| API | Use |
-| --- | --- |
-| `getCapabilities()` | Returns supported session modes, close support, and scoped data-management support. |
-| `create({mode, onPermissionRequest})` | Returns an owned session, or logs the reason and returns `null`. Defaults to `incognito`; inspect `incognitoSupport` for the support level. |
-| `controller`, `cookieManager`, `dataManager` | The owned page and managers for its selected data store. |
-| `mode`, `capabilities`, `isClosed` | Session mode, runtime support, and lifecycle state. |
-| `close()` | Idempotently closes the session; remove its widget first. |
-
-## `OffscreenWebViewSession`
-
-| API | Use |
-| --- | --- |
-| `OffscreenWebViewSession.create()` | Creates and owns an offscreen controller with default params. |
-| `OffscreenWebViewSession.fromPlatformCreationParams(params)` | Creates and owns a controller with platform params. |
-| `OffscreenWebViewSession.fromController(controller)` | Transfers ownership of an existing controller. |
-| `controller` | Returns the owned controller until closing starts. |
-| `close()` | Idempotently and permanently releases the session resources. |
 
 Navigation:
 
@@ -110,6 +90,42 @@ View state:
 | `setUserAgent(String? userAgent)` | `Future<void>` |
 | `getUserAgent()` | `Future<String?>` |
 | `setOverScrollMode(WebViewOverScrollMode mode)` | `Future<void>` |
+
+### Browser operations (1.5.0)
+
+| Method | Returns | Purpose |
+| --- | --- | --- |
+| `getBrowserCapabilities()` | `Future<WebViewBrowserCapabilities>` | Query loading, history, search, picker, media, and popup support. |
+| `stopLoading()` | `Future<void>` | Stop the current load. |
+| `getNavigationHistory()` | `Future<WebViewNavigationHistory?>` | Snapshot this view's back/forward list. |
+| `goToHistoryIndex(index)` | `Future<bool>` | Navigate to an index in the current list. |
+| `findText(text, {forward, caseSensitive, wrapAround})` | `Future<WebViewFindResult?>` | Find and select text; repeating a query advances the match. |
+| `clearFindMatches()` | `Future<void>` | Clear search state. |
+| `setPopupPolicy(policy)` | `Future<void>` | Configure popup handling. |
+| `setFileSelector(callback)` | `Future<void>` | Handle file selection; `null` restores defaults. |
+| `setMediaPlaybackRequiresUserGesture(require)` | `Future<void>` | Change the gesture requirement dynamically; use creation parameters on Apple. |
+
+See [Cookies](/webview_all/guides/cookies/) for attributes and individual deletion.
+
+## `WebViewSession` (1.4.9)
+
+| API | Use |
+| --- | --- |
+| `getCapabilities()` | Returns supported session modes, close support, and scoped data-management support. |
+| `create({mode, mediaPlaybackPolicy, onPermissionRequest})` | Returns an owned session, or logs the reason and returns `null`. Defaults to `incognito`; inspect `incognitoSupport` for the support level. |
+| `controller`, `cookieManager`, `dataManager` | The owned page and managers for its selected data store. |
+| `mode`, `capabilities`, `isClosed` | Session mode, runtime support, and lifecycle state. |
+| `close()` | Idempotently closes the session; remove its widget first. |
+
+## `OffscreenWebViewSession`
+
+| API | Use |
+| --- | --- |
+| `OffscreenWebViewSession.create({mediaPlaybackPolicy, onPermissionRequest})` | Creates and owns an offscreen controller with default params. |
+| `OffscreenWebViewSession.fromPlatformCreationParams(params)` | Creates and owns a controller with platform params. |
+| `OffscreenWebViewSession.fromController(controller)` | Transfers ownership of an existing controller. |
+| `controller` | Returns the owned controller until closing starts. |
+| `close()` | Idempotently and permanently releases the session resources. |
 
 ## `NavigationDelegate`
 
@@ -174,6 +190,8 @@ Methods:
 | `clearCookies()` | `Future<bool>` | Clears cookies. |
 | `setCookie(WebViewCookie cookie)` | `Future<void>` | Sets a common cookie. |
 | `getCookies({required Uri domain})` | `Future<List<WebViewCookie>>` | Gets cookies visible for a domain. |
+| `getCapabilities()` | `Future<WebViewCookieCapabilities>` | Readable attributes and individual deletion support. |
+| `deleteCookie({name, domain, path})` | `Future<bool>` | Delete a known cookie identity. |
 
 ## `WebViewDataManager`
 
@@ -222,3 +240,41 @@ Methods:
 - `WebViewSession`, `WebViewSessionMode`, `WebViewSessionCapabilities`, `WebViewIncognitoSupport`
 - `OffscreenWebViewSession`
 - platform creation params for controller, delegate, widget, cookie manager, and data manager
+
+## JavaScript capabilities and handlers (1.5.x)
+
+| API | Purpose |
+| --- | --- |
+| `getJavaScriptCapabilities(world: ...)` | Query timing, worlds, sender metadata and content restrictions. |
+| `tryAddUserScript(...)` | Register an optional document-start/end script; warn and return null when unavailable. |
+| `addJavaScriptHandler(...)` | Register a JSON-compatible asynchronous Dart callback with an explicit access policy. |
+| `removeJavaScriptHandler(...)` / `removeAllJavaScriptHandlers()` | Remove callbacks and cancel pending calls. |
+| `callAsyncJavaScript(..., world: ...)` | Execute in a supported page or isolated world. |
+
+See [JavaScript](/webview_all/guides/javascript/) for usage and platform limits.
+
+
+## Page exports and native child windows
+
+`WebViewController`: `takeScreenshot`, `createPdf`, `setNewWindowDelegate`,
+`setOnWindowCloseRequested`, `setFullscreenDelegate`, `exitFullscreen`,
+`setOnProcessFailed`. `WebViewDataManager`: `getCapabilities`,
+`clearWebsiteData(dataTypes: ...)`.
+
+`WebViewNewWindowRequest.createController()` creates a child matched to its native request.
+
+## 1.5.x — profiles, network and page tools
+
+| API | Purpose |
+| --- | --- |
+| `WebViewProfile.create`, `createSession`, `close`, `whenReleased` | Own a named or private store shared by related sessions. |
+| `WebViewProfileManager.getCapabilities`, `listProfiles`, `requestDeletion` | List and safely request deletion of plugin-owned named persistent profiles. |
+| `saveNavigationState`, `restoreNavigationState`, `clearNavigationHistory` | Native, memory-only history state and clearing. |
+| `takeScreenshot(options: WebViewScreenshotOptions(...))` | Source-pixel region and output scale; native full-document capture on Windows/Linux. |
+| `createPdf(options: WebViewPdfOptions(...))` | Paper size/margins in points and orientation. |
+| `createArchive(format: ...)` | Native MHTML or WebArchive bytes. |
+| `printPage`, `WebViewPrintJob` | System print UI, available job states and cancellation. |
+| `getWebsiteDataRecords`, `clearWebsiteDataFor` | Explicit origin/domain/site operations through data managers. |
+| `getNetworkCapabilities`, `setContentRules` | Native rules, supported actions and conditions, and runtime capabilities. |
+| `setRequestDelegate`, `setCustomSchemeDelegate` | HTTP decisions and creation-time custom schemes. |
+| `setContextMenuEnabled`, `setAudioMuted`, `pauseMedia`, `setMediaPlaybackSuspended` | Available native menu and media controls. |

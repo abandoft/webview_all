@@ -48,9 +48,8 @@ final manager = WebViewDataManager.fromPlatformCreationParams(
 final result = await manager.clearAllWebsiteData();
 ```
 
-会话 Cookie 受 WebView2 浏览器会话的生命周期约束。设置和使用会话 Cookie 时，
-应保留一个已初始化的 WebView 或 `OffscreenWebViewSession`。关闭最后一个 WebView
-可能结束浏览器会话并丢弃会话 Cookie，即使共享环境配置仍然保留。
+默认 Cookie manager 支持在创建页面前设置会话 Cookie。会话 Cookie 仍随原生浏览器
+会话结束而失效；需要跨应用启动保留的 Cookie 应设置过期时间。
 
 controller 初始化失败时，组件中心会显示错误和恢复操作：
 
@@ -194,8 +193,15 @@ await manager.setWindowsCookie(
 - WebView2 environment、composition texture 或帧捕获启动失败时会返回
   `PlatformException`，不再因原生断言终止进程。
 - Windows 初始化异常包含稳定的失败阶段、HRESULT、远程会话标记，并在可用时
-  包含检测到的 WebView2 Runtime 版本，详见[错误与限制](/zh/reference/errors-and-limits/)。
+  包含检测到的 WebView2 Runtime 版本，详见[错误与限制](/webview_all/zh/reference/errors-and-limits/)。
 - 初始化支持幂等重试；显式释放或 finalizer 兜底时，native channel、event
   subscription、stream 和 delegate 都只清理一次。
 - surface resize 使用代际校验并跟随运行中的显示器和 DPI 变化，旧任务不会
   覆盖当前 texture 尺寸。
+
+## 输入法与原生弹出层
+
+组件会同步原生 WebView2 的位置、尺寸和 DPI，使输入法候选框跟随网页光标，
+并处理组件移动、等比缩放和隐藏恢复。Flutter 旋转、非等比或透视变换下的原生弹出位置
+可能不精确，插件会打印说明并继续显示页面。直接使用底层 `Webview` 时，
+保留自动 `scaleFactor` 可获得准确定位。

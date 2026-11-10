@@ -51,12 +51,16 @@ import 'package:webview_all_ohos/webview_all_ohos.dart';
 import 'package:webview_all_web/webview_all_web.dart';
 ```
 
-## 1.4
+## 1.5.x
+
+最低要求调整为 iOS 14、macOS 11。新增 JavaScript 处理器、document-end 脚本与独立执行环境，已有字符串通道继续可用。需要兼容更早 Apple 系统的应用，请参考 [1.4.x 文档](/webview_all/zh/1.4.x/)。
+
+## 1.4.x
 
 由 Flutter 自动注册插件的项目无需修改。如果 Add-to-App 项目手动注册插件，
 或原生代码调用了 External API，需要更新对应名称：
 
-| 平台 | 原名称 | 1.4 名称 |
+| 平台 | 原名称 | 1.4.x 名称 |
 | --- | --- | --- |
 | Android 插件 | `WebViewFlutterPlugin` | `WebviewAllAndroidPlugin` |
 | Apple 插件 | `WebViewFlutterPlugin` | `WebviewAllWKWebViewPlugin` |
@@ -69,9 +73,9 @@ Swift 源码可以继续编译。Objective-C 调用方必须改用
 `WebviewAllWKWebViewExternalAPI`；为避免与官方 WKWebView 插件发生符号冲突，
 不再导出旧 Objective-C 运行时符号。
 
-## 1.3
+## 1.3.x
 
-从 `1.2` 升级时：
+从 `1.2.x` 升级时：
 
 - 将直接使用的 `webview_flutter_android` 和
   `webview_flutter_wkwebview` import 替换为上方对应的 fork 包。
@@ -79,13 +83,13 @@ Swift 源码可以继续编译。Objective-C 调用方必须改用
   `linux/runner/my_application.cc` 恢复为 Flutter 默认实现。已经手动添加的
   `GtkOverlay` 仍然兼容，也可以保留。
 
-`1.3` 内的补丁版本不需要额外迁移。
+`1.3.x` 内的补丁版本不需要额外迁移。
 
-## 1.2
+## 1.2.x
 
 继续使用 `1.2.1` 的应用应参考已冻结的
-[1.2 文档](/webview_all/zh/1.2/)。该版本的 Linux 接入仍需按文档修改 runner；
-新的 `1.3` 应用不要再添加这段改动。
+[1.2.x 文档](/webview_all/zh/1.2.x/)。该版本的 Linux 接入仍需按文档修改 runner；
+新的 `1.3.x` 应用不要再添加这段改动。
 
 ## 迁移时重点检查
 

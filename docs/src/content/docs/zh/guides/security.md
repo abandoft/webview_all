@@ -60,7 +60,7 @@ onSslAuthError: (SslAuthError error) async {
 
 ## Cookie
 
-认证 cookie 优先由服务端设置 `Secure`、`HttpOnly`、`SameSite`。客户端 `WebViewCookieManager` 并不能在所有平台设置所有属性。Windows 虽有 `WindowsWebViewCookie` 扩展元数据，但服务端 cookie 仍是更稳妥的来源。
+认证 Cookie 优先由服务端设置 `Secure`、`HttpOnly`、`SameSite`。客户端操作及可读取属性以 `WebViewCookieManager.getCapabilities()` 为准。
 
 注销时应先让服务端会话失效，再调用 `WebViewDataManager.clearAllWebsiteData()` 并检查结果。未逐项处理不支持的类型时，不能把部分成功视为本地数据已全部清理。旧版 Android System WebView、Windows、OHOS 和 Web 可能返回部分结果。Windows 还应释放仍在使用的 controller，避免其浏览上下文内的 session storage 继续可访问。
 

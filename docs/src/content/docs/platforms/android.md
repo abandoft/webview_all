@@ -3,7 +3,7 @@ title: Android
 description: Android WebView implementation, APIs, and platform limits.
 ---
 
-Android is provided by `webview_all_android ^1.4.0`. `webview_all` registers it as the default Android implementation.
+Android is provided by `webview_all_android ^1.5.0`. `webview_all` registers it as the default Android implementation.
 
 ## Engine
 
@@ -137,10 +137,11 @@ await (controller.platform as AndroidWebViewController)
 
 ## Cookies and Native Access
 
-`getCookies` splits Android's cookie header at semicolons and each entry at its
-first equals sign, so encoded values and values containing `=` are preserved.
-Malformed percent escapes are returned literally instead of failing the whole
-query. Returned entries use the requested host and `/`.
+When System WebView supports `GET_COOKIE_INFO`, `getCookies` returns native
+domain/path, expiry and security attributes; omitted SameSite remains unknown.
+Older providers return names and values only, with the requested host and `/`
+as compatibility placeholders. Do not use those placeholders to infer an identity
+for deletion. Values retain `=`, and malformed percent escapes remain literal.
 
 Native Android clients can retrieve a plugin-owned `WebView` from either a
 `FlutterPluginBinding` or the deprecated `FlutterEngine` overload of
