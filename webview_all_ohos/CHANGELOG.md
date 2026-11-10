@@ -4,7 +4,7 @@
 * Add load controls, navigation history and state, text search, and renderer failure notifications.
 * Add unified file selection, fullscreen and media controls, and native child-window handling.
 * Add named profile management and related private pages with shared session data.
-* Add configurable screenshots and PDFs, page archives, and system printing, with full-document screenshots on Windows and Linux.
+* Add configurable screenshots and PDFs, page archives, and system printing.
 * Add native content rules, request delegates, and declared custom schemes.
 * Extend cookie attributes and add individual cookie deletion and scoped website-data management.
 * Fix Windows session cookies disappearing before the first page loads.
