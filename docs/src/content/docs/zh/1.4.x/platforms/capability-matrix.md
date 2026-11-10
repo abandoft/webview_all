@@ -1,0 +1,87 @@
+---
+title: 能力矩阵
+description: 各平台的 WebView 功能支持与使用限制。
+banner:
+  content: "这是 1.4.x 系列文档。当前接口请切换至 latest。"
+---
+
+标记说明：
+
+| 标记 | 含义 |
+| --- | --- |
+| 完整 | 由平台引擎或强类型桥完整实现。 |
+| 有限制 | 已实现，但有明确浏览器、系统或引擎限制。 |
+| 不支持 | 当前不可用，通常会抛错或按文档 no-op。 |
+
+## 核心能力
+
+| 能力 | Android | iOS | macOS | Windows | Linux | OHOS | Web |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `WebViewWidget` | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 |
+| 不创建 `WebViewWidget` 使用 controller | 完整 | 完整 | 完整 | 完整 | 完整 | 页面操作须绑定 WebView；用户脚本可提前注册 | 不支持，必须挂载 iframe |
+| `loadRequest` GET | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 |
+| GET headers | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 有限制，CORS/fetch |
+| POST body | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 有限制，CORS/fetch |
+| POST 自定义 headers | 不支持 | 完整 | 完整 | 完整 | 完整 | 不支持 | 有限制，CORS/fetch |
+| `loadFile` | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 不支持 |
+| `loadFlutterAsset` | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 |
+| 应用资源 URL、文件及 Range 响应 | 支持；长度及 If-Range 回退有限制 | 完整 | 完整 | 完整 | 完整 | 完整 | 不支持，打印说明 |
+| 应用资源持续流响应 | 完整 | 完整 | 完整 | 不支持，打印说明 | 完整 | 完整 | 不支持，打印说明 |
+| `loadHtmlString` | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 |
+| 历史前进/后退 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 有限制，controller 维护逻辑历史 |
+| 无 controller 清理网站数据 | 旧版 System WebView 有限制 | 完整 | 完整 | 部分类型及旧 Runtime 有限制 | 完整 | 支持部分类型 | 不支持，结果会明确标记 |
+
+## 导航和错误
+
+| 能力 | Android | iOS | macOS | Windows | Linux | OHOS | Web |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `onNavigationRequest` | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 有限制 |
+| 页面开始/完成 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | iframe load 限制 |
+| 进度 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 合成 0/100 |
+| URL 变化 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 逻辑 URL |
+| 资源错误 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | fetch 失败可见 |
+| HTTP 错误 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | fetch-backed load 可见 |
+| HTTP auth | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 浏览器 iframe 不暴露 |
+| SSL auth | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 浏览器 iframe 不暴露 |
+
+## JavaScript、UI 和权限
+
+| 能力 | Android | iOS | macOS | Windows | Linux | OHOS | Web |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| JS 开关 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | iframe sandbox |
+| 执行 JS | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 同源或插件管理的隔离 HTML |
+| JS 返回值 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 同源或隔离 bridge，且需可序列化 |
+| `callAsyncJavaScript` 与命名参数 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 同源或插件管理的隔离 HTML；直接跨域 iframe 不可用 |
+| Document-start 用户脚本 | 运行时检测 | 完整 | 完整 | 完整 | 完整 | 完整 | 不支持，能力检查返回 false |
+| JS channel | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 同源或插件管理的隔离 HTML |
+| Console | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 同源或插件管理的隔离 HTML |
+| JS dialog | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | alert 可走 bridge；隔离 HTML 的 confirm/prompt 由浏览器处理 |
+| 权限请求 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 可控制 HTML 媒体 hook + 浏览器提示 |
+| WebAuthn/Passkey | 有限制，显式启用且关联应用 | 有限制，取决于系统与 Associated Domains | 有限制，取决于系统与 Associated Domains | 有限制，取决于 Runtime/系统/凭据提供方 | 不支持，WebKitGTK port 缺失 | 不声明支持，ArkWeb 无公开宿主 API | 有限制，取决于浏览器与 iframe 策略 |
+| 文件选择 | 完整 | 无通用回调 | 无通用回调 | 无通用回调 | 无通用回调 | 完整 | 浏览器接管 |
+| 定位提示 | 完整 | 无平台 API | 无平台 API | 引擎/浏览器接管 | 引擎/浏览器接管 | 完整 | 浏览器接管 |
+
+## 视图状态
+
+| 能力 | Android | iOS | macOS | Windows | Linux | OHOS | Web |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 标题 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 同源或插件管理的隔离 HTML |
+| 滚动位置读取 | 完整 | 完整 | 不支持，打印信息并返回零 | 完整 | 完整 | 完整 | 同源或插件管理的隔离 HTML |
+| 滚动位置回调 | 完整 | 完整 | 不支持，打印信息并忽略 | 完整 | 完整 | 完整 | 同源或插件管理的隔离 HTML |
+| `scrollTo`/`scrollBy` | 完整 | 完整 | 不支持，打印信息并忽略 | 完整 | 完整 | 完整 | 同源或插件管理的隔离 HTML |
+| 滚动条 | 完整 | 完整 | 不支持，打印信息并忽略 | CSS 实现 | 完整 | CSS 实现 | CSS 实现 |
+| 背景色 | 完整 | 完整 | macOS 12+；更早版本打印信息并忽略 | 完整 | 完整 | 完整 | iframe CSS |
+| 缩放 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | touch-action 限制 |
+| UA override | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 非空 override 不支持 |
+| Overscroll | 完整 | 有限制 | 不支持，打印信息并忽略 | CSS 实现 | 完整 | CSS 实现 | iframe CSS |
+
+
+## 会话模式（1.4.9）
+
+| 模式 | Android | iOS | macOS | Windows | Linux | OHOS | Web |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `shared` | 支持 | 支持 | 支持 | 支持 | 支持 | 支持 | 支持，需挂载 iframe |
+| `incognito` | 有限，不隔离网站数据 | 支持 | 支持 | 依赖 Runtime | 支持 | 支持，无痕页面共享存储 | 不支持 |
+| `isolatedIncognito` | 不支持 | 支持 | 支持 | 依赖 Runtime | 支持 | 不支持 | 不支持 |
+
+使用 `WebViewSession.getCapabilities()` 查询当前运行环境；不支持的创建请求会打印原因并返回 `null`。

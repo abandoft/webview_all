@@ -1,0 +1,64 @@
+---
+title: 平台专属接口
+description: webview_all 及注册平台包暴露的专属 API。
+banner:
+  content: "这是 1.4.x 系列文档。当前接口请切换至 latest。"
+---
+
+平台 API 通过 creation params 和 `platform` 字段访问：
+
+```dart
+final controller = WebViewController();
+
+if (controller.platform is WindowsWebViewController) {
+  await (controller.platform as WindowsWebViewController).openDevTools();
+}
+```
+
+## Android
+
+包：`webview_all_android`。
+
+主要类型：`AndroidWebViewController`、`AndroidWebViewWidget`、`AndroidNavigationDelegate`、`AndroidWebViewCookieManager`、`AndroidWebViewDataManager`、`AndroidLoadFileParams`、`AndroidJavaScriptChannelParams`、`AndroidWebViewPermissionRequest`、`AndroidWebViewPermissionResourceType`、`AndroidSslAuthError`、`AndroidWebResourceError`、`AndroidUrlChange`、`FileSelectorParams`。
+
+重要 API：debugging、file/content access、media gesture、text zoom、wide viewport、geolocation、file selector、custom fullscreen widget、console、JS dialogs、scrollbars、overscroll、mixed content、WebAuthn/Passkey、Payment Request、window insets。
+
+## iOS/macOS
+
+包：`webview_all_wkwebview`。
+
+主要类型：`WebKitWebViewController`、`WebKitWebViewWidget`、`WebKitNavigationDelegate`、`WebKitWebViewCookieManager`、`WebKitWebViewDataManager`、`WebKitLoadFileParams`、`WebKitJavaScriptChannelParams`、`WebKitWebViewPermissionRequest`、`WebKitSslAuthError`、`WebKitWebResourceError`。
+
+重要 API：inline media、media gesture、App-Bound Domains、JavaScript popup policy、back/forward gestures、link preview、inspectable、WebKit 本地文件 read access、permission prompt。
+
+## Windows
+
+包：`webview_all_windows`。
+
+主要类型：`WindowsWebViewController`、`WindowsWebViewWidget`、`WindowsNavigationDelegate`、`WindowsWebViewCookieManager`、`WindowsWebViewDataManager`、`WindowsWebViewCookie`、`WindowsPlatformSslAuthError`、`WindowsWebResourceRequest`、`WindowsWebResourceResponse`、`WindowsWebResourceError`。
+
+重要 API：幂等的 `ensureEnvironment`、严格的 `initializeEnvironment`、`getWebViewVersion`、`openDevTools`、`setDevToolsEnabled`、`setBrowserAcceleratorKeysEnabled`、`setDownloadsEnabled`、`suspend`、`resume`、`setPopupWindowPolicy`、`setZoomFactor`、`setCacheDisabled`、Windows 专属的确定性 `dispose`、完整 cookie 设置/查询/删除。从 1.4.7 起，默认 Cookie/数据 manager 复用已选环境；`WindowsWebViewDataManagerCreationParams` 可显式选择或校验配置。移除组件不会销毁仍可复用的 controller；仅在其所有者确认不再使用时调用 `dispose`。
+
+## Linux
+
+包：`webview_all_linux`。
+
+主要类型：`LinuxWebViewController`、`LinuxWebViewWidget`、`LinuxNavigationDelegate`、`LinuxWebViewCookieManager`、`LinuxWebViewDataManager`、`LinuxWebResourceRequest`、`LinuxWebResourceResponse`、`LinuxWebResourceError`、`LinuxPlatformWebViewPermissionRequest`、`LinuxPlatformSslAuthError`。
+
+重要 API：通过 `ensureEnvironment(userDataPath: ..., cachePath: ...)` 配置共享网站数据和缓存目录、严格的 `initializeEnvironment`、WebKitGTK developer extras、Inspector、`setDownloadsEnabled`、JS popup、media settings、page cache、file URL access、font size、zoom factor，以及可选提前释放资源的既有 Linux 专属 `dispose()`。正常生命周期由 finalizer 自动清理，没有给公共 controller 增加生命周期 API。
+
+## OHOS
+
+包：`webview_all_ohos`。
+
+主要类型：`OhosWebViewController`、`OhosWebViewWidget`、`OhosNavigationDelegate`、`OhosWebViewCookieManager`、`OhosWebViewDataManager`、`OhosJavaScriptChannelParams`、`OhosWebViewPermissionRequest`、`OhosWebViewPermissionResourceType`、`OhosUrlChange`、`OhosWebResourceRequest`、`OhosWebResourceResponse`、`OhosWebResourceError`、`OhosPlatformSslAuthError`、`FileSelectorParams`。
+
+重要 API：ArkWeb debugging、native WebView ID、DOM storage、多窗口、viewport、zoom、file access、media gesture、file selector、geolocation prompt、custom fullscreen widget、第三方 cookie。
+
+## Web
+
+包：`webview_all_web`。
+
+主要类型：`WebWebViewController`、`WebWebViewWidget`、`WebNavigationDelegate`、`WebWebViewCookieManager`、`WebWebViewDataManager`、`WebWebResourceRequest`、`WebWebResourceResponse`、`WebWebViewPermissionRequest`、`WebPlatformSslAuthError`、`HttpRequestFactory`、`ContentType`。
+
+重要 API：`setIFrameAttribute`、`setIFrameAllow`、`setIFrameSandbox`、`setIFrameReferrerPolicy`、fetch-backed request。

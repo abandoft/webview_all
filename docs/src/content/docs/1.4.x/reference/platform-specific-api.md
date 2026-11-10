@@ -1,0 +1,64 @@
+---
+title: Platform API
+description: Platform-specific public APIs exposed by webview_all and its registered platform packages.
+banner:
+  content: "Documentation for 1.4.x. Select latest for the current APIs."
+---
+
+Access platform APIs through creation params and the `platform` field:
+
+```dart
+final controller = WebViewController();
+
+if (controller.platform is WindowsWebViewController) {
+  await (controller.platform as WindowsWebViewController).openDevTools();
+}
+```
+
+## Android
+
+Package: `webview_all_android`.
+
+Main types: `AndroidWebViewController`, `AndroidWebViewWidget`, `AndroidNavigationDelegate`, `AndroidWebViewCookieManager`, `AndroidWebViewDataManager`, `AndroidLoadFileParams`, `AndroidJavaScriptChannelParams`, `AndroidWebViewPermissionRequest`, `AndroidWebViewPermissionResourceType`, `AndroidSslAuthError`, `AndroidWebResourceError`, `AndroidUrlChange`, `FileSelectorParams`.
+
+Important APIs: debugging, file/content access, media gesture, text zoom, wide viewport, geolocation, file selector, custom fullscreen widget, console, JS dialogs, scrollbars, overscroll, mixed content, WebAuthn/passkeys, Payment Request, window insets.
+
+## iOS/macOS
+
+Package: `webview_all_wkwebview`.
+
+Main types: `WebKitWebViewController`, `WebKitWebViewWidget`, `WebKitNavigationDelegate`, `WebKitWebViewCookieManager`, `WebKitWebViewDataManager`, `WebKitLoadFileParams`, `WebKitJavaScriptChannelParams`, `WebKitWebViewPermissionRequest`, `WebKitSslAuthError`, `WebKitWebResourceError`.
+
+Important APIs: inline media, media gesture, App-Bound Domains, JavaScript popup policy, back/forward gestures, link preview, inspectable, WebKit local file read access, permission prompt.
+
+## Windows
+
+Package: `webview_all_windows`.
+
+Main types: `WindowsWebViewController`, `WindowsWebViewWidget`, `WindowsNavigationDelegate`, `WindowsWebViewCookieManager`, `WindowsWebViewDataManager`, `WindowsWebViewCookie`, `WindowsPlatformSslAuthError`, `WindowsWebResourceRequest`, `WindowsWebResourceResponse`, `WindowsWebResourceError`.
+
+Important APIs: idempotent `ensureEnvironment`, strict `initializeEnvironment`, `getWebViewVersion`, `openDevTools`, `setDevToolsEnabled`, `setBrowserAcceleratorKeysEnabled`, `setDownloadsEnabled`, `suspend`, `resume`, `setPopupWindowPolicy`, `setZoomFactor`, `setCacheDisabled`, Windows-specific deterministic `dispose`, full cookie set/query/delete. From 1.4.7, default cookie/data managers follow the selected environment; `WindowsWebViewDataManagerCreationParams` can explicitly select or validate its configuration. Removing the widget does not dispose a reusable controller; call `dispose` only when its owner will never use it again.
+
+## Linux
+
+Package: `webview_all_linux`.
+
+Main types: `LinuxWebViewController`, `LinuxWebViewWidget`, `LinuxNavigationDelegate`, `LinuxWebViewCookieManager`, `LinuxWebViewDataManager`, `LinuxWebResourceRequest`, `LinuxWebResourceResponse`, `LinuxWebResourceError`, `LinuxPlatformWebViewPermissionRequest`, `LinuxPlatformSslAuthError`.
+
+Important APIs: `ensureEnvironment(userDataPath: ..., cachePath: ...)` for shared website data and cache directories, strict `initializeEnvironment`, WebKitGTK developer extras, Inspector, `setDownloadsEnabled`, JS popup, media settings, page cache, file URL access, font size, zoom factor, and the pre-existing Linux-specific `dispose()` for optional early release. Normal cleanup is automatic through its finalizer; no common controller lifecycle API is added.
+
+## OHOS
+
+Package: `webview_all_ohos`.
+
+Main types: `OhosWebViewController`, `OhosWebViewWidget`, `OhosNavigationDelegate`, `OhosWebViewCookieManager`, `OhosWebViewDataManager`, `OhosJavaScriptChannelParams`, `OhosWebViewPermissionRequest`, `OhosWebViewPermissionResourceType`, `OhosUrlChange`, `OhosWebResourceRequest`, `OhosWebResourceResponse`, `OhosWebResourceError`, `OhosPlatformSslAuthError`, `FileSelectorParams`.
+
+Important APIs: ArkWeb debugging, native WebView ID, DOM storage, multiple windows, viewport, zoom, file access, media gesture, file selector, geolocation prompt, custom fullscreen widget, third-party cookies.
+
+## Web
+
+Package: `webview_all_web`.
+
+Main types: `WebWebViewController`, `WebWebViewWidget`, `WebNavigationDelegate`, `WebWebViewCookieManager`, `WebWebViewDataManager`, `WebWebResourceRequest`, `WebWebResourceResponse`, `WebWebViewPermissionRequest`, `WebPlatformSslAuthError`, `HttpRequestFactory`, `ContentType`.
+
+Important APIs: `setIFrameAttribute`, `setIFrameAllow`, `setIFrameSandbox`, `setIFrameReferrerPolicy`, fetch-backed request.

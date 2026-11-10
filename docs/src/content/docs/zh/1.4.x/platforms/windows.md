@@ -1,0 +1,203 @@
+---
+title: Windows
+description: WebView2 实现、运行时设置、API 和限制。
+banner:
+  content: "这是 1.4.x 系列文档。当前接口请切换至 latest。"
+---
+
+Windows 由 `webview_all_windows` 提供，底层使用 Microsoft Edge WebView2。
+
+| 项 | 值 |
+| --- | --- |
+| Controller | `WindowsWebViewController` |
+| Widget | `WindowsWebViewWidget` |
+| Delegate | `WindowsNavigationDelegate` |
+| Cookie manager | `WindowsWebViewCookieManager` |
+| 引擎 | WebView2 |
+| 最低 OS | Windows 10 1809+ |
+
+## 环境初始化
+
+```dart
+await WindowsWebViewController.ensureEnvironment(
+  userDataPath: 'C:\\AppData\\MyApp\\WebView2',
+);
+
+final version = await WindowsWebViewController.getWebViewVersion();
+```
+
+需要自定义用户数据目录、浏览器路径或启动参数时，应在首次查询会话能力、创建 controller、操作
+Cookie 或清理网站数据前调用。`WebViewSession.getCapabilities()` 为检测原生 InPrivate 能力会按需初始化共享环境。从 1.4.7 起，所有参数均为 `null` 时复用已选环境，
+包括仍在创建中的环境；尚无环境时才初始化默认配置。显式传参代表完整配置，其中
+省略或空字符串路径表示平台默认目录。相同配置可重复调用，配置冲突时返回
+`environment_configuration_conflict`。旧的 `initializeEnvironment` 保留用于严格的
+一次性初始化。
+
+环境初始化只检查 WebView2 Runtime 和 profile。图形捕获、Direct3D 与
+Windows Composition 会推迟到首个 controller 创建时初始化，
+`ensureEnvironment` 不会再被无关的渲染能力拦截。
+
+默认 `WebViewCookieManager` 和 `WebViewDataManager` 自动使用已选环境，无需
+重复传参。网站数据清理不会启动图形捕获或创建 Flutter 纹理；如果它是首次操作，
+也可直接携带环境参数：
+
+```dart
+final manager = WebViewDataManager.fromPlatformCreationParams(
+  const WindowsWebViewDataManagerCreationParams(
+    userDataPath: 'C:\\AppData\\MyApp\\WebView2',
+  ),
+);
+final result = await manager.clearAllWebsiteData();
+```
+
+会话 Cookie 受 WebView2 浏览器会话的生命周期约束。设置和使用会话 Cookie 时，
+应保留一个已初始化的 WebView 或 `OffscreenWebViewSession`。关闭最后一个 WebView
+可能结束浏览器会话并丢弃会话 Cookie，即使共享环境配置仍然保留。
+
+controller 初始化失败时，组件中心会显示错误和恢复操作：
+
+- **Install Webview2**：仅在缺少 WebView2 Runtime 时显示，并用默认浏览器打开
+  Microsoft 官方下载页。
+- **Refresh**：清理失败过程中创建的 native 状态和订阅后，使用同一个
+  controller 重试初始化。
+
+如果初始化完成后发生渲染失败，组件会暂停自动画面更新并显示 **Refresh**，
+点击后会在现有 controller 上重新挂载画面并同步尺寸。
+
+渲染器会优先复用应用已有的 `DispatcherQueue`，仅在 UI 线程没有队列时创建；
+帧捕获及其回调统一使用该 UI 线程队列，Direct3D 硬件设备创建失败时会回退到
+WARP 软件渲染器。
+
+## 创建参数
+
+```dart
+final params = const WindowsWebViewControllerCreationParams(
+  popupWindowPolicy: WindowsPopupWindowPolicy.sameWindow,
+  devToolsEnabled: false,
+  browserAcceleratorKeysEnabled: false,
+  downloadsEnabled: false,
+);
+```
+
+DevTools 用户入口在所有构建模式下默认关闭，可设置 `devToolsEnabled: true`
+开启；如需仅在调试构建中开启，可使用 `package:flutter/foundation.dart` 的
+`kDebugMode`。浏览器快捷键和下载省略配置时保持原生默认值（启用）。
+DevTools 默认配置及显式配置均会在首次导航前应用，初始化
+重试时也会保留。设置失败会返回错误，后续导航需等待该配置成功应用或被修改。
+禁用浏览器快捷键需要 `ICoreWebView2Settings3`，禁用下载需要成功注册
+`ICoreWebView2_4` 下载监听。不支持的限制返回 `not_supported`；原生调用失败
+返回 `method_failed`，错误详情包含设置名称和 HRESULT。
+
+从 1.4.8 起，可通过公共[下载代理](/webview_all/zh/1.4.x/guides/downloads/)由应用选择
+保存目标并获取下载进度、结果。`downloadsEnabled` 控制是否允许下载，不代表打开
+下载窗口。离屏原生 WebView 的下载面板无法可靠显示，需要保存提示时请由应用提供交互。
+
+| 值 | 行为 |
+| --- | --- |
+| `allow` | 允许 popup 新窗口。 |
+| `deny` | 拦截 popup。 |
+| `sameWindow` | 在当前 WebView 打开 popup 内容。 |
+
+## 主要 API
+
+| API | 作用 |
+| --- | --- |
+| `ensureEnvironment` | 复用已选共享环境；显式配置必须一致。 |
+| `openDevTools` | 打开 WebView2 DevTools。 |
+| `suspend` / `resume` | 暂停/恢复 WebView。 |
+| `setPopupWindowPolicy` | 运行时修改 popup 策略。 |
+| `setZoomFactor` | 设置 WebView2 缩放因子。 |
+| `setCacheDisabled` | 控制请求是否绕过 cache。 |
+| `setDevToolsEnabled` | 控制通过菜单和快捷键打开 DevTools。默认关闭，不影响 `openDevTools()`。 |
+| `setBrowserAcceleratorKeysEnabled` | 启用或禁用浏览器快捷键，例如 F5、Ctrl+P 和 Ctrl+F。默认启用。 |
+| `setDownloadsEnabled` | 允许新下载，或在开始时取消并阻止保存下载文件。默认允许，不影响已开始的下载。 |
+| `dispose` | 永久释放此 controller 及其 WebView2 资源。 |
+
+开发者工具和浏览器快捷键设置会在下次顶层导航时生效。复制、粘贴等编辑快捷键
+不受影响；禁用浏览器快捷键也不会自动将按键交给 Flutter。这些开关用于控制
+WebView 行为，不是隔离不可信内容的完整安全沙箱。
+
+`onNavigationRequest` 会覆盖 controller 加载以及页面内容触发的 WebView2 主 frame 导航，包括 redirect 和 `sameWindow` popup。controller 请求在原生分发前完成判断，因此会保留自定义 method、headers 和 body；页面导航通过取消后等待异步 Dart 决策、放行后重放来实现，策略性取消不会触发 `onWebResourceError`。
+
+本地文件和 Flutter asset 会使用每个 controller 独立的随机 HTTPS host。路径会先规范化，asset 路径穿越和逃出 bundle 的符号链接会被拒绝，跨 origin 访问默认禁止，切换到无关的远程或 inline 内容前会清理映射。
+
+## 资源生命周期
+
+从组件树中移除 `WebViewWidget` 只会隐藏并分离原生画面，不会销毁
+controller。这样同一个 controller 再次挂载时，当前页面、历史记录和设置不会
+丢失。
+
+确认不再使用某个 Windows controller 时，应主动调用 `dispose()`，以确定性
+释放插件持有的 WebView2 renderer 和原生资源：
+
+```dart
+import 'dart:async';
+
+@override
+void dispose() {
+  final platform = controller.platform;
+  if (platform is WindowsWebViewController) {
+    unawaited(platform.dispose());
+  }
+  super.dispose();
+}
+```
+
+`WindowsWebViewController.dispose()` 可重复调用，在初始化尚未完成时调用也能
+安全收尾。finalizer 仍作为 controller 不可达后的兜底，但不能代替明确的资源
+生命周期。已释放的 controller 不能再次挂载或调用。该接口仅属于 Windows
+平台，不会给公共 controller 增加生命周期 API。
+
+## WebAuthn 与 Passkey
+
+WebView2 没有 Android 式的 WebAuthn 支持级别开关。网页直接调用标准
+`navigator.credentials` API，再由已安装的 WebView2 Runtime、Windows 和
+凭据提供方处理；`webview_all` 不会关闭或替换这条通路。
+
+需要使用安全的 HTTPS relying-party origin，并由有效用户操作发起 Passkey
+请求。每种目标 Windows 部署环境都应验证注册和登录，尤其是 Windows
+Server、VDI、RDP 和受策略管理的凭据提供方。当平台 authenticator
+不可用时，网页必须保留其他登录方式；插件不会用 JS 模拟 Windows Hello
+或安全密钥。
+
+## 完整 Cookie
+
+```dart
+final manager = WebViewCookieManager().platform
+    as WindowsWebViewCookieManager;
+
+await manager.setWindowsCookie(
+  WindowsWebViewCookie(
+    name: 'session',
+    value: 'abc',
+    domain: 'example.com',
+    path: '/',
+    isHttpOnly: true,
+    isSecure: true,
+    sameSite: WindowsWebViewCookieSameSite.lax,
+  ),
+);
+```
+
+还支持按完整 cookie、name+url、name+domain+path 删除。
+
+## 限制
+
+- `loadHtmlString` 通过 WebView2 `NavigateToString` 加载最多 2MB 的 HTML。
+  `baseUrl` 只用于解析相对链接，不改变文档 origin。加载被拒绝时抛出
+  `PlatformException`，错误码为 `method_failed`，`details['hresult']` 包含
+  原生错误码。更大的本地文档可使用 `loadFile` 或资源代理加载。
+- 目标机器必须有 WebView2 Runtime。
+- WebAuthn 可用性由 WebView2 Runtime、Windows 和凭据提供方决定；
+  [WebView2 上游问题](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5663)
+  记录了 Windows Server 和虚拟化环境中的失败反馈。
+- 滚动条和 overscroll 通过 CSS 注入实现。
+- 自定义环境应在首次创建 controller、操作 Cookie 或清理网站数据前配置。默认 manager 复用该环境；显式 manager 参数必须与它一致。切换目录不会自动迁移已有网站数据。
+- WebView2 environment、composition texture 或帧捕获启动失败时会返回
+  `PlatformException`，不再因原生断言终止进程。
+- Windows 初始化异常包含稳定的失败阶段、HRESULT、远程会话标记，并在可用时
+  包含检测到的 WebView2 Runtime 版本，详见[错误与限制](/webview_all/zh/1.4.x/reference/errors-and-limits/)。
+- 初始化支持幂等重试；显式释放或 finalizer 兜底时，native channel、event
+  subscription、stream 和 delegate 都只清理一次。
+- surface resize 使用代际校验并跟随运行中的显示器和 DPI 变化，旧任务不会
+  覆盖当前 texture 尺寸。

@@ -1,0 +1,101 @@
+---
+title: 迁移
+description: 从 webview_flutter 或旧版 webview_all 迁移。
+banner:
+  content: "这是 1.4.x 系列文档。当前接口请切换至 latest。"
+---
+
+`webview_all` 的顶层 API 与 `webview_flutter` 的接口兼容。多数代码可以先替换 import，再按需处理平台差异。
+
+## 从 webview_flutter 迁移
+
+替换：
+
+```dart
+import 'package:webview_flutter/webview_flutter.dart';
+```
+
+为：
+
+```dart
+import 'package:webview_all/webview_all.dart';
+```
+
+通常可继续使用：
+
+- `WebViewController`
+- `WebViewWidget`
+- `NavigationDelegate`
+- `WebViewCookieManager`
+- `NavigationDecision`
+- `JavaScriptMode`
+- `WebViewCookie`
+
+随后对照[能力矩阵](/webview_all/zh/1.4.x/platforms/capability-matrix/)检查差异。Web 和 OHOS 差异最明显，原因分别是浏览器 iframe 安全限制和 ArkWeb 请求 API 限制。
+
+## 平台 import
+
+`1.3.0` 起，Android/iOS/macOS 改用仓库内的 fork 包。原先导入
+`webview_flutter_android` 或 `webview_flutter_wkwebview` 的平台特性代码，
+应改为：
+
+```dart
+import 'package:webview_all_android/webview_all_android.dart';
+import 'package:webview_all_wkwebview/webview_all_wkwebview.dart';
+```
+
+新增桌面、OHOS、Web 平台特性时：
+
+```dart
+import 'package:webview_all_windows/webview_all_windows.dart';
+import 'package:webview_all_linux/webview_all_linux.dart';
+import 'package:webview_all_ohos/webview_all_ohos.dart';
+import 'package:webview_all_web/webview_all_web.dart';
+```
+
+## 1.4.x
+
+由 Flutter 自动注册插件的项目无需修改。如果 Add-to-App 项目手动注册插件，
+或原生代码调用了 External API，需要更新对应名称：
+
+| 平台 | 原名称 | 1.4.x 名称 |
+| --- | --- | --- |
+| Android 插件 | `WebViewFlutterPlugin` | `WebviewAllAndroidPlugin` |
+| Apple 插件 | `WebViewFlutterPlugin` | `WebviewAllWKWebViewPlugin` |
+| Apple External API | `FWFWebViewFlutterWKWebViewExternalAPI` | `WebviewAllWKWebViewExternalAPI` |
+| Windows 注册函数 | `WebviewWindowsPluginRegisterWithRegistrar` | `WebviewAllWindowsPluginRegisterWithRegistrar` |
+| OHOS 插件 | `WebViewFlutterPlugin` | `WebviewAllOhosPlugin` |
+
+Apple External API 的旧名称仍作为废弃的 Swift `typealias` 提供，因此现有
+Swift 源码可以继续编译。Objective-C 调用方必须改用
+`WebviewAllWKWebViewExternalAPI`；为避免与官方 WKWebView 插件发生符号冲突，
+不再导出旧 Objective-C 运行时符号。
+
+## 1.3.x
+
+从 `1.2.x` 升级时：
+
+- 将直接使用的 `webview_flutter_android` 和
+  `webview_flutter_wkwebview` import 替换为上方对应的 fork 包。
+- Linux 不再要求修改应用 runner，可以将
+  `linux/runner/my_application.cc` 恢复为 Flutter 默认实现。已经手动添加的
+  `GtkOverlay` 仍然兼容，也可以保留。
+
+`1.3.x` 内的补丁版本不需要额外迁移。
+
+## 1.2.x
+
+继续使用 `1.2.1` 的应用应参考已冻结的
+[1.2.x 文档](/webview_all/zh/1.2.x/)。该版本的 Linux 接入仍需按文档修改 runner；
+新的 `1.3.x` 应用不要再添加这段改动。
+
+## 迁移时重点检查
+
+| 区域 | 需要确认 |
+| --- | --- |
+| `loadRequest` | Android/OHOS 不支持 POST + 自定义 headers。Web 受 CORS 限制。 |
+| JavaScript | Web 可直接控制同源内容，并通过消息桥控制插件管理的隔离 HTML；直接跨域 iframe URL 仍由浏览器隔离。 |
+| Cookie | Web Cookie 读取要求当前宿主文档的精确 URL，写入不能指定外域。 |
+| TLS | Web 无法暴露可恢复证书错误决策。 |
+| macOS | 部分 UIKit 风格 WebKit 属性没有 macOS bridge。 |
+| Linux | 需要 WebKitGTK 4.1；标准 Flutter runner 无需修改源码。 |
