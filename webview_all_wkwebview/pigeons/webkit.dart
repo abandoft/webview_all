@@ -244,6 +244,9 @@ enum HttpCookiePropertyKey {
   /// A String object that specifies the version of the cookie.
   version,
 
+  /// Whether scripts are prevented from reading this cookie.
+  httpOnly,
+
   /// The value is not recognized by the wrapper.
   unknown,
 }
@@ -600,6 +603,7 @@ abstract class WKWebsiteDataStore extends NSObject {
 
   /// Creates a new nonpersistent store for an independent private session.
   WKWebsiteDataStore.nonPersistent();
+  WKWebsiteDataStore.named(String name);
 
   /// The object that manages the HTTP cookies for your website.
   @attached
@@ -713,6 +717,7 @@ abstract class WKWebViewConfiguration extends NSObject {
 
   /// The object that manages the preference-related settings for the web view.
   void setPreferences(WKPreferences preferences);
+  void setCustomSchemes(List<String> schemes);
 
   /// The object that manages the preference-related settings for the web view.
   WKPreferences getPreferences();
@@ -740,6 +745,22 @@ abstract class WKWebViewConfiguration extends NSObject {
 abstract class WKUserContentController extends NSObject {
   /// Installs a message handler that you can call from your JavaScript code.
   void addScriptMessageHandler(WKScriptMessageHandler handler, String name);
+
+  /// Installs a handler in a named isolated execution environment.
+  void addScriptMessageHandlerInWorld(
+    WKScriptMessageHandler handler,
+    String name,
+    String worldName,
+  );
+
+  void removeScriptMessageHandlerInWorld(String name, String worldName);
+
+  void addUserScriptInWorld(
+    String source,
+    UserScriptInjectionTime injectionTime,
+    bool mainFrameOnly,
+    String worldName,
+  );
 
   /// Uninstalls the custom message handler with the specified name from your
   /// JavaScript code.
@@ -882,6 +903,21 @@ abstract class NSObject {
   ),
 )
 abstract class UIViewWKWebView extends UIView implements WKWebView {
+  bool isFileSelectorSupported();
+  void setFileSelectorEnabled(bool enabled);
+  void stopLoading();
+  Map<String, Object?> getNavigationHistory();
+  bool goToHistoryIndex(int index);
+  @async
+  Map<String, Object?> findText(
+    String text,
+    bool forward,
+    bool caseSensitive,
+    bool wrapAround,
+  );
+  @async
+  void clearFindMatches();
+
   UIViewWKWebView(WKWebViewConfiguration initialConfiguration);
 
   /// The object that contains the configuration details for the web view.
@@ -952,6 +988,10 @@ abstract class UIViewWKWebView extends UIView implements WKWebView {
   @async
   Object? evaluateJavaScript(String javaScriptString);
 
+  /// Evaluates in a named isolated world in the main document.
+  @async
+  Object? evaluateJavaScriptInWorld(String source, String worldName);
+
   /// Invokes an asynchronous JavaScript function with named arguments.
   @async
   Object? callAsyncJavaScript(
@@ -985,6 +1025,21 @@ abstract class UIViewWKWebView extends UIView implements WKWebView {
   ),
 )
 abstract class NSViewWKWebView extends NSObject implements WKWebView {
+  bool isFileSelectorSupported();
+  void setFileSelectorEnabled(bool enabled);
+  void stopLoading();
+  Map<String, Object?> getNavigationHistory();
+  bool goToHistoryIndex(int index);
+  @async
+  Map<String, Object?> findText(
+    String text,
+    bool forward,
+    bool caseSensitive,
+    bool wrapAround,
+  );
+  @async
+  void clearFindMatches();
+
   NSViewWKWebView(WKWebViewConfiguration initialConfiguration);
 
   /// The object that contains the configuration details for the web view.
@@ -1051,6 +1106,10 @@ abstract class NSViewWKWebView extends NSObject implements WKWebView {
   @async
   Object? evaluateJavaScript(String javaScriptString);
 
+  /// Evaluates in a named isolated world in the main document.
+  @async
+  Object? evaluateJavaScriptInWorld(String source, String worldName);
+
   /// Invokes an asynchronous JavaScript function with named arguments.
   @async
   Object? callAsyncJavaScript(
@@ -1103,6 +1162,9 @@ abstract class WKWebView extends NSObject {}
 @ProxyApi(swiftOptions: SwiftProxyApiOptions(import: 'WebKit'))
 abstract class WKUIDelegate extends NSObject {
   WKUIDelegate();
+
+  @async
+  List<String>? Function(bool multiple, bool directories)? onFileSelector;
 
   /// Creates a new web view.
   void Function(
@@ -1158,6 +1220,9 @@ abstract class WKHTTPCookieStore extends NSObject {
   /// Fetches all stored cookies.
   @async
   List<HTTPCookie> getAllCookies();
+
+  @async
+  void deleteCookie(HTTPCookie cookie);
 }
 
 /// The interface for the delegate of a scroll view.

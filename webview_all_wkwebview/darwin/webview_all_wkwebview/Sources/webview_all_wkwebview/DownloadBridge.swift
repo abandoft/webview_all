@@ -81,10 +81,9 @@ final class DownloadBridgeChannel {
       bridge.forwardDelegate = delegate
       // WebKit caches which optional selectors the delegate implements when
       // it is assigned. Refresh that cache after changing the forwarded API.
-      view.navigationDelegate = nil
-      view.navigationDelegate = bridge
+      BrowserOperationsChannel.setNavigationDelegate(bridge, on: view)
     } else {
-      view.navigationDelegate = delegate
+      BrowserOperationsChannel.setNavigationDelegate(delegate, on: view)
     }
   }
 
@@ -160,12 +159,12 @@ private final class DownloadBridge: NSObject, WKNavigationDelegate, WKDownloadDe
   init(view: WKWebView, identifier: Int64, generation: Int, messenger: FlutterBinaryMessenger) {
     self.view = view
     self.generation = generation
-    forwardDelegate = view.navigationDelegate
+    forwardDelegate = BrowserOperationsChannel.navigationDelegate(on: view)
     channel = FlutterMethodChannel(
       name: "com.abandoft.webview_all_wkwebview/downloads/\(identifier)", binaryMessenger: messenger
     )
     super.init()
-    view.navigationDelegate = self
+    BrowserOperationsChannel.setNavigationDelegate(self, on: view)
   }
 
   func update(enabled: Bool, generation: Int) {
@@ -531,7 +530,9 @@ private final class DownloadBridge: NSObject, WKNavigationDelegate, WKDownloadDe
     conversionNavigations.removeAll()
     pendingNavigation = nil
     for record in Array(records.values) { finish(record.download, status: "cancelled") }
-    if view?.navigationDelegate === self { view?.navigationDelegate = forwardDelegate }
+    if let view, BrowserOperationsChannel.navigationDelegate(on: view) === self {
+      BrowserOperationsChannel.setNavigationDelegate(forwardDelegate, on: view)
+    }
   }
 
   deinit {

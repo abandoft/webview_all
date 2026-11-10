@@ -50,14 +50,19 @@ class WebViewProxyAPITests: XCTestCase {
       pigeonApi: api, initialConfiguration: configuration)
     let second = try api.pigeonDelegate.pigeonDefaultConstructor(
       pigeonApi: api, initialConfiguration: configuration)
-    let firstHandler = try XCTUnwrap(first.configuration.urlSchemeHandler(
-      forURLScheme: ResourceSchemeHandler.scheme) as? ResourceSchemeHandler)
-    let secondHandler = try XCTUnwrap(second.configuration.urlSchemeHandler(
-      forURLScheme: ResourceSchemeHandler.scheme) as? ResourceSchemeHandler)
+    let firstHandler = ResourceSchemeHandler.forView(first)
+    let secondHandler = ResourceSchemeHandler.forView(second)
     XCTAssertFalse(firstHandler === secondHandler)
     XCTAssertNil(configuration.urlSchemeHandler(forURLScheme: ResourceSchemeHandler.scheme))
     XCTAssertTrue(first.configuration.websiteDataStore === configuration.websiteDataStore)
     XCTAssertTrue(second.configuration.websiteDataStore === configuration.websiteDataStore)
+    // A related or reused configuration already contains the registered router.
+    // WebKit forbids replacing it; state must remain isolated by view instead.
+    let third = try api.pigeonDelegate.pigeonDefaultConstructor(
+      pigeonApi: api, initialConfiguration: first.configuration)
+    XCTAssertFalse(ResourceSchemeHandler.forView(third) === firstHandler)
+    ResourceSchemeHandler.close(third)
+    XCTAssertTrue(ResourceSchemeHandler.existing(first) === firstHandler)
   }
 
   #if os(iOS)

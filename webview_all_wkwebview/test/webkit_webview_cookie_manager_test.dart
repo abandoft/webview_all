@@ -69,7 +69,7 @@ void main() {
       );
 
       await manager.setCookie(
-        const WebViewCookie(name: 'a', value: 'b', domain: 'c', path: 'd'),
+        const WebViewCookie(name: 'a', value: 'b', domain: 'c', path: '/d'),
       );
 
       verify(mockCookieStore.setCookie(cookie));
@@ -77,7 +77,7 @@ void main() {
         HttpCookiePropertyKey.name: 'a',
         HttpCookiePropertyKey.value: 'b',
         HttpCookiePropertyKey.domain: 'c',
-        HttpCookiePropertyKey.path: 'd',
+        HttpCookiePropertyKey.path: '/d',
       });
     });
 
@@ -156,7 +156,7 @@ void main() {
       );
 
       final List<WebViewCookie> cookies = await manager.getCookies(
-        Uri.parse('https://flutter.dev'),
+        Uri.parse('https://flutter.dev/path'),
       );
 
       expect(cookies.length, 3);
@@ -172,15 +172,22 @@ void main() {
       expect(cookies[1].path, '/path');
 
       final List<WebViewCookie> cookiesWww = await manager.getCookies(
-        Uri.parse('https://www.flutter.dev'),
+        Uri.parse('https://www.flutter.dev/path'),
       );
 
-      expect(cookiesWww.length, 3);
+      expect(cookiesWww.length, 1);
+      expect(cookiesWww.single.name, 'cookie3');
+      expect(
+        (await manager.getCookies(
+          Uri.parse('https://flutter.dev/'),
+        )).map((cookie) => cookie.name),
+        ['cookie1'],
+      );
 
-      expect(cookiesWww[2].name, 'cookie3');
-      expect(cookiesWww[2].value, 'value3');
-      expect(cookiesWww[2].domain, '.flutter.dev');
-      expect(cookiesWww[2].path, '/path');
+      expect(cookiesWww.single.name, 'cookie3');
+      expect(cookiesWww.single.value, 'value3');
+      expect(cookiesWww.single.domain, '.flutter.dev');
+      expect(cookiesWww.single.path, '/path');
     });
   });
 }

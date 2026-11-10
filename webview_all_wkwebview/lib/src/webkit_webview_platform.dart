@@ -1,3 +1,5 @@
+import 'package:flutter/services.dart';
+
 // Copyright 2013 The Flutter Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
@@ -10,6 +12,12 @@ import 'webkit_webview_data_manager.dart';
 
 /// Implementation of [WebViewPlatform] using the WebKit API.
 class WebKitWebViewPlatform extends WebViewPlatform {
+  @override
+  PlatformWebViewProfileManager createPlatformWebViewProfileManager() =>
+      PlatformWebViewProfileManager.channel(
+        'com.abandoft.webview_all_wkwebview/browser',
+      );
+
   @override
   bool get supportsOffscreenWebViews => true;
 
@@ -24,7 +32,20 @@ class WebKitWebViewPlatform extends WebViewPlatform {
         incognitoSupport: WebViewIncognitoSupport.nativeStore,
         scopedCookies: true,
         scopedWebsiteData: true,
+        relatedControllers: true,
+        namedProfiles: await _supportsNamedProfiles(),
       );
+
+  Future<bool> _supportsNamedProfiles() async {
+    try {
+      return await const MethodChannel(
+            'com.abandoft.webview_all_wkwebview/browser',
+          ).invokeMethod<bool>('supportsNamedProfiles') ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Registers this class as the default instance of [WebViewPlatform].
   static void registerWith() {

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'common/web_kit.g.dart';
@@ -61,6 +62,78 @@ class WebKitWebViewDataManager extends PlatformWebViewDataManager {
 
   WebKitWebViewDataManagerCreationParams get _webkitParams =>
       params as WebKitWebViewDataManagerCreationParams;
+
+  static const _nativeTypes = <WebViewDataType, List<WebsiteDataType>>{
+    WebViewDataType.cookies: [WebsiteDataType.cookies],
+    WebViewDataType.cache: [
+      WebsiteDataType.memoryCache,
+      WebsiteDataType.diskCache,
+      WebsiteDataType.offlineWebApplicationCache,
+    ],
+    WebViewDataType.localStorage: [WebsiteDataType.localStorage],
+    WebViewDataType.sessionStorage: [WebsiteDataType.sessionStorage],
+    WebViewDataType.indexedDb: [WebsiteDataType.indexedDBDatabases],
+    WebViewDataType.webSql: [WebsiteDataType.webSQLDatabases],
+    WebViewDataType.cacheStorage: [WebsiteDataType.fetchCache],
+    WebViewDataType.serviceWorkers: [
+      WebsiteDataType.serviceWorkerRegistrations,
+    ],
+  };
+
+  static const _channel = MethodChannel(
+    'com.abandoft.webview_all_wkwebview/browser',
+  );
+  Future<T?> _scoped<T>(
+    String method,
+    WebViewDataTarget? target,
+    Set<WebViewDataType> types,
+  ) async {
+    final store = await _store;
+    return _channel.invokeMethod<T>(method, {
+      'storeId': PigeonInstanceManager.instance.getIdentifier(store),
+      'target': target?.toMap(),
+      'dataTypes': types.map((v) => v.index).toList(),
+    });
+  }
+
+  @override
+  Future<List<WebViewDataRecord>?> getWebsiteDataRecords({
+    WebViewDataTarget? target,
+    Set<WebViewDataType> dataTypes = const {...WebViewDataType.values},
+  }) => readNativeDataRecords(target, dataTypes, () async {
+    if (target != null && target.scope != WebViewDataScope.domain) {
+      debugPrint(
+        'webview_all_wkwebview: records use domain scope; an exact origin cannot be listed.',
+      );
+      return null;
+    }
+    return _scoped<List<Object?>>('getWebsiteDataRecords', target, dataTypes);
+  });
+  @override
+  Future<WebViewDataClearingResult> clearWebsiteDataFor(
+    WebViewDataTarget target, {
+    required Set<WebViewDataType> dataTypes,
+  }) => clearScopedData(target, dataTypes, (types) async {
+    await _scoped<void>('clearWebsiteDataFor', target, types);
+  });
+
+  @override
+  Future<WebViewDataCapabilities> getCapabilities() async =>
+      WebViewDataCapabilities(
+        clearingGroups: WebViewDataType.values.map((type) => {type}),
+        records: true,
+        scopedClearingGroups: {
+          WebViewDataScope.domain: WebViewDataType.values.map((v) => {v}),
+        },
+      );
+
+  @override
+  Future<WebViewDataClearingResult> clearWebsiteData({
+    required Set<WebViewDataType> dataTypes,
+  }) => clearDataCategories(dataTypes, {
+    for (final entry in _nativeTypes.entries)
+      entry.key: () async => (await _store).removeDataOfTypes(entry.value, 0),
+  });
 
   @override
   Future<WebViewDataClearingResult> clearAllWebsiteData() async {

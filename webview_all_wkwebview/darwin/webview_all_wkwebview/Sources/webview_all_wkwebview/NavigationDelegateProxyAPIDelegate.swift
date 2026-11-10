@@ -4,6 +4,19 @@
 
 import WebKit
 
+private final class NavigationPolicyContext {
+  weak var view: WKWebView?
+  let generation: UInt64?
+  init(_ view: WKWebView) {
+    self.view = view
+    self.generation = (view as? WebViewImpl)?.navigationPolicyGeneration
+  }
+  var isCurrent: Bool {
+    guard let view = view else { return false }
+    return (view as? WebViewImpl)?.navigationPolicyGeneration == generation
+  }
+}
+
 /// Implementation of `WKNavigationDelegate` that calls to Dart in callback methods.
 public class NavigationDelegateImpl: NSObject, WKNavigationDelegate {
   let api: PigeonApiProtocolWKNavigationDelegate
@@ -28,6 +41,8 @@ public class NavigationDelegateImpl: NSObject, WKNavigationDelegate {
 
   public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!)
   {
+    (webView.uiDelegate as? UIDelegateImpl)?.cancelFileSelections()
+    (webView as? WebViewImpl)?.navigationPolicyGeneration &+= 1
     registrar.dispatchOnMainThread { onFailure in
       self.api.didStartProvisionalNavigation(
         pigeonInstance: self, webView: webView, url: webView.url?.absoluteString
@@ -83,11 +98,16 @@ public class NavigationDelegateImpl: NSObject, WKNavigationDelegate {
       _ webView: WKWebView, decidePolicyFor navigationAction: WebKit.WKNavigationAction,
       decisionHandler: @escaping @MainActor (WebKit.WKNavigationActionPolicy) -> Void
     ) {
+      let policyContext = NavigationPolicyContext(webView)
       registrar.dispatchOnMainThread { onFailure in
         self.api.decidePolicyForNavigationAction(
           pigeonInstance: self, webView: webView, navigationAction: navigationAction
         ) { result in
           DispatchQueue.main.async {
+            guard policyContext.isCurrent else {
+              decisionHandler(.cancel)
+              return
+            }
             switch result {
             case .success(let policy):
               switch policy {
@@ -120,11 +140,16 @@ public class NavigationDelegateImpl: NSObject, WKNavigationDelegate {
       _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
       decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
+      let policyContext = NavigationPolicyContext(webView)
       registrar.dispatchOnMainThread { onFailure in
         self.api.decidePolicyForNavigationAction(
           pigeonInstance: self, webView: webView, navigationAction: navigationAction
         ) { result in
           DispatchQueue.main.async {
+            guard policyContext.isCurrent else {
+              decisionHandler(.cancel)
+              return
+            }
             switch result {
             case .success(let policy):
               switch policy {
@@ -159,11 +184,16 @@ public class NavigationDelegateImpl: NSObject, WKNavigationDelegate {
       _ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
       decisionHandler: @escaping @MainActor (WKNavigationResponsePolicy) -> Void
     ) {
+      let policyContext = NavigationPolicyContext(webView)
       registrar.dispatchOnMainThread { onFailure in
         self.api.decidePolicyForNavigationResponse(
           pigeonInstance: self, webView: webView, navigationResponse: navigationResponse
         ) { result in
           DispatchQueue.main.async {
+            guard policyContext.isCurrent else {
+              decisionHandler(.cancel)
+              return
+            }
             switch result {
             case .success(let policy):
               switch policy {
@@ -196,11 +226,16 @@ public class NavigationDelegateImpl: NSObject, WKNavigationDelegate {
       _ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
       decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
+      let policyContext = NavigationPolicyContext(webView)
       registrar.dispatchOnMainThread { onFailure in
         self.api.decidePolicyForNavigationResponse(
           pigeonInstance: self, webView: webView, navigationResponse: navigationResponse
         ) { result in
           DispatchQueue.main.async {
+            guard policyContext.isCurrent else {
+              decisionHandler(.cancel)
+              return
+            }
             switch result {
             case .success(let policy):
               switch policy {

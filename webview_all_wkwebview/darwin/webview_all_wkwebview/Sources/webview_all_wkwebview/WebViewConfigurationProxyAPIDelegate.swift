@@ -9,6 +9,23 @@ import WebKit
 /// This class may handle instantiating native object instances that are attached to a Dart instance
 /// or handle method calls on the associated native class or an instance of that class.
 class WebViewConfigurationProxyAPIDelegate: PigeonApiDelegateWKWebViewConfiguration {
+  func setCustomSchemes(
+    pigeonApi: PigeonApiWKWebViewConfiguration,
+    pigeonInstance: WKWebViewConfiguration, schemes: [String]
+  ) throws {
+    guard schemes.count <= 16,
+      schemes.allSatisfy({
+        $0.range(of: "^[a-z][a-z0-9+.-]{0,31}$", options: .regularExpression) != nil
+          && !WKWebView.handlesURLScheme($0)
+          && !["webview-all-resource", "javascript", "blob", "ws", "wss"].contains($0)
+      })
+    else {
+      throw PigeonError(
+        code: "invalid_scheme", message: "A custom scheme is invalid or owned by the engine.",
+        details: nil)
+    }
+    ResourceSchemeHandler.installCustom(schemes, on: pigeonInstance)
+  }
   func pigeonDefaultConstructor(pigeonApi: PigeonApiWKWebViewConfiguration) throws
     -> WKWebViewConfiguration
   {
@@ -33,12 +50,16 @@ class WebViewConfigurationProxyAPIDelegate: PigeonApiDelegateWKWebViewConfigurat
     dataStore: WKWebsiteDataStore
   ) throws {
     pigeonInstance.websiteDataStore = dataStore
+    BrowserProfiles.track(pigeonInstance, store: dataStore, manager: pigeonApi.pigeonRegistrar.instanceManager)
   }
 
   func getWebsiteDataStore(
     pigeonApi: PigeonApiWKWebViewConfiguration, pigeonInstance: WKWebViewConfiguration
   ) throws -> WKWebsiteDataStore {
-    return pigeonInstance.websiteDataStore
+    let store = pigeonInstance.websiteDataStore
+    BrowserProfiles.track(store, store: store, manager: pigeonApi.pigeonRegistrar.instanceManager)
+    BrowserProfiles.track(pigeonInstance, store: store, manager: pigeonApi.pigeonRegistrar.instanceManager)
+    return store
   }
 
   func setPreferences(

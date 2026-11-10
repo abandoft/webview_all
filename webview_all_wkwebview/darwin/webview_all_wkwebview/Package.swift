@@ -9,8 +9,8 @@ import PackageDescription
 let package = Package(
   name: "webview_all_wkwebview",
   platforms: [
-    .iOS("13.0"),
-    .macOS("10.15"),
+    .iOS("14.0"),
+    .macOS("11.0"),
   ],
   products: [
     .library(name: "webview-all-wkwebview", targets: ["webview_all_wkwebview"])

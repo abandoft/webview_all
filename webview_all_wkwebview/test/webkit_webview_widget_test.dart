@@ -342,6 +342,8 @@ WebKitWebViewController createTestWebViewController() {
   };
   PigeonOverrides.wKUIDelegate_new =
       ({
+        Future<List<String>?> Function(WKUIDelegate, bool, bool)?
+        onFileSelector,
         dynamic onCreateWebView,
         dynamic requestMediaCapturePermission,
         dynamic runJavaScriptAlertPanel,

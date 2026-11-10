@@ -16,6 +16,57 @@ class UIDelegateProxyAPITests: XCTestCase {
     XCTAssertNotNil(instance)
   }
 
+  #if os(macOS) || compiler(>=6.1)
+    @available(iOS 18.4, macOS 11.0, *)
+    @MainActor func testFileSelectorPreservesDefaultsAndFiltersResults() throws {
+      let api = TestDelegateApi()
+      let registrar = TestProxyApiRegistrar()
+      let instance = UIDelegateImpl(api: api, registrar: registrar)
+      let selector = NSSelectorFromString(
+        "webView:runOpenPanelWithParameters:initiatedByFrame:completionHandler:")
+      XCTAssertFalse(instance.responds(to: selector))
+      instance.fileSelectorEnabled = true
+      XCTAssertTrue(instance.responds(to: selector))
+      let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      try Data([1, 2, 3]).write(to: file)
+      defer { try? FileManager.default.removeItem(at: file) }
+      api.fileSelection = ["https://example.test/file", file.path, file.path]
+      let completed = expectation(description: "file selection")
+      instance.webView(
+        WKWebView(frame: .zero), runOpenPanelWith: TestOpenPanelParameters(),
+        initiatedByFrame: TestFrameInfo.instance
+      ) { urls in
+        XCTAssertEqual(urls, [file])
+        completed.fulfill()
+      }
+      wait(for: [completed], timeout: 2)
+      XCTAssertEqual(api.fileSelectorArgs, [false, false])
+    }
+
+    @available(iOS 18.4, macOS 11.0, *)
+    @MainActor func testCancelledFileSelectorIgnoresLateResult() {
+      let api = TestDelegateApi()
+      api.holdFileSelection = true
+      let registrar = TestProxyApiRegistrar()
+      let instance = UIDelegateImpl(api: api, registrar: registrar)
+      instance.fileSelectorEnabled = true
+      let completed = expectation(description: "cancelled file selection")
+      var completions = 0
+      instance.webView(
+        WKWebView(frame: .zero), runOpenPanelWith: TestOpenPanelParameters(),
+        initiatedByFrame: TestFrameInfo.instance
+      ) { urls in
+        completions += 1
+        XCTAssertNil(urls)
+        completed.fulfill()
+      }
+      instance.cancelFileSelections()
+      api.fileSelectorCompletion?(.success(["/late-result"]))
+      wait(for: [completed], timeout: 2)
+      XCTAssertEqual(completions, 1)
+    }
+  #endif
+
   @MainActor func testOnCreateWebView() {
     let api = TestDelegateApi()
     let registrar = TestProxyApiRegistrar()
@@ -129,6 +180,23 @@ class TestDelegateApi: PigeonApiProtocolWKUIDelegate {
   var runJavaScriptConfirmPanelArgs: [AnyHashable?]? = nil
   var runJavaScriptTextInputPanelArgs: [AnyHashable?]? = nil
 
+  var fileSelection: [String]? = nil
+  var holdFileSelection = false
+  var fileSelectorArgs: [Bool]? = nil
+  var fileSelectorCompletion: ((Result<[String]?, PigeonError>) -> Void)?
+
+  func onFileSelector(
+    pigeonInstance: WKUIDelegate, multiple: Bool, directories: Bool,
+    completion: @escaping (Result<[String]?, PigeonError>) -> Void
+  ) {
+    fileSelectorArgs = [multiple, directories]
+    if holdFileSelection {
+      fileSelectorCompletion = completion
+    } else {
+      completion(.success(fileSelection))
+    }
+  }
+
   func onCreateWebView(
     pigeonInstance pigeonInstanceArg: WKUIDelegate, webView webViewArg: WKWebView,
     configuration configurationArg: WKWebViewConfiguration,
@@ -173,3 +241,11 @@ class TestDelegateApi: PigeonApiProtocolWKUIDelegate {
     completion(.success("myString2"))
   }
 }
+
+#if os(macOS) || compiler(>=6.1)
+  @available(iOS 18.4, macOS 11.0, *)
+  private class TestOpenPanelParameters: WKOpenPanelParameters {
+    override var allowsMultipleSelection: Bool { false }
+    override var allowsDirectories: Bool { false }
+  }
+#endif

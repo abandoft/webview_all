@@ -17,6 +17,26 @@ class HTTPCookieProxyAPITests: XCTestCase {
     XCTAssertNotNil(instance)
   }
 
+  func testCookieExpiryAndSecurityMetadata() throws {
+    let registrar = TestProxyApiRegistrar()
+    let api = registrar.apiDelegate.pigeonApiHTTPCookie(registrar)
+    let expiry = floor(Date().timeIntervalSince1970 + 3600) * 1000
+    let cookie = try api.pigeonDelegate.pigeonDefaultConstructor(
+      pigeonApi: api,
+      properties: [
+        .name: "session", .value: "v", .domain: "example.test", .path: "/",
+        .expires: expiry, .secure: "TRUE", .httpOnly: "TRUE", .sameSitePolicy: "lax",
+      ])
+    XCTAssertTrue(cookie.isSecure)
+    XCTAssertTrue(cookie.isHTTPOnly)
+    XCTAssertEqual(cookie.expiresDate!.timeIntervalSince1970 * 1000, expiry, accuracy: 1)
+    let properties = try api.pigeonDelegate.getProperties(pigeonApi: api, pigeonInstance: cookie)
+    XCTAssertEqual(properties?[.expires] as? Double, expiry)
+    XCTAssertEqual(properties?[.secure] as? Bool, true)
+    XCTAssertEqual(properties?[.httpOnly] as? Bool, true)
+    XCTAssertEqual(properties?[.discard] as? Bool, false)
+  }
+
   func testGetProperties() {
     let registrar = TestProxyApiRegistrar()
     let api = registrar.apiDelegate.pigeonApiHTTPCookie(registrar)

@@ -17,8 +17,8 @@ Downloaded by pub (not CocoaPods).
   s.source_files = 'webview_all_wkwebview/Sources/webview_all_wkwebview/**/*.swift'
   s.ios.dependency 'Flutter'
   s.osx.dependency 'FlutterMacOS'
-  s.ios.deployment_target = '13.0'
-  s.osx.deployment_target = '10.15'
+  s.ios.deployment_target = '14.0'
+  s.osx.deployment_target = '11.0'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.resource_bundles = {'webview_all_wkwebview_privacy' => ['webview_all_wkwebview/Sources/webview_all_wkwebview/Resources/PrivacyInfo.xcprivacy']}
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }

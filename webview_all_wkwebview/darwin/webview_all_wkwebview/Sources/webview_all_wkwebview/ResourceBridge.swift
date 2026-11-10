@@ -1,4 +1,5 @@
 import Foundation
+import ObjectiveC
 import WebKit
 
 #if os(iOS)
@@ -19,14 +20,15 @@ final class ResourceBridgeChannel {
     channel = FlutterMethodChannel(
       name: "com.abandoft.webview_all/resources", binaryMessenger: messenger)
     channel.setMethodCallHandler { [weak self] call, result in
-      guard let self, call.method == "configure",
+      let custom = call.method == "configureSchemes"
+      guard let self, call.method == "configure" || custom,
         let args = call.arguments as? [String: Any],
         let identifier = args["webViewId"] as? NSNumber,
         let view: WKWebView = self.registrar?.instanceManager.instance(
           forIdentifier: identifier.int64Value),
-        let handler = view.configuration.urlSchemeHandler(
-          forURLScheme: ResourceSchemeHandler.scheme) as? ResourceSchemeHandler,
-        let name = args["channel"] as? String, let host = args["host"] as? String,
+        view.configuration.urlSchemeHandler(
+          forURLScheme: ResourceSchemeHandler.scheme) is ResourceSchemeRouter,
+        let name = args["channel"] as? String,
         let enabled = args["enabled"] as? Bool
       else {
         result(
@@ -35,9 +37,22 @@ final class ResourceBridgeChannel {
             message: "Unknown WebView or resource configuration.", details: nil))
         return
       }
-      handler.configure(name: name, host: host, enabled: enabled, messenger: self.messenger)
+      let schemes = args["schemes"] as? [String] ?? []
+      if custom
+        && (schemes.isEmpty
+          || schemes.contains(where: {
+            !(view.configuration.urlSchemeHandler(forURLScheme: $0) is ResourceSchemeRouter)
+          }))
+      {
+        result(false)
+        return
+      }
+      let handler = ResourceSchemeHandler.forView(view, custom: custom)
+      handler.configure(
+        name: name, host: args["host"] as? String ?? "", enabled: enabled,
+        messenger: self.messenger, schemes: custom ? Set(schemes) : [])
       self.handlers.add(handler)
-      result(nil)
+      result(custom ? true : nil)
     }
   }
 
@@ -50,11 +65,29 @@ final class ResourceBridgeChannel {
 
 /// The reserved scheme is installed before WKWebView copies its configuration.
 /// No callbacks reach Dart until an application explicitly enables a delegate.
+private var resourceStateAssociation: UInt8 = 0
+private var customResourceStateAssociation: UInt8 = 0
+
+/// A configuration (including WebKit's related-window configuration) may share
+/// a router. Every view still owns its own delegate, host and pending tasks.
+private final class ResourceSchemeRouter: NSObject, WKURLSchemeHandler {
+  let custom: Bool
+  init(custom: Bool = false) { self.custom = custom }
+  func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
+    ResourceSchemeHandler.forView(webView, custom: custom).webView(webView, start: task)
+  }
+  func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {
+    ResourceSchemeHandler.existing(webView, custom: custom)?.webView(webView, stop: task)
+  }
+}
+
 final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
   static let scheme = "webview-all-resource"
   private var channel: FlutterMethodChannel?
   private var host = ""
   private var enabled = false
+  private var channelName = ""
+  private var customSchemes: Set<String> = []
   private var requests: [ObjectIdentifier: ResourceTask] = [:]
 
   private final class ResourceTask {
@@ -66,36 +99,72 @@ final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
 
   static func install(on configuration: WKWebViewConfiguration) {
     if configuration.urlSchemeHandler(forURLScheme: scheme) == nil {
-      configuration.setURLSchemeHandler(ResourceSchemeHandler(), forURLScheme: scheme)
+      configuration.setURLSchemeHandler(ResourceSchemeRouter(), forURLScheme: scheme)
+    }
+  }
+  static func installCustom(_ schemes: [String], on configuration: WKWebViewConfiguration) {
+    for name in schemes where configuration.urlSchemeHandler(forURLScheme: name) == nil {
+      configuration.setURLSchemeHandler(ResourceSchemeRouter(custom: true), forURLScheme: name)
     }
   }
 
   static func configuration(from initial: WKWebViewConfiguration) -> WKWebViewConfiguration {
     let configuration = initial.copy() as! WKWebViewConfiguration
-    // Configuration copies retain their scheme handler objects. A reused
-    // creation configuration must not share one controller's channel or host.
-    if configuration.urlSchemeHandler(forURLScheme: scheme) is ResourceSchemeHandler {
-      configuration.setURLSchemeHandler(nil, forURLScheme: scheme)
-    }
+    // Public WebKit APIs cannot replace an already registered scheme handler.
+    // The stateless router safely handles reused and related configurations.
     install(on: configuration)
     return configuration
   }
 
   static func close(_ view: WKWebView) {
-    (view.configuration.urlSchemeHandler(forURLScheme: scheme) as? ResourceSchemeHandler)?.close()
+    existing(view)?.close()
+    objc_setAssociatedObject(
+      view, &resourceStateAssociation, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    existing(view, custom: true)?.close()
+    objc_setAssociatedObject(
+      view, &customResourceStateAssociation, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
   }
 
-  func configure(name: String, host: String, enabled: Bool, messenger: FlutterBinaryMessenger) {
+  static func existing(_ view: WKWebView, custom: Bool = false) -> ResourceSchemeHandler? {
+    if custom {
+      return objc_getAssociatedObject(view, &customResourceStateAssociation)
+        as? ResourceSchemeHandler
+    }
+    return objc_getAssociatedObject(view, &resourceStateAssociation) as? ResourceSchemeHandler
+  }
+
+  static func forView(_ view: WKWebView, custom: Bool = false) -> ResourceSchemeHandler {
+    if let handler = existing(view, custom: custom) { return handler }
+    let handler = ResourceSchemeHandler()
+    if custom {
+      objc_setAssociatedObject(
+        view, &customResourceStateAssociation, handler, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+      return handler
+    }
+    objc_setAssociatedObject(
+      view, &resourceStateAssociation, handler, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    return handler
+  }
+
+  func configure(
+    name: String, host: String, enabled: Bool, messenger: FlutterBinaryMessenger,
+    schemes: Set<String> = []
+  ) {
+    if !enabled && name != channelName { return }
     cancelAll()
     self.channel = FlutterMethodChannel(name: name, binaryMessenger: messenger)
+    channelName = name
+    customSchemes = schemes
     self.host = host
     self.enabled = enabled
   }
 
   func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
     guard enabled, let channel, let url = urlSchemeTask.request.url,
-      url.scheme == Self.scheme, url.host == host,
-      url.port == nil, url.user == nil, url.password == nil
+      customSchemes.isEmpty
+        ? url.scheme == Self.scheme && url.host == host && url.port == nil
+        : customSchemes.contains(url.scheme ?? ""),
+      url.user == nil, url.password == nil
     else {
       urlSchemeTask.didFailWithError(URLError(.resourceUnavailable))
       return
@@ -104,12 +173,22 @@ final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     let key = ObjectIdentifier(urlSchemeTask)
     requests[key] = request
     armTimeout(request)
+    let method = (urlSchemeTask.request.httpMethod ?? "GET").uppercased()
+    let nativeBody = urlSchemeTask.request.httpBody
+    // WebKit may omit POST bodies from NSURLRequest. Nil is not evidence of
+    // an empty POST; only GET/HEAD can report a known empty body here.
+    let bodyAvailable =
+      urlSchemeTask.request.httpBodyStream == nil
+      && (nativeBody != nil || method == "GET" || method == "HEAD")
+      && (nativeBody?.count ?? 0) <= 4 * 1024 * 1024
     channel.invokeMethod(
       "open",
       arguments: [
         "id": request.id, "uri": url.absoluteString,
         "method": urlSchemeTask.request.httpMethod ?? "GET",
         "headers": urlSchemeTask.request.allHTTPHeaderFields ?? [:],
+        "bodyAvailable": bodyAvailable,
+        "body": bodyAvailable ? FlutterStandardTypedData(bytes: nativeBody ?? Data()) : NSNull(),
       ]
     ) { [weak self, weak request] value in
       guard let self, let request, self.requests[key] === request else { return }

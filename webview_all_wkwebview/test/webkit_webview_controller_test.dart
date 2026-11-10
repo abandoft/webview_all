@@ -138,6 +138,8 @@ void main() {
           };
       PigeonOverrides.wKUIDelegate_new =
           ({
+            Future<List<String>?> Function(WKUIDelegate, bool, bool)?
+            onFileSelector,
             void Function(
               WKUIDelegate,
               WKWebView,
@@ -175,6 +177,7 @@ void main() {
             return uiDelegate ??
                 CapturingUIDelegate(
                   onCreateWebView: onCreateWebView,
+                  onFileSelector: onFileSelector,
                   requestMediaCapturePermission: requestMediaCapturePermission,
                   runJavaScriptAlertPanel: runJavaScriptAlertPanel,
                   runJavaScriptConfirmPanel: runJavaScriptConfirmPanel,
@@ -431,6 +434,58 @@ void main() {
         },
       );
     });
+
+    test('generic media policy configures Apple before view creation', () {
+      createControllerWithMocks();
+      const generic = PlatformWebViewControllerCreationParams(
+        mediaPlaybackPolicy: WebViewMediaPlaybackPolicy.allowWithoutUserGesture,
+      );
+      final params =
+          WebKitWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
+            generic,
+          );
+      expect(params.mediaTypesRequiringUserAction, isEmpty);
+      expect(params.mediaPlaybackPolicy, generic.mediaPlaybackPolicy);
+      final explicit =
+          WebKitWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
+            generic,
+            mediaTypesRequiringUserAction: {PlaybackMediaTypes.audio},
+          );
+      expect(explicit.mediaTypesRequiringUserAction, {
+        PlaybackMediaTypes.audio,
+      });
+    });
+
+    test(
+      'file selectors receive hints, cancel errors and restore defaults',
+      () async {
+        final native = FileSelectorWebView();
+        final controller = createControllerWithMocks(
+          createMockWebView: (_, {dynamic observeValue}) => native,
+        );
+        WebViewFileSelectorParams? received;
+        await controller.setFileSelector((params) async {
+          received = params;
+          return ['/one', '/two'];
+        });
+        expect(native.fileSelectorEnabled, isTrue);
+        final delegate = CapturingUIDelegate.lastCreatedDelegate;
+        expect(await delegate.onFileSelector!(delegate, true, true), [
+          '/one',
+          '/two',
+        ]);
+        expect(received!.mode, WebViewFileSelectorMode.openMultiple);
+        expect(received!.allowsDirectories, isTrue);
+        expect(received!.isCaptureEnabled, isNull);
+        await controller.setFileSelector(
+          (_) async => throw StateError('picker failed'),
+        );
+        expect(await delegate.onFileSelector!(delegate, false, false), isEmpty);
+        await controller.setFileSelector(null);
+        expect(native.fileSelectorEnabled, isFalse);
+        expect(await delegate.onFileSelector!(delegate, false, false), isEmpty);
+      },
+    );
 
     test('loadFile', () async {
       final mockWebView = MockUIViewWKWebView();
@@ -1544,6 +1599,100 @@ void main() {
 
       await firstRegistration;
       await expectLater(duplicateRegistration, throwsArgumentError);
+    });
+
+    group('JavaScript channel worlds', () {
+      setUp(() {
+        PigeonOverrides.wKScriptMessageHandler_new =
+            ({required didReceiveScriptMessage, dynamic observeValue}) =>
+                WKScriptMessageHandler.pigeon_detached(
+                  didReceiveScriptMessage: didReceiveScriptMessage,
+                );
+      });
+
+      test('removed isolated channel name can be reused in the page', () async {
+        final native = WorldAwareUserContentController();
+        final controller = createControllerWithMocks(
+          mockUserContentController: native,
+        );
+        final params = JavaScriptChannelParams(
+          name: 'Bridge',
+          onMessageReceived: (_) {},
+        );
+
+        await controller.addJavaScriptChannelInWorld(
+          params,
+          const WebViewJavaScriptWorld.isolated('one'),
+        );
+        await controller.removeJavaScriptChannel(params.name);
+        await controller.addJavaScriptChannel(params);
+
+        expect(native.worldChannels, isEmpty);
+        verify(native.addScriptMessageHandler(any, params.name)).called(1);
+      });
+
+      test('duplicate registration preserves the installed world', () async {
+        final native = WorldAwareUserContentController();
+        final controller = createControllerWithMocks(
+          mockUserContentController: native,
+        );
+        final params = JavaScriptChannelParams(
+          name: 'Bridge',
+          onMessageReceived: (_) {},
+        );
+
+        await controller.addJavaScriptChannelInWorld(
+          params,
+          const WebViewJavaScriptWorld.isolated('one'),
+        );
+        await expectLater(
+          controller.addJavaScriptChannelInWorld(
+            params,
+            const WebViewJavaScriptWorld.isolated('two'),
+          ),
+          throwsArgumentError,
+        );
+        await controller.addUserScript(
+          const WebViewUserScript(source: 'globalThis.ready = true;'),
+        );
+
+        expect(native.worldChannels, {'webview_all.one:Bridge'});
+        verifyNever(native.addScriptMessageHandler(any, params.name));
+        await controller.removeJavaScriptChannel(params.name);
+        expect(native.worldChannels, isEmpty);
+      });
+
+      test(
+        'concurrent duplicate cannot change the first channel world',
+        () async {
+          final native = WorldAwareUserContentController();
+          final controller = createControllerWithMocks(
+            mockUserContentController: native,
+          );
+          final params = JavaScriptChannelParams(
+            name: 'Bridge',
+            onMessageReceived: (_) {},
+          );
+
+          final first = controller.addJavaScriptChannelInWorld(
+            params,
+            const WebViewJavaScriptWorld.isolated('one'),
+          );
+          final duplicate = expectLater(
+            controller.addJavaScriptChannelInWorld(
+              params,
+              const WebViewJavaScriptWorld.isolated('two'),
+            ),
+            throwsArgumentError,
+          );
+          await first;
+          await duplicate;
+
+          expect(native.worldChannels, {'webview_all.one:Bridge'});
+          await controller.removeJavaScriptChannel(params.name);
+          expect(native.worldChannels, isEmpty);
+        },
+      );
     });
 
     test('removeJavaScriptChannel', () async {
@@ -2848,6 +2997,7 @@ class CapturingNavigationDelegate extends WKNavigationDelegate {
 // Records the last created instance of itself.
 class CapturingUIDelegate extends WKUIDelegate {
   CapturingUIDelegate({
+    super.onFileSelector,
     super.onCreateWebView,
     required super.requestMediaCapturePermission,
     super.runJavaScriptAlertPanel,
@@ -2867,6 +3017,39 @@ class CapturingUIDelegate extends WKUIDelegate {
   );
 }
 
+// Mockito keeps mutable interaction state on its otherwise immutable proxy.
+// ignore: must_be_immutable
+class WorldAwareUserContentController extends MockWKUserContentController {
+  final Set<String> worldChannels = {};
+
+  @override
+  Future<void> addScriptMessageHandlerInWorld(
+    WKScriptMessageHandler handler,
+    String name,
+    String worldName,
+  ) async {
+    if (!worldChannels.add('$worldName:$name')) {
+      throw StateError('Duplicate native handler in $worldName: $name');
+    }
+  }
+
+  @override
+  Future<void> removeScriptMessageHandlerInWorld(
+    String name,
+    String worldName,
+  ) async {
+    worldChannels.remove('$worldName:$name');
+  }
+
+  @override
+  Future<void> addUserScriptInWorld(
+    String source,
+    UserScriptInjectionTime injectionTime,
+    bool mainFrameOnly,
+    String worldName,
+  ) async {}
+}
+
 class CapturingUIScrollViewDelegate extends UIScrollViewDelegate {
   CapturingUIScrollViewDelegate({super.scrollViewDidScroll, super.observeValue})
     : super.pigeon_detached() {
@@ -2875,4 +3058,16 @@ class CapturingUIScrollViewDelegate extends UIScrollViewDelegate {
 
   static CapturingUIScrollViewDelegate lastCreatedDelegate =
       CapturingUIScrollViewDelegate();
+}
+
+// Mockito's proxy base records mutable interaction state.
+// ignore: must_be_immutable
+class FileSelectorWebView extends MockUIViewWKWebView {
+  bool fileSelectorEnabled = false;
+  @override
+  Future<bool> isFileSelectorSupported() async => true;
+  @override
+  Future<void> setFileSelectorEnabled(bool enabled) async {
+    fileSelectorEnabled = enabled;
+  }
 }

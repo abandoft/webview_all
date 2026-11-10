@@ -33,6 +33,15 @@ private func normalizedJavaScriptError(_ error: NSError) -> (
 #endif
 
 class WebViewImpl: WKWebView {
+  #if os(macOS)
+    var browserContextMenusEnabled: Bool?
+    override func menu(for event: NSEvent) -> NSMenu? {
+      if browserContextMenusEnabled == false { return nil }
+      return super.menu(for: event)
+    }
+  #endif
+  var navigationPolicyGeneration: UInt64 = 0
+
   let api: PigeonApiProtocolWKWebView
   unowned let registrar: ProxyAPIRegistrar
 
@@ -43,6 +52,7 @@ class WebViewImpl: WKWebView {
     self.api = api
     self.registrar = registrar
     super.init(frame: frame, configuration: configuration)
+    BrowserProfiles.register(self)
     #if os(iOS)
       scrollView.contentInsetAdjustmentBehavior = .never
       scrollView.automaticallyAdjustsScrollIndicatorInsets = false
@@ -93,6 +103,168 @@ class WebViewImpl: WKWebView {
 class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIViewWKWebView,
   PigeonApiDelegateNSViewWKWebView
 {
+
+  private func fileSelectorSupported() -> Bool {
+    #if os(macOS)
+      return true
+    #elseif compiler(>=6.1)
+      if #available(iOS 18.4, *) { return true }
+      return false
+    #else
+      return false
+    #endif
+  }
+  private func enableFileSelector(_ view: WKWebView, _ enabled: Bool) {
+    guard let delegate = view.uiDelegate as? UIDelegateImpl else { return }
+    delegate.fileSelectorEnabled = enabled
+    if !enabled { delegate.cancelFileSelections() }
+    // Refresh WebKit's cached optional-delegate-method flags.
+    view.uiDelegate = nil
+    view.uiDelegate = delegate
+  }
+  func isFileSelectorSupported(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView)
+    throws -> Bool
+  { fileSelectorSupported() }
+  func setFileSelectorEnabled(
+    pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView, enabled: Bool
+  ) throws { enableFileSelector(pigeonInstance, enabled) }
+  func isFileSelectorSupported(pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView)
+    throws -> Bool
+  { fileSelectorSupported() }
+  func setFileSelectorEnabled(
+    pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, enabled: Bool
+  ) throws { enableFileSelector(pigeonInstance, enabled) }
+  func stopLoading(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView) throws {
+    try stopLoading(pigeonApi: pigeonApi.pigeonApiWKWebView, pigeonInstance: pigeonInstance)
+  }
+  func getNavigationHistory(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView) throws
+    -> [String: Any?]
+  {
+    try getNavigationHistory(
+      pigeonApi: pigeonApi.pigeonApiWKWebView, pigeonInstance: pigeonInstance)
+  }
+  func goToHistoryIndex(
+    pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView, index: Int64
+  ) throws -> Bool {
+    try goToHistoryIndex(
+      pigeonApi: pigeonApi.pigeonApiWKWebView, pigeonInstance: pigeonInstance, index: index)
+  }
+  func findText(
+    pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView, text: String, forward: Bool,
+    caseSensitive: Bool, wrapAround: Bool,
+    completion: @escaping (Result<[String: Any?], Error>) -> Void
+  ) {
+    findText(
+      pigeonApi: pigeonApi.pigeonApiWKWebView, pigeonInstance: pigeonInstance, text: text,
+      forward: forward, caseSensitive: caseSensitive, wrapAround: wrapAround, completion: completion
+    )
+  }
+  func clearFindMatches(
+    pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView,
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    clearFindMatches(
+      pigeonApi: pigeonApi.pigeonApiWKWebView, pigeonInstance: pigeonInstance,
+      completion: completion)
+  }
+
+  func stopLoading(pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView) throws {
+    try stopLoading(pigeonApi: pigeonApi.pigeonApiWKWebView, pigeonInstance: pigeonInstance)
+  }
+  func getNavigationHistory(pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView) throws
+    -> [String: Any?]
+  {
+    try getNavigationHistory(
+      pigeonApi: pigeonApi.pigeonApiWKWebView, pigeonInstance: pigeonInstance)
+  }
+  func goToHistoryIndex(
+    pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, index: Int64
+  ) throws -> Bool {
+    try goToHistoryIndex(
+      pigeonApi: pigeonApi.pigeonApiWKWebView, pigeonInstance: pigeonInstance, index: index)
+  }
+  func findText(
+    pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, text: String, forward: Bool,
+    caseSensitive: Bool, wrapAround: Bool,
+    completion: @escaping (Result<[String: Any?], Error>) -> Void
+  ) {
+    findText(
+      pigeonApi: pigeonApi.pigeonApiWKWebView, pigeonInstance: pigeonInstance, text: text,
+      forward: forward, caseSensitive: caseSensitive, wrapAround: wrapAround, completion: completion
+    )
+  }
+  func clearFindMatches(
+    pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView,
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    clearFindMatches(
+      pigeonApi: pigeonApi.pigeonApiWKWebView, pigeonInstance: pigeonInstance,
+      completion: completion)
+  }
+  func stopLoading(pigeonApi: PigeonApiWKWebView, pigeonInstance: WKWebView) throws {
+    (pigeonInstance as? WebViewImpl)?.navigationPolicyGeneration &+= 1
+    pigeonInstance.stopLoading()
+  }
+
+  func getNavigationHistory(pigeonApi: PigeonApiWKWebView, pigeonInstance: WKWebView) throws
+    -> [String: Any?]
+  {
+    let list = pigeonInstance.backForwardList
+    guard let current = list.currentItem else {
+      return ["items": [], "currentIndex": -1]
+    }
+    let items = list.backList + [current] + list.forwardList
+    return [
+      "currentIndex": list.backList.count,
+      "items": items.map {
+        [
+          "url": $0.url.absoluteString, "originalUrl": $0.initialURL.absoluteString,
+          "title": $0.title,
+        ] as [String: Any?]
+      },
+    ]
+  }
+
+  func goToHistoryIndex(pigeonApi: PigeonApiWKWebView, pigeonInstance: WKWebView, index: Int64)
+    throws -> Bool
+  {
+    let list = pigeonInstance.backForwardList
+    guard let current = list.currentItem else { return false }
+    let items = list.backList + [current] + list.forwardList
+    guard index >= 0 && index < Int64(items.count) else { return false }
+    if index != Int64(list.backList.count) {
+      (pigeonInstance as? WebViewImpl)?.navigationPolicyGeneration &+= 1
+      pigeonInstance.go(to: items[Int(index)])
+    }
+    return true
+  }
+
+  func findText(
+    pigeonApi: PigeonApiWKWebView, pigeonInstance: WKWebView, text: String, forward: Bool,
+    caseSensitive: Bool, wrapAround: Bool,
+    completion: @escaping (Result<[String: Any?], Error>) -> Void
+  ) {
+    let configuration = WKFindConfiguration()
+    configuration.backwards = !forward
+    configuration.caseSensitive = caseSensitive
+    configuration.wraps = wrapAround
+    pigeonInstance.find(text, configuration: configuration) { result in
+      completion(.success(["matchFound": result.matchFound]))
+    }
+  }
+
+  func clearFindMatches(
+    pigeonApi: PigeonApiWKWebView, pigeonInstance: WKWebView,
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    pigeonInstance.find("", configuration: WKFindConfiguration()) { _ in
+      pigeonInstance.evaluateJavaScript("window.getSelection()?.removeAllRanges(); null") {
+        _, error in
+        if let error = error { completion(.failure(error)) } else { completion(.success(())) }
+      }
+    }
+  }
+
   func getUIViewWKWebViewAPI(_ api: PigeonApiNSViewWKWebView) -> PigeonApiUIViewWKWebView {
     return api.pigeonRegistrar.apiDelegate.pigeonApiUIViewWKWebView(api.pigeonRegistrar)
   }
@@ -124,7 +296,9 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
   func configuration(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView)
     -> WKWebViewConfiguration
   {
-    return pigeonInstance.configuration
+    let configuration = pigeonInstance.configuration
+    BrowserProfiles.track(configuration, store: configuration.websiteDataStore, manager: pigeonApi.pigeonRegistrar.instanceManager)
+    return configuration
   }
 
   func configuration(pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView) throws
@@ -202,6 +376,7 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
   func loadHtmlString(
     pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView, string: String, baseUrl: String?
   ) throws {
+    (pigeonInstance as? WebViewImpl)?.navigationPolicyGeneration &+= 1
     pigeonInstance.loadHTMLString(string, baseURL: baseUrl != nil ? URL(string: baseUrl!)! : nil)
   }
 
@@ -219,6 +394,8 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
   ) throws {
     let fileURL = URL(fileURLWithPath: url, isDirectory: false)
     let readAccessURL = URL(fileURLWithPath: readAccessUrl, isDirectory: true)
+
+    (pigeonInstance as? WebViewImpl)?.navigationPolicyGeneration &+= 1
 
     pigeonInstance.loadFileURL(fileURL, allowingReadAccessTo: readAccessURL)
   }
@@ -239,6 +416,7 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
     let url = registrar.assetManager.urlForAsset(key)
 
     if let url = url {
+      (pigeonInstance as? WebViewImpl)?.navigationPolicyGeneration &+= 1
       pigeonInstance.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
     } else {
       let assetFilePath = registrar.assetManager.lookupKeyForAsset(key)
@@ -275,6 +453,7 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
   }
 
   func goBack(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView) throws {
+    (pigeonInstance as? WebViewImpl)?.navigationPolicyGeneration &+= 1
     pigeonInstance.goBack()
   }
 
@@ -283,6 +462,7 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
   }
 
   func goForward(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView) throws {
+    (pigeonInstance as? WebViewImpl)?.navigationPolicyGeneration &+= 1
     pigeonInstance.goForward()
   }
 
@@ -291,6 +471,7 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
   }
 
   func reload(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView) throws {
+    (pigeonInstance as? WebViewImpl)?.navigationPolicyGeneration &+= 1
     pigeonInstance.reload()
   }
 
@@ -364,6 +545,27 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
     }
   }
 
+  func evaluateJavaScriptInWorld(
+    pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView, source: String,
+    worldName: String,
+    completion: @escaping (Result<Any?, Error>) -> Void
+  ) {
+    pigeonInstance.evaluateJavaScript(source, in: nil, in: WKContentWorld.world(name: worldName)) {
+      result in
+      completion(result.map { $0 as Any? })
+    }
+  }
+
+  func evaluateJavaScriptInWorld(
+    pigeonApi: PigeonApiNSViewWKWebView, pigeonInstance: WKWebView, source: String,
+    worldName: String,
+    completion: @escaping (Result<Any?, Error>) -> Void
+  ) {
+    evaluateJavaScriptInWorld(
+      pigeonApi: getUIViewWKWebViewAPI(pigeonApi), pigeonInstance: pigeonInstance,
+      source: source, worldName: worldName, completion: completion)
+  }
+
   func callAsyncJavaScript(
     pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView, functionBody: String,
     arguments: [String: Any?], completion: @escaping (Result<Any?, Error>) -> Void
@@ -411,12 +613,21 @@ class WebViewProxyAPIDelegate: PigeonApiDelegateWKWebView, PigeonApiDelegateUIVi
   }
 
   func dispose(pigeonApi: PigeonApiUIViewWKWebView, pigeonInstance: WKWebView) throws {
+    BrowserOperationsChannel.cancel(pigeonInstance)
+    (pigeonInstance.uiDelegate as? UIDelegateImpl)?.cancelFileSelections()
     DownloadBridgeChannel.dispose(pigeonInstance)
     ResourceSchemeHandler.close(pigeonInstance)
+    (pigeonInstance as? WebViewImpl)?.navigationPolicyGeneration &+= 1
     pigeonInstance.stopLoading()
     pigeonInstance.navigationDelegate = nil
     pigeonInstance.uiDelegate = nil
     pigeonInstance.removeFromSuperview()
+    // Complete native ownership release before the dispose reply. Dart's
+    // Pigeon finalizer uses another asynchronous channel and is not a barrier.
+    let manager = pigeonApi.pigeonRegistrar.instanceManager
+    if let identifier = manager.identifierWithStrongReference(forInstance: pigeonInstance) {
+      let _: WKWebView? = try manager.removeInstance(withIdentifier: identifier)
+    }
   }
 
   func evaluateJavaScript(

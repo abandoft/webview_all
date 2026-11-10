@@ -51,6 +51,33 @@ void main() {
     expect(result.failures.keys, containsAll(WebViewDataType.values));
     expect(result.failures.values, everyElement(isNot(contains('\n'))));
   });
+
+  test('selective clearing maps only the requested native category', () async {
+    final store = _FakeWebsiteDataStore();
+    final manager = WebKitWebViewDataManager(
+      WebKitWebViewDataManagerCreationParams.fromPlatformWebViewDataManagerCreationParams(
+        const PlatformWebViewDataManagerCreationParams(),
+        websiteDataStore: store,
+      ),
+    );
+    final result = await manager.clearWebsiteData(
+      dataTypes: {WebViewDataType.cookies},
+    );
+    expect(result.isComplete, isTrue);
+    expect(result.clearedDataTypes, {WebViewDataType.cookies});
+    expect(store.dataTypes, {WebsiteDataType.cookies});
+    final failure = WebKitWebViewDataManager(
+      WebKitWebViewDataManagerCreationParams.fromPlatformWebViewDataManagerCreationParams(
+        const PlatformWebViewDataManagerCreationParams(),
+        websiteDataStore: _FakeWebsiteDataStore(failure: StateError('failed')),
+      ),
+    );
+    final failed = await failure.clearWebsiteData(
+      dataTypes: {WebViewDataType.cache},
+    );
+    expect(failed.failures.keys, {WebViewDataType.cache});
+    expect(failed.requestedDataTypes, {WebViewDataType.cache});
+  });
 }
 
 // Mutable fields make native call assertions explicit.

@@ -11,6 +11,88 @@ import 'web_kit.g.dart';
 /// iOS and macOS reference different `WebView` implementations, so this handles
 /// delegating calls to the implementation of the current platform.
 class PlatformWebView {
+  Future<bool> isFileSelectorSupported() {
+    final view = nativeWebView;
+    switch (view) {
+      case UIViewWKWebView():
+        return view.isFileSelectorSupported();
+      case NSViewWKWebView():
+        return view.isFileSelectorSupported();
+    }
+    return Future.value(false);
+  }
+
+  Future<void> setFileSelectorEnabled(bool enabled) {
+    final view = nativeWebView;
+    switch (view) {
+      case UIViewWKWebView():
+        return view.setFileSelectorEnabled(enabled);
+      case NSViewWKWebView():
+        return view.setFileSelectorEnabled(enabled);
+    }
+    return Future.value();
+  }
+
+  Future<void> stopLoading() {
+    final view = nativeWebView;
+    switch (view) {
+      case UIViewWKWebView():
+        return view.stopLoading();
+      case NSViewWKWebView():
+        return view.stopLoading();
+    }
+    throw UnsupportedError('Unsupported WebKit view: ${view.runtimeType}');
+  }
+
+  Future<Map<String, Object?>> getNavigationHistory() {
+    final view = nativeWebView;
+    switch (view) {
+      case UIViewWKWebView():
+        return view.getNavigationHistory();
+      case NSViewWKWebView():
+        return view.getNavigationHistory();
+    }
+    throw UnsupportedError('Unsupported WebKit view: ${view.runtimeType}');
+  }
+
+  Future<bool> goToHistoryIndex(int index) {
+    final view = nativeWebView;
+    switch (view) {
+      case UIViewWKWebView():
+        return view.goToHistoryIndex(index);
+      case NSViewWKWebView():
+        return view.goToHistoryIndex(index);
+    }
+    throw UnsupportedError('Unsupported WebKit view: ${view.runtimeType}');
+  }
+
+  Future<Map<String, Object?>> findText(
+    String text,
+    bool forward,
+    bool caseSensitive,
+    bool wrapAround,
+  ) {
+    final view = nativeWebView;
+    switch (view) {
+      case UIViewWKWebView():
+        return view.findText(text, forward, caseSensitive, wrapAround);
+      case NSViewWKWebView():
+        return view.findText(text, forward, caseSensitive, wrapAround);
+    }
+    throw UnsupportedError('Unsupported WebKit view: ${view.runtimeType}');
+  }
+
+  Future<void> clearFindMatches() {
+    final view = nativeWebView;
+    switch (view) {
+      case UIViewWKWebView():
+        return view.clearFindMatches();
+      case NSViewWKWebView():
+        return view.clearFindMatches();
+    }
+    throw UnsupportedError('Unsupported WebKit view: ${view.runtimeType}');
+  }
+
   /// Creates a [PlatformWebView].
   PlatformWebView({
     required WKWebViewConfiguration initialConfiguration,
@@ -41,6 +123,30 @@ class PlatformWebView {
   /// Creates a [PlatformWebView] with the native WebView instance.
   PlatformWebView.fromNativeWebView(WKWebView webView)
     : nativeWebView = webView;
+
+  /// Wraps a related child that WebKit already created for a popup request.
+  PlatformWebView.fromIdentifier(
+    int identifier, {
+    void Function(
+      NSObject,
+      String?,
+      NSObject?,
+      Map<KeyValueChangeKey, Object?>?,
+    )?
+    observeValue,
+  }) {
+    // Detached proxies are registered before any native callbacks can arrive.
+    // ignore: invalid_use_of_protected_member
+    final WKWebView proxy = defaultTargetPlatform == TargetPlatform.macOS
+        // ignore: invalid_use_of_protected_member
+        ? NSViewWKWebView.pigeon_detached(observeValue: observeValue)
+        // ignore: invalid_use_of_protected_member
+        : UIViewWKWebView.pigeon_detached(observeValue: observeValue);
+    final manager = PigeonInstanceManager.instance;
+    manager.addHostCreatedInstance(proxy, identifier);
+    nativeWebView =
+        manager.getInstanceWithWeakReference(identifier)! as WKWebView;
+  }
 
   /// The underlying native WebView instance.
   late final WKWebView nativeWebView;
@@ -114,6 +220,17 @@ class PlatformWebView {
         return webView.evaluateJavaScript(javaScriptString);
     }
 
+    throw UnimplementedError('${webView.runtimeType} is not supported.');
+  }
+
+  Future<Object?> evaluateJavaScriptInWorld(String source, String worldName) {
+    final webView = nativeWebView;
+    switch (webView) {
+      case UIViewWKWebView():
+        return webView.evaluateJavaScriptInWorld(source, worldName);
+      case NSViewWKWebView():
+        return webView.evaluateJavaScriptInWorld(source, worldName);
+    }
     throw UnimplementedError('${webView.runtimeType} is not supported.');
   }
 

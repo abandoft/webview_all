@@ -9,6 +9,17 @@ import WebKit
 /// This class may handle instantiating native object instances that are attached to a Dart instance
 /// or handle method calls on the associated native class or an instance of that class.
 class WebsiteDataStoreProxyAPIDelegate: PigeonApiDelegateWKWebsiteDataStore {
+  func named(pigeonApi: PigeonApiWKWebsiteDataStore, name: String) throws -> WKWebsiteDataStore {
+    guard name.range(of: "^[A-Za-z0-9_-]{1,64}$", options: .regularExpression) != nil else {
+      throw PigeonError(code: "invalid_profile", message: "Invalid profile name.", details: nil)
+    }
+    if #available(iOS 17.0, macOS 14.0, *) {
+      return try BrowserProfiles.store(name, manager: pigeonApi.pigeonRegistrar.instanceManager)
+    }
+    throw PigeonError(
+      code: "unsupported_profile", message: "Named stores require iOS 17 or macOS 14.", details: nil
+    )
+  }
   func nonPersistent(pigeonApi: PigeonApiWKWebsiteDataStore) throws -> WKWebsiteDataStore {
     return WKWebsiteDataStore.nonPersistent()
   }
@@ -20,7 +31,9 @@ class WebsiteDataStoreProxyAPIDelegate: PigeonApiDelegateWKWebsiteDataStore {
   func httpCookieStore(pigeonApi: PigeonApiWKWebsiteDataStore, pigeonInstance: WKWebsiteDataStore)
     -> WKHTTPCookieStore
   {
-    return pigeonInstance.httpCookieStore
+    let cookies = pigeonInstance.httpCookieStore
+    BrowserProfiles.track(cookies, store: pigeonInstance, manager: pigeonApi.pigeonRegistrar.instanceManager)
+    return cookies
   }
 
   func removeDataOfTypes(

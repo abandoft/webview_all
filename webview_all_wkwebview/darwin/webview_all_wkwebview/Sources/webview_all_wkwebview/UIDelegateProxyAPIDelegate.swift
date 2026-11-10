@@ -9,6 +9,90 @@ class UIDelegateImpl: NSObject, WKUIDelegate {
   let api: PigeonApiProtocolWKUIDelegate
   unowned let registrar: ProxyAPIRegistrar
 
+  var fileSelectorEnabled = false
+  private var pendingFileSelections: [UUID: ([URL]?) -> Void] = [:]
+
+  override func responds(to selector: Selector!) -> Bool {
+    if NSStringFromSelector(selector)
+      == "webView:runOpenPanelWithParameters:initiatedByFrame:completionHandler:"
+    {
+      return fileSelectorEnabled
+    }
+    return super.responds(to: selector)
+  }
+
+  func cancelFileSelections() {
+    let pending = Array(pendingFileSelections.values)
+    pendingFileSelections.removeAll()
+    pending.forEach { $0(nil) }
+  }
+
+  #if os(macOS) || compiler(>=6.1)
+    @available(iOS 18.4, macOS 10.12, *)
+    private func selectFiles(
+      _ parameters: WKOpenPanelParameters, completion: @escaping ([URL]?) -> Void
+    ) {
+      let request = UUID()
+      pendingFileSelections[request] = completion
+      registrar.dispatchOnMainThread { [weak self] onFailure in
+        guard let self = self else { return }
+        self.api.onFileSelector(
+          pigeonInstance: self, multiple: parameters.allowsMultipleSelection,
+          directories: parameters.allowsDirectories
+        ) { [weak self] result in
+          DispatchQueue.main.async {
+            guard let complete = self?.pendingFileSelections.removeValue(forKey: request) else {
+              return
+            }
+            switch result {
+            case .success(let paths):
+              let urls = (paths ?? []).compactMap { value -> URL? in
+                let parsed = URL(string: value)
+                let url: URL
+                if parsed?.isFileURL == true {
+                  url = parsed!
+                } else if value.hasPrefix("/") {
+                  url = URL(fileURLWithPath: value)
+                } else {
+                  return nil
+                }
+                guard FileManager.default.isReadableFile(atPath: url.path) else { return nil }
+                var directory: ObjCBool = false
+                FileManager.default.fileExists(atPath: url.path, isDirectory: &directory)
+                if directory.boolValue && !parameters.allowsDirectories { return nil }
+                return url
+              }
+              complete(
+                urls.isEmpty
+                  ? nil : parameters.allowsMultipleSelection ? urls : Array(urls.prefix(1)))
+            case .failure(let error):
+              complete(nil)
+              onFailure("WKUIDelegate.onFileSelector", error)
+            }
+          }
+        }
+      }
+    }
+    #if compiler(>=6.0)
+      @available(iOS 18.4, macOS 10.12, *)
+      func webView(
+        _ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping @MainActor ([URL]?) -> Void
+      ) {
+        selectFiles(parameters) { values in DispatchQueue.main.async { completionHandler(values) } }
+      }
+    #else
+      @available(macOS 10.12, *)
+      func webView(
+        _ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void
+      ) {
+        selectFiles(parameters, completion: completionHandler)
+      }
+    #endif
+  #endif
+
   init(api: PigeonApiProtocolWKUIDelegate, registrar: ProxyAPIRegistrar) {
     self.api = api
     self.registrar = registrar
@@ -18,6 +102,10 @@ class UIDelegateImpl: NSObject, WKUIDelegate {
     _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
     for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures
   ) -> WKWebView? {
+    if BrowserOperationsChannel.delegatesWindows(webView) {
+      return BrowserOperationsChannel.createWindow(
+        webView, configuration: configuration, action: navigationAction)
+    }
     registrar.dispatchOnMainThread { onFailure in
       self.api.onCreateWebView(
         pigeonInstance: self, webView: webView, configuration: configuration,
@@ -29,6 +117,10 @@ class UIDelegateImpl: NSObject, WKUIDelegate {
       }
     }
     return nil
+  }
+
+  func webViewDidClose(_ webView: WKWebView) {
+    BrowserOperationsChannel.windowCloseRequested(webView)
   }
 
   #if compiler(>=6.0)

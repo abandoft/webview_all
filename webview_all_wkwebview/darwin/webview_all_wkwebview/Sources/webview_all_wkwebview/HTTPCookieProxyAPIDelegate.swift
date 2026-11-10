@@ -45,6 +45,8 @@ class HTTPCookieProxyAPIDelegate: PigeonApiDelegateHTTPCookie {
         newKey = .value
       case .version:
         newKey = .version
+      case .httpOnly:
+        newKey = HTTPCookiePropertyKey(rawValue: "HttpOnly")
       case .sameSitePolicy:
         newKey = .sameSitePolicy
       case .unknown:
@@ -52,6 +54,9 @@ class HTTPCookieProxyAPIDelegate: PigeonApiDelegateHTTPCookie {
           withEnum: key)
       }
 
+      if key == .expires, let timestamp = value as? NSNumber {
+        return (newKey, Date(timeIntervalSince1970: timestamp.doubleValue / 1000) as Any)
+      }
       return (newKey, value)
     }
 
@@ -103,14 +108,24 @@ class HTTPCookieProxyAPIDelegate: PigeonApiDelegateHTTPCookie {
         newKey = .value
       case .version:
         newKey = .version
+      case HTTPCookiePropertyKey(rawValue: "HttpOnly"):
+        newKey = .httpOnly
       default:
         newKey = .unknown
       }
 
+      if let date = value as? Date {
+        return (newKey, (date.timeIntervalSince1970 * 1000) as Any)
+      }
+      if let url = value as? URL { return (newKey, url.absoluteString as Any) }
       return (newKey, value)
     }
 
     // Use newest value in case of duplicates
-    return Dictionary(keyValueTuples, uniquingKeysWith: { _, last in last })
+    var properties = Dictionary(keyValueTuples, uniquingKeysWith: { _, last in last })
+    properties[.secure] = pigeonInstance.isSecure
+    properties[.httpOnly] = pigeonInstance.isHTTPOnly
+    properties[.discard] = pigeonInstance.isSessionOnly
+    return properties
   }
 }

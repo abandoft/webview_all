@@ -28,6 +28,34 @@ class WebKitWebViewCookieManagerCreationParams
 
 /// An implementation of [PlatformWebViewCookieManager] with the WebKit api.
 class WebKitWebViewCookieManager extends PlatformWebViewCookieManager {
+  @override
+  Future<WebViewCookieCapabilities> getCapabilities() async =>
+      WebViewCookieCapabilities(
+        setHttpOnly: true,
+        deleteByIdentity: true,
+        readableAttributes: Set.unmodifiable(WebViewCookieAttribute.values),
+      );
+
+  @override
+  Future<bool> deleteCookie({
+    required String name,
+    required String domain,
+    String path = '/',
+  }) async {
+    WebViewCookie(name: name, value: '', domain: domain, path: path).validate();
+    final store = (await _store).httpCookieStore;
+    for (final cookie in await store.getAllCookies()) {
+      final props = await cookie.getProperties();
+      if (props?[HttpCookiePropertyKey.name] == name &&
+          props?[HttpCookiePropertyKey.domain]?.toString().toLowerCase() ==
+              domain.toLowerCase() &&
+          props?[HttpCookiePropertyKey.path] == path) {
+        await store.deleteCookie(cookie);
+      }
+    }
+    return true;
+  }
+
   /// Constructs a [WebKitWebViewCookieManager].
   WebKitWebViewCookieManager(PlatformWebViewCookieManagerCreationParams params)
     : super.implementation(
@@ -69,6 +97,7 @@ class WebKitWebViewCookieManager extends PlatformWebViewCookieManager {
 
   @override
   Future<void> setCookie(WebViewCookie cookie) async {
+    cookie.validate();
     if (!_isValidPath(cookie.path)) {
       throw ArgumentError(
         'The path property for the provided cookie was not given a legal value.',
@@ -82,6 +111,19 @@ class WebKitWebViewCookieManager extends PlatformWebViewCookieManager {
           HttpCookiePropertyKey.value: cookie.value,
           HttpCookiePropertyKey.domain: cookie.domain,
           HttpCookiePropertyKey.path: cookie.path,
+          if (cookie.expires != null)
+            HttpCookiePropertyKey.expires: cookie
+                .expires!
+                .millisecondsSinceEpoch
+                .toDouble(),
+          if (cookie.isSecure == true) HttpCookiePropertyKey.secure: 'TRUE',
+          if (cookie.isHttpOnly == true) HttpCookiePropertyKey.httpOnly: 'TRUE',
+          if (cookie.sameSite != null)
+            HttpCookiePropertyKey.sameSitePolicy: switch (cookie.sameSite!) {
+              WebViewCookieSameSite.none => 'None',
+              WebViewCookieSameSite.lax => 'Lax',
+              WebViewCookieSameSite.strict => 'Strict',
+            },
         },
       ),
     );
@@ -117,18 +159,56 @@ class WebKitWebViewCookieManager extends PlatformWebViewCookieManager {
         cookieDomain = cookieDomain.substring(1);
       }
 
-      if (url.host != cookieDomain && !url.host.endsWith('.$cookieDomain')) {
+      cookieDomain = cookieDomain.toLowerCase();
+      final host = url.host.toLowerCase();
+      if (host != cookieDomain &&
+          !(domain.startsWith('.') && host.endsWith('.$cookieDomain'))) {
         return null;
       }
+
+      final path = props[HttpCookiePropertyKey.path]?.toString() ?? '/';
+      final requestPath = url.path.isEmpty ? '/' : url.path;
+      if (requestPath != path &&
+          !(requestPath.startsWith(path) &&
+              (path.endsWith('/') ||
+                  requestPath.substring(path.length).startsWith('/')))) {
+        return null;
+      }
+      final secure = _boolProperty(props[HttpCookiePropertyKey.secure]);
+      if (secure == true && url.scheme != 'https') return null;
+      final expiry = props[HttpCookiePropertyKey.expires];
+      final expires = expiry is num
+          ? DateTime.fromMillisecondsSinceEpoch(expiry.toInt(), isUtc: true)
+          : null;
+      if (expires != null && !expires.isAfter(DateTime.now())) return null;
+      final sameSite = props[HttpCookiePropertyKey.sameSitePolicy]
+          ?.toString()
+          .toLowerCase();
 
       return WebViewCookie(
         name: props[HttpCookiePropertyKey.name].toString(),
         value: props[HttpCookiePropertyKey.value].toString(),
         domain: domain,
-        path: props[HttpCookiePropertyKey.path].toString(),
+        path: path,
+        expires: expires,
+        isSecure: secure,
+        isHttpOnly: _boolProperty(props[HttpCookiePropertyKey.httpOnly]),
+        isSession: _boolProperty(props[HttpCookiePropertyKey.discard]),
+        sameSite: switch (sameSite) {
+          'none' => WebViewCookieSameSite.none,
+          'lax' => WebViewCookieSameSite.lax,
+          'strict' => WebViewCookieSameSite.strict,
+          _ => null,
+        },
       );
     });
 
     return (await Future.wait(webviewCookies)).nonNulls.toList();
   }
+
+  bool? _boolProperty(Object? value) => value == null
+      ? null
+      : value is bool
+      ? value
+      : {'true', 'yes', '1'}.contains(value.toString().toLowerCase());
 }

@@ -16,6 +16,32 @@ class UserContentControllerProxyAPIDelegate: PigeonApiDelegateWKUserContentContr
     pigeonInstance.add(handler, name: name)
   }
 
+  func addScriptMessageHandlerInWorld(
+    pigeonApi: PigeonApiWKUserContentController, pigeonInstance: WKUserContentController,
+    handler: WKScriptMessageHandler, name: String, worldName: String
+  ) throws {
+    pigeonInstance.add(handler, contentWorld: WKContentWorld.world(name: worldName), name: name)
+  }
+
+  func removeScriptMessageHandlerInWorld(
+    pigeonApi: PigeonApiWKUserContentController, pigeonInstance: WKUserContentController,
+    name: String, worldName: String
+  ) throws {
+    pigeonInstance.removeScriptMessageHandler(
+      forName: name, contentWorld: WKContentWorld.world(name: worldName))
+  }
+
+  func addUserScriptInWorld(
+    pigeonApi: PigeonApiWKUserContentController, pigeonInstance: WKUserContentController,
+    source: String, injectionTime: UserScriptInjectionTime, mainFrameOnly: Bool, worldName: String
+  ) throws {
+    pigeonInstance.addUserScript(
+      WKUserScript(
+        source: source,
+        injectionTime: injectionTime == .atDocumentEnd ? .atDocumentEnd : .atDocumentStart,
+        forMainFrameOnly: mainFrameOnly, in: WKContentWorld.world(name: worldName)))
+  }
+
   func removeScriptMessageHandler(
     pigeonApi: PigeonApiWKUserContentController, pigeonInstance: WKUserContentController,
     name: String
