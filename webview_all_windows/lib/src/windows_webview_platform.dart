@@ -12,6 +12,12 @@ import 'windows_webview_data_manager.dart';
 /// Implementation of [WebViewPlatform] using WebView2 on Windows.
 class WindowsWebViewPlatform extends WebViewPlatform {
   @override
+  PlatformWebViewProfileManager createPlatformWebViewProfileManager() =>
+      PlatformWebViewProfileManager.channel(
+        'com.abandoft.webview_all_windows/browser',
+      );
+
+  @override
   Set<WebViewSessionMode> get supportedSessionModes =>
       WebViewSessionMode.values.toSet();
 
@@ -36,6 +42,8 @@ class WindowsWebViewPlatform extends WebViewPlatform {
           : WebViewIncognitoSupport.none,
       scopedCookies: true,
       scopedWebsiteData: true,
+      relatedControllers: true,
+      namedProfiles: privateSupported,
     );
   }
 

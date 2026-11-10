@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'windows_webview_native.dart' as native_webview;
@@ -57,21 +59,187 @@ class WindowsWebViewDataManager extends PlatformWebViewDataManager {
 
   native_webview.WebviewController? _sessionController;
 
+  static const _categoryFlags = <WebViewDataType, int>{
+    WebViewDataType.cookies: 0x40,
+    WebViewDataType.cache: 0x100,
+    WebViewDataType.localStorage: 0x4,
+    WebViewDataType.indexedDb: 0x2,
+    WebViewDataType.webSql: 0x8,
+    WebViewDataType.cacheStorage: 0x10,
+  };
+
+  Future<bool> _clearNative(int kinds) async {
+    if (_sessionController != null) {
+      return _sessionController!.clearWebsiteData(kinds);
+    }
+    await _ensureEnvironment();
+    return native_webview.WebviewController.clearWebsiteDataForEnvironment(
+      kinds,
+    );
+  }
+
+  Future<void> _ensureEnvironment() async {
+    final options = params as WindowsWebViewDataManagerCreationParams;
+    await native_webview.WebviewController.ensureEnvironment(
+      userDataPath: options.userDataPath,
+      browserExePath: options.browserExePath,
+      additionalArguments: options.additionalArguments,
+    );
+  }
+
+  static const _originTypes = <WebViewDataType, String>{
+    WebViewDataType.localStorage: 'local_storage',
+    WebViewDataType.indexedDb: 'indexeddb',
+    WebViewDataType.webSql: 'websql',
+    WebViewDataType.cacheStorage: 'cache_storage',
+    WebViewDataType.serviceWorkers: 'service_workers',
+  };
+  Future<String> _originOperation(
+    String method,
+    Map<String, Object?> values,
+  ) async {
+    if (_sessionController == null) await _ensureEnvironment();
+    final view = _sessionController ?? native_webview.WebviewController();
+    try {
+      if (_sessionController == null) await view.initialize();
+      final result = await view.originDataOperation(method, jsonEncode(values));
+      if (result == null) throw StateError('The data store is closed.');
+      final decoded = jsonDecode(result);
+      if (decoded is Map && decoded['error'] != null) {
+        throw StateError('The Runtime rejected the origin-data operation.');
+      }
+      return result;
+    } finally {
+      if (_sessionController == null) await view.dispose();
+    }
+  }
+
+  @override
+  Future<List<WebViewDataRecord>?> getWebsiteDataRecords({
+    WebViewDataTarget? target,
+    Set<WebViewDataType> dataTypes = const {...WebViewDataType.values},
+  }) => readNativeDataRecords(target, dataTypes, () async {
+    if (target == null || target.scope != WebViewDataScope.origin) {
+      debugPrint(
+        'webview_all_windows: specify an exact HTTP(S) origin to query storage; the Runtime cannot enumerate all stored origins.',
+      );
+      return null;
+    }
+    final raw =
+        jsonDecode(
+              await _originOperation('queryOriginData', {
+                'origin': target.value,
+              }),
+            )
+            as Map;
+    final breakdown = raw['usageBreakdown'] as List? ?? [];
+    final types = <int>{};
+    int size = 0;
+    for (final item in breakdown.whereType<Map>()) {
+      for (final entry in _originTypes.entries) {
+        if (dataTypes.contains(entry.key) &&
+            item['storageType'] == entry.value &&
+            (item['usage'] as num? ?? 0) > 0) {
+          types.add(entry.key.index);
+          size += (item['usage'] as num).toInt();
+        }
+      }
+    }
+    return [
+      {
+        'scope': 'origin',
+        'value': target.value,
+        'dataTypes': types.toList(),
+        'sizeBytes': size,
+      },
+    ];
+  });
+  @override
+  Future<WebViewDataClearingResult> clearWebsiteDataFor(
+    WebViewDataTarget target, {
+    required Set<WebViewDataType> dataTypes,
+  }) => clearScopedData(target, dataTypes, (types) async {
+    await _originOperation('clearOriginData', {
+      'origin': target.value,
+      'storageTypes': types.map((t) => _originTypes[t]!).join(','),
+    });
+  });
+
+  @override
+  Future<WebViewDataCapabilities> getCapabilities() async {
+    var supported = false;
+    try {
+      supported = await _clearNative(0);
+    } catch (error) {
+      debugPrint(
+        'webview_all_windows: data-clearing capabilities are unavailable: $error',
+      );
+    }
+    return WebViewDataCapabilities(
+      records: true,
+      recordsRequireTarget: true,
+      scopedClearingGroups: {
+        WebViewDataScope.origin: _originTypes.keys.map((v) => {v}),
+      },
+      clearingGroups: [
+        if (supported)
+          for (final type in _categoryFlags.keys) {type},
+      ],
+      limitation:
+          'Whole-store session storage and service worker clearing are unavailable. Origin-scoped service worker clearing is supported; origin records report native quota estimates and may omit unmetered storage.',
+    );
+  }
+
+  @override
+  Future<WebViewDataClearingResult> clearWebsiteData({
+    required Set<WebViewDataType> dataTypes,
+  }) async {
+    final requested = Set<WebViewDataType>.of(dataTypes);
+    if (requested.containsAll(WebViewDataType.values)) {
+      return clearAllWebsiteData();
+    }
+    final supportedTypes = requested.intersection(_categoryFlags.keys.toSet());
+    final unsupported = requested.difference(supportedTypes);
+    if (unsupported.isNotEmpty) {
+      debugPrint(
+        'webview_all: WebView2 cannot selectively clear: ${unsupported.map((type) => type.name).join(', ')}.',
+      );
+    }
+    try {
+      final supported =
+          supportedTypes.isEmpty ||
+          await _clearNative(
+            supportedTypes.fold(
+              0,
+              (int mask, type) => mask | _categoryFlags[type]!,
+            ),
+          );
+      return WebViewDataClearingResult(
+        requestedDataTypes: requested,
+        clearedDataTypes: supported ? supportedTypes : {},
+        unsupportedDataTypes: supported ? unsupported : requested,
+      );
+    } catch (error) {
+      return WebViewDataClearingResult(
+        requestedDataTypes: requested,
+        unsupportedDataTypes: unsupported,
+        failures: {
+          for (final type in supportedTypes)
+            type: error.toString().replaceAll(RegExp(r'[\r\n]+'), ' '),
+        },
+      );
+    }
+  }
+
   @override
   Future<WebViewDataClearingResult> clearAllWebsiteData() async {
-    final WindowsWebViewDataManagerCreationParams windowsParams =
-        params as WindowsWebViewDataManagerCreationParams;
     Object? failure;
     var supported = false;
     try {
       if (_sessionController != null) {
         supported = await _sessionController!.clearAllWebsiteData();
       } else {
-        await native_webview.WebviewController.ensureEnvironment(
-          userDataPath: windowsParams.userDataPath,
-          browserExePath: windowsParams.browserExePath,
-          additionalArguments: windowsParams.additionalArguments,
-        );
+        await _ensureEnvironment();
         supported = await native_webview
             .WebviewController.clearAllWebsiteDataForEnvironment();
       }

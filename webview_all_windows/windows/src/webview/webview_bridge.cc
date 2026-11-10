@@ -148,6 +148,284 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
           const flutter::MethodCall<flutter::EncodableValue> &call,
           std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
               result) {
+        if (call.method_name() == "configureNetworkBridge" || call.method_name() == "setContentRules") {
+          const auto* args = call.arguments() ? std::get_if<flutter::EncodableMap>(call.arguments()) : nullptr;
+          if (!args) { result->Error("invalid_argument", "Native network configuration is required."); return; }
+          HRESULT hr = E_INVALIDARG;
+          if (call.method_name() == "configureNetworkBridge") hr = webview_->ConfigureNetworkBridge(messenger, *args);
+          else {
+            auto it = args->find(flutter::EncodableValue("rules"));
+            const auto* rules = it == args->end() ? nullptr : std::get_if<flutter::EncodableList>(&it->second);
+            if (rules) hr = webview_->ConfigureContentRules(*rules);
+          }
+          if (FAILED(hr)) result->Error("network_configuration", "The Runtime rejected native network control.");
+          else result->Success(flutter::EncodableValue(true));
+          return;
+        }
+        if (call.method_name() == "clearNavigationHistory") {
+          auto reply = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(std::move(result));
+          webview_->CallBrowserProtocol("Page.resetNavigationHistory", "{}",
+              [reply, active = async_replies_enabled_](bool succeeded, const std::string& data) {
+                if (*active) reply->Success(flutter::EncodableValue(succeeded && data.find("\"error\"") == std::string::npos));
+              });
+          return;
+        }
+        if (call.method_name() == "clearWebsiteData") {
+          int64_t kinds = -1;
+          if (call.arguments()) {
+            if (const auto *value = std::get_if<int32_t>(call.arguments()))
+              kinds = *value;
+            else if (const auto *value64 =
+                         std::get_if<int64_t>(call.arguments()))
+              kinds = *value64;
+          }
+          if (kinds < 0 || (kinds & ~0x15eLL) != 0) {
+            result->Error("invalid_argument",
+                          "Invalid website data categories.");
+            return;
+          }
+          auto reply =
+              std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(
+                  std::move(result));
+          webview_->ClearWebsiteData(
+              static_cast<uint64_t>(kinds),
+              [reply, active = async_replies_enabled_](bool supported,
+                                                       bool succeeded) {
+                if (!*active) return;
+                if (supported && !succeeded)
+                  reply->Error("data_clearing_failed",
+                               "Clearing selected website data failed.");
+                else
+                  reply->Success(flutter::EncodableValue(supported));
+              });
+          return;
+        }
+        if (call.method_name() == "supportsNewWindows") {
+          result->Success(
+              flutter::EncodableValue(webview_->SupportsNewWindows()));
+          return;
+        }
+        if (call.method_name() == "setNewWindowDelegateEnabled") {
+          const auto *enabled =
+              call.arguments() ? std::get_if<bool>(call.arguments()) : nullptr;
+          if (!enabled) {
+            result->Error("invalid_argument", "A boolean is required.");
+            return;
+          }
+          webview_->SetNewWindowDelegateEnabled(*enabled);
+          result->Success();
+          return;
+        }
+        if (call.method_name() == "supportsPdf") {
+          result->Success(flutter::EncodableValue(webview_->SupportsPdf()));
+          return;
+        }
+        if (call.method_name() == "supportsAudioMuting") {
+          result->Success(flutter::EncodableValue(webview_->SupportsAudioMuting())); return;
+        }
+        if (call.method_name() == "setAudioMuted" || call.method_name() == "setContextMenuEnabled") {
+          auto* enabled = call.arguments() ? std::get_if<bool>(call.arguments()) : nullptr;
+          result->Success(flutter::EncodableValue(enabled && (call.method_name() == "setAudioMuted" ? webview_->SetAudioMuted(*enabled) : webview_->SetNativeContextMenus(*enabled)))); return;
+        }
+        if (call.method_name() == "createArchive") {
+          auto reply = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(std::move(result));
+          webview_->CallBrowserProtocol("Page.captureSnapshot", "{\"format\":\"mhtml\"}",
+            [reply, active = async_replies_enabled_](bool success, const std::string& data) {
+              if (!*active) return;
+              if (success && !data.empty() && data.size() <= 64 * 1024 * 1024) reply->Success(flutter::EncodableValue(data));
+              else reply->Error("archive_failed", "The native MHTML export failed or exceeds the 64 MiB limit.");
+            });
+          return;
+        }
+        if (call.method_name() == "printPage") {
+          if (!webview_->ShowPrintUI()) result->Error("print_unavailable", "The WebView2 Runtime could not open its system print dialog.");
+          else result->Success(flutter::EncodableValue(flutter::EncodableMap{
+            {flutter::EncodableValue("state"), flutter::EncodableValue("presented")}}));
+          return;
+        }
+        if (call.method_name() == "captureLayoutMetrics" || call.method_name() == "captureFullDocument") {
+          std::string parameters = "{}";
+          if (call.method_name() == "captureFullDocument") {
+            const auto* values = call.arguments() ? std::get_if<flutter::EncodableMap>(call.arguments()) : nullptr;
+            const auto number = [values](const char* key) {
+              if (values) {
+                const auto found = values->find(flutter::EncodableValue(key));
+                if (found != values->end()) {
+                  if (const auto* v = std::get_if<double>(&found->second)) return *v;
+                  if (const auto* v = std::get_if<int32_t>(&found->second)) return static_cast<double>(*v);
+                  if (const auto* v = std::get_if<int64_t>(&found->second)) return static_cast<double>(*v);
+                }
+              }
+              return std::numeric_limits<double>::quiet_NaN();
+            };
+            const double width = std::ceil(number("width"));
+            const double height = std::ceil(number("height"));
+            if (!std::isfinite(width) || !std::isfinite(height) || width <= 0 || height <= 0 || width * height > 16 * 1024 * 1024) {
+              result->Error("invalid_argument", "The document must fit within the 16 Mi pixel screenshot limit."); return;
+            }
+            parameters = "{\"format\":\"png\",\"fromSurface\":true,\"captureBeyondViewport\":true,\"clip\":{\"x\":0,\"y\":0,\"width\":" +
+              std::to_string(static_cast<int64_t>(width)) + ",\"height\":" + std::to_string(static_cast<int64_t>(height)) + ",\"scale\":1}}";
+          }
+          auto reply = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(std::move(result));
+          webview_->CallBrowserProtocol(call.method_name() == "captureLayoutMetrics" ? "Page.getLayoutMetrics" : "Page.captureScreenshot",
+            parameters, [reply, active = async_replies_enabled_](bool success, const std::string& data) {
+              if (!*active) return;
+              if (!success || data.size() > 90 * 1024 * 1024) reply->Error("capture_failed", "Native full-document capture failed or exceeded its output limit.");
+              else reply->Success(flutter::EncodableValue(data));
+            }); return;
+        }
+        if (call.method_name() == "takeScreenshot" ||
+            call.method_name() == "createPdf") {
+          std::optional<Webview::PdfOptions> options;
+          if (call.method_name() == "createPdf" && call.arguments() &&
+              !std::holds_alternative<std::monostate>(*call.arguments())) {
+            const auto* values = std::get_if<flutter::EncodableMap>(call.arguments());
+            auto number = [values](const char* name) {
+              if (!values) return std::numeric_limits<double>::quiet_NaN();
+              auto it = values->find(flutter::EncodableValue(name));
+              if (it == values->end()) return std::numeric_limits<double>::quiet_NaN();
+              if (auto v = std::get_if<double>(&it->second)) return *v;
+              return std::numeric_limits<double>::quiet_NaN();
+            };
+            bool landscape = false;
+            if (values) {
+              auto it = values->find(flutter::EncodableValue("landscape"));
+              if (it != values->end()) if (auto v = std::get_if<bool>(&it->second)) landscape = *v;
+            }
+            Webview::PdfOptions parsed{number("paperWidth"), number("paperHeight"), number("marginTop"), number("marginBottom"), number("marginLeft"), number("marginRight"), landscape};
+            bool valid = true;
+            for (double v : {parsed.width, parsed.height, parsed.top, parsed.bottom, parsed.left, parsed.right}) valid &= std::isfinite(v) && v >= 0 && v <= 14400;
+            const double width = landscape ? parsed.height : parsed.width;
+            const double height = landscape ? parsed.width : parsed.height;
+            if (!valid || width <= parsed.left + parsed.right || height <= parsed.top + parsed.bottom) {
+              result->Error("invalid_argument", "Invalid PDF paper size or margins."); return;
+            }
+            options = parsed;
+          }
+          auto reply =
+              std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(
+                  std::move(result));
+          webview_->CapturePage(
+              call.method_name() == "createPdf",
+              [reply, active = async_replies_enabled_](
+                  std::vector<uint8_t> bytes, const std::string &error) {
+                if (!*active) return;
+                if (error.empty())
+                  reply->Success(flutter::EncodableValue(std::move(bytes)));
+                else
+                  reply->Error("capture_failed", error);
+              }, options);
+          return;
+        }
+        if (call.method_name() == "supportsFind") {
+          result->Success(flutter::EncodableValue(webview_->SupportsFind()));
+          return;
+        }
+        if (call.method_name() == "queryOriginData" || call.method_name() == "clearOriginData") {
+          const auto* parameters = call.arguments() ? std::get_if<std::string>(call.arguments()) : nullptr;
+          if (!parameters || parameters->size() > 8192) {
+            result->Error("invalid_argument", "Origin storage parameters are required."); return;
+          }
+          auto reply = std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(std::move(result));
+          webview_->CallBrowserProtocol(call.method_name() == "queryOriginData" ? "Storage.getUsageAndQuota" : "Storage.clearDataForOrigin", *parameters,
+            [reply, active = async_replies_enabled_](bool success, const std::string& data) {
+              if (!*active) return;
+              if (success) reply->Success(flutter::EncodableValue(data));
+              else reply->Error("website_data_error", "The Runtime could not access the requested origin storage.");
+            });
+          return;
+        }
+        if (call.method_name() == "clearFindMatches") {
+          webview_->ClearFind();
+          result->Success();
+          return;
+        }
+        if (call.method_name() == "getNavigationHistory" ||
+            call.method_name() == "navigateToHistoryEntry") {
+          const bool navigate = call.method_name() == "navigateToHistoryEntry";
+          int64_t entry = -1;
+          if (navigate) {
+            if (call.arguments()) {
+              if (const auto *int32_value =
+                      std::get_if<int32_t>(call.arguments()))
+                entry = *int32_value;
+              else if (const auto *int64_value =
+                           std::get_if<int64_t>(call.arguments()))
+                entry = *int64_value;
+            }
+            if (entry < 0) {
+              result->Error("invalid_argument",
+                            "A native history entry id is required.");
+              return;
+            }
+          }
+          auto reply =
+              std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(
+                  std::move(result));
+          auto completion = [reply, navigate, alive = async_replies_enabled_](
+                                bool success, const std::string &data) {
+            if (!*alive) return;
+            if (!success)
+              reply->Error("browser_operation_failed",
+                           "The native history operation failed.");
+            else if (navigate)
+              reply->Success(flutter::EncodableValue(true));
+            else
+              reply->Success(flutter::EncodableValue(data));
+          };
+          if (navigate)
+            webview_->NavigateToHistoryEntry(entry, std::move(completion));
+          else
+            webview_->CallBrowserProtocol("Page.getNavigationHistory", "{}",
+                                          std::move(completion));
+          return;
+        }
+        if (call.method_name() == "findText") {
+          const auto *args =
+              call.arguments()
+                  ? std::get_if<flutter::EncodableMap>(call.arguments())
+                  : nullptr;
+          if (!args) {
+            result->Error("invalid_argument",
+                          "Text search options are required.");
+            return;
+          }
+          const auto text = args->find(flutter::EncodableValue("text"));
+          const auto forward = args->find(flutter::EncodableValue("forward"));
+          const auto sensitive =
+              args->find(flutter::EncodableValue("caseSensitive"));
+          if (text == args->end() ||
+              !std::holds_alternative<std::string>(text->second) ||
+              forward == args->end() ||
+              !std::holds_alternative<bool>(forward->second) ||
+              sensitive == args->end() ||
+              !std::holds_alternative<bool>(sensitive->second)) {
+            result->Error("invalid_argument", "Invalid text search options.");
+            return;
+          }
+          auto reply =
+              std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(
+                  std::move(result));
+          webview_->FindText(
+              std::get<std::string>(text->second),
+              std::get<bool>(forward->second),
+              std::get<bool>(sensitive->second),
+              [reply, alive = async_replies_enabled_](bool available, int count,
+                                                      int active) {
+                if (!*alive) return;
+                if (!available) {
+                  reply->Success();
+                  return;
+                }
+                flutter::EncodableMap data{{"matchFound", count > 0},
+                                           {"matchCount", count}};
+                if (active >= 0)
+                  data[flutter::EncodableValue("activeMatchIndex")] =
+                      flutter::EncodableValue(active);
+                reply->Success(flutter::EncodableValue(data));
+              });
+          return;
+        }
         if (call.method_name() == "configureResources") {
           const auto *args =
               call.arguments()
@@ -245,6 +523,23 @@ WebviewBridge::~WebviewBridge() {
 }
 
 void WebviewBridge::RegisterEventHandlers() {
+  webview_->OnNewWindowRequested(
+      [this](const std::string &id, const std::string &url, bool gesture) {
+        EmitEvent(flutter::EncodableValue(flutter::EncodableMap{
+            {flutter::EncodableValue(kEventType),
+             flutter::EncodableValue("newWindowRequested")},
+            {flutter::EncodableValue(kEventValue),
+             flutter::EncodableValue(flutter::EncodableMap{
+                 {"requestId", id}, {"url", url}, {"isUserGesture", gesture}})},
+        }));
+      });
+  webview_->OnWindowCloseRequested([this]() {
+    EmitEvent(flutter::EncodableValue(flutter::EncodableMap{
+        {flutter::EncodableValue(kEventType),
+         flutter::EncodableValue("windowCloseRequested")},
+    }));
+  });
+
   webview_->OnUrlChanged([this](const std::string &url) {
     const auto event = flutter::EncodableValue(flutter::EncodableMap{
         {flutter::EncodableValue(kEventType),
@@ -458,6 +753,11 @@ void WebviewBridge::RegisterEventHandlers() {
              contains_fullscreen_element}});
         EmitEvent(event);
       });
+  webview_->OnProcessFailed([this](int kind) {
+    EmitEvent(flutter::EncodableValue(flutter::EncodableMap{
+        {flutter::EncodableValue(kEventType), flutter::EncodableValue("processFailed")},
+        {flutter::EncodableValue(kEventValue), flutter::EncodableValue(kind)}}));
+  });
 }
 
 void WebviewBridge::OnDownloadRequested(
@@ -729,33 +1029,41 @@ void WebviewBridge::SetPointerButtonState(int64_t button, bool is_down) {
 }
 
 std::optional<WindowsRenderingError>
-WebviewBridge::SetSize(double width, double height, double scale_factor) {
+WebviewBridge::SetSize(double width, double height, double scale_factor,
+                       std::optional<SurfaceOrigin> origin) {
   if (!std::isfinite(width) || !std::isfinite(height) ||
       !std::isfinite(scale_factor) || width <= 0 || height <= 0 ||
       scale_factor <= 0 ||
       width >= static_cast<double>((std::numeric_limits<size_t>::max)()) ||
       height >= static_cast<double>((std::numeric_limits<size_t>::max)()) ||
+      (origin && (!std::isfinite(origin->x) || !std::isfinite(origin->y))) ||
       scale_factor >=
           static_cast<double>((std::numeric_limits<float>::max)())) {
     return RenderingError("invalid_surface_size", "webview_surface_size",
                           "The WebView surface size is invalid.", E_INVALIDARG);
   }
 
+  const bool resize = !surface_size_set_ || width != surface_width_ ||
+                      height != surface_height_ || scale_factor != surface_scale_;
   const HRESULT surface_result = webview_->SetSurfaceSize(
-      static_cast<size_t>(width), static_cast<size_t>(height),
-      static_cast<float>(scale_factor));
+      width, height, static_cast<float>(scale_factor), origin);
   if (FAILED(surface_result)) {
     return RenderingError("webview_surface_update_failed", "webview_surface",
                           "Updating the WebView surface failed.",
                           surface_result);
   }
-  surface_size_set_ = true;
-
-  if (auto error = texture_bridge_->Resize()) {
-    webview_->SetVisible(false);
-    return error;
+  if (resize) {
+    if (auto error = texture_bridge_->Resize()) {
+      surface_size_set_ = false;
+      webview_->SetVisible(false);
+      return error;
+    }
+    surface_width_ = width;
+    surface_height_ = height;
+    surface_scale_ = scale_factor;
   }
-  return UpdateRenderingState();
+  surface_size_set_ = true;
+  return resize ? UpdateRenderingState() : std::nullopt;
 }
 
 std::optional<WindowsRenderingError>

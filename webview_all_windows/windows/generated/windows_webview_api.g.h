@@ -15,39 +15,40 @@
 
 namespace webview_all_windows {
 
+
 // Generated class from Pigeon.
 
 class FlutterError {
-public:
-  explicit FlutterError(const std::string &code) : code_(code) {}
-  explicit FlutterError(const std::string &code, const std::string &message)
-      : code_(code), message_(message) {}
-  explicit FlutterError(const std::string &code, const std::string &message,
-                        const ::flutter::EncodableValue &details)
-      : code_(code), message_(message), details_(details) {}
+ public:
+  explicit FlutterError(const std::string& code)
+    : code_(code) {}
+  explicit FlutterError(const std::string& code, const std::string& message)
+    : code_(code), message_(message) {}
+  explicit FlutterError(const std::string& code, const std::string& message, const ::flutter::EncodableValue& details)
+    : code_(code), message_(message), details_(details) {}
 
-  const std::string &code() const { return code_; }
-  const std::string &message() const { return message_; }
-  const ::flutter::EncodableValue &details() const { return details_; }
+  const std::string& code() const { return code_; }
+  const std::string& message() const { return message_; }
+  const ::flutter::EncodableValue& details() const { return details_; }
 
-private:
+ private:
   std::string code_;
   std::string message_;
   ::flutter::EncodableValue details_;
 };
 
-template <class T> class ErrorOr {
-public:
-  ErrorOr(const T &rhs) : v_(rhs) {}
-  ErrorOr(const T &&rhs) : v_(std::move(rhs)) {}
-  ErrorOr(const FlutterError &rhs) : v_(rhs) {}
-  ErrorOr(const FlutterError &&rhs) : v_(std::move(rhs)) {}
+template<class T> class ErrorOr {
+ public:
+  ErrorOr(const T& rhs) : v_(rhs) {}
+  ErrorOr(const T&& rhs) : v_(std::move(rhs)) {}
+  ErrorOr(const FlutterError& rhs) : v_(rhs) {}
+  ErrorOr(const FlutterError&& rhs) : v_(std::move(rhs)) {}
 
   bool has_error() const { return std::holds_alternative<FlutterError>(v_); }
-  const T &value() const { return std::get<T>(v_); };
-  const FlutterError &error() const { return std::get<FlutterError>(v_); };
+  const T& value() const { return std::get<T>(v_); };
+  const FlutterError& error() const { return std::get<FlutterError>(v_); };
 
-private:
+ private:
   friend class WindowsWebViewHostApi;
   ErrorOr() = default;
   T TakeValue() && { return std::get<T>(std::move(v_)); }
@@ -55,135 +56,141 @@ private:
   std::variant<T, FlutterError> v_;
 };
 
+
+
 // Generated class from Pigeon that represents data sent in messages.
 class WindowsEnvironmentOptions {
-public:
+ public:
   // Constructs an object setting all non-nullable fields.
   WindowsEnvironmentOptions();
 
   // Constructs an object setting all fields.
-  explicit WindowsEnvironmentOptions(const std::string *user_data_path,
-                                     const std::string *browser_exe_path,
-                                     const std::string *additional_arguments);
+  explicit WindowsEnvironmentOptions(
+    const std::string* user_data_path,
+    const std::string* browser_exe_path,
+    const std::string* additional_arguments,
+    const ::flutter::EncodableList* custom_schemes);
 
-  const std::string *user_data_path() const;
-  void set_user_data_path(const std::string_view *value_arg);
+  const std::string* user_data_path() const;
+  void set_user_data_path(const std::string_view* value_arg);
   void set_user_data_path(std::string_view value_arg);
 
-  const std::string *browser_exe_path() const;
-  void set_browser_exe_path(const std::string_view *value_arg);
+  const std::string* browser_exe_path() const;
+  void set_browser_exe_path(const std::string_view* value_arg);
   void set_browser_exe_path(std::string_view value_arg);
 
-  const std::string *additional_arguments() const;
-  void set_additional_arguments(const std::string_view *value_arg);
+  const std::string* additional_arguments() const;
+  void set_additional_arguments(const std::string_view* value_arg);
   void set_additional_arguments(std::string_view value_arg);
 
-  bool operator==(const WindowsEnvironmentOptions &other) const;
-  bool operator!=(const WindowsEnvironmentOptions &other) const;
-  /// Returns a hash code value for the object. This method is supported for the
-  /// benefit of hash tables.
+  const ::flutter::EncodableList* custom_schemes() const;
+  void set_custom_schemes(const ::flutter::EncodableList* value_arg);
+  void set_custom_schemes(const ::flutter::EncodableList& value_arg);
+
+  bool operator==(const WindowsEnvironmentOptions& other) const;
+  bool operator!=(const WindowsEnvironmentOptions& other) const;
+  /// Returns a hash code value for the object. This method is supported for the benefit of hash tables.
   size_t Hash() const;
   /// Stream output operator for formatted string representation.
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const WindowsEnvironmentOptions &obj);
-
-private:
-  static WindowsEnvironmentOptions
-  FromEncodableList(const ::flutter::EncodableList &list);
+  friend std::ostream& operator<<(std::ostream& os, const WindowsEnvironmentOptions& obj);
+ private:
+  static WindowsEnvironmentOptions FromEncodableList(const ::flutter::EncodableList& list);
   ::flutter::EncodableList ToEncodableList() const;
   friend class WindowsWebViewHostApi;
   friend class PigeonInternalCodecSerializer;
   std::optional<std::string> user_data_path_;
   std::optional<std::string> browser_exe_path_;
   std::optional<std::string> additional_arguments_;
+  std::optional<::flutter::EncodableList> custom_schemes_;
 };
+
 
 // Generated class from Pigeon that represents data sent in messages.
 class WindowsCreateWebViewResult {
-public:
+ public:
   // Constructs an object setting all fields.
   explicit WindowsCreateWebViewResult(int64_t texture_id);
 
   int64_t texture_id() const;
   void set_texture_id(int64_t value_arg);
 
-  bool operator==(const WindowsCreateWebViewResult &other) const;
-  bool operator!=(const WindowsCreateWebViewResult &other) const;
-  /// Returns a hash code value for the object. This method is supported for the
-  /// benefit of hash tables.
+  bool operator==(const WindowsCreateWebViewResult& other) const;
+  bool operator!=(const WindowsCreateWebViewResult& other) const;
+  /// Returns a hash code value for the object. This method is supported for the benefit of hash tables.
   size_t Hash() const;
   /// Stream output operator for formatted string representation.
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const WindowsCreateWebViewResult &obj);
-
-private:
-  static WindowsCreateWebViewResult
-  FromEncodableList(const ::flutter::EncodableList &list);
+  friend std::ostream& operator<<(std::ostream& os, const WindowsCreateWebViewResult& obj);
+ private:
+  static WindowsCreateWebViewResult FromEncodableList(const ::flutter::EncodableList& list);
   ::flutter::EncodableList ToEncodableList() const;
   friend class WindowsWebViewHostApi;
   friend class PigeonInternalCodecSerializer;
   int64_t texture_id_;
 };
 
+
 // Generated class from Pigeon that represents data sent in messages.
 class WindowsCookieData {
-public:
+ public:
   // Constructs an object setting all non-nullable fields.
-  explicit WindowsCookieData(const std::string &name, const std::string &value,
-                             const std::string &domain,
-                             const std::string &path);
+  explicit WindowsCookieData(
+    const std::string& name,
+    const std::string& value,
+    const std::string& domain,
+    const std::string& path);
 
   // Constructs an object setting all fields.
-  explicit WindowsCookieData(const std::string &name, const std::string &value,
-                             const std::string &domain, const std::string &path,
-                             const double *expires, const bool *is_http_only,
-                             const bool *is_secure, const int64_t *same_site,
-                             const bool *is_session);
+  explicit WindowsCookieData(
+    const std::string& name,
+    const std::string& value,
+    const std::string& domain,
+    const std::string& path,
+    const double* expires,
+    const bool* is_http_only,
+    const bool* is_secure,
+    const int64_t* same_site,
+    const bool* is_session);
 
-  const std::string &name() const;
+  const std::string& name() const;
   void set_name(std::string_view value_arg);
 
-  const std::string &value() const;
+  const std::string& value() const;
   void set_value(std::string_view value_arg);
 
-  const std::string &domain() const;
+  const std::string& domain() const;
   void set_domain(std::string_view value_arg);
 
-  const std::string &path() const;
+  const std::string& path() const;
   void set_path(std::string_view value_arg);
 
-  const double *expires() const;
-  void set_expires(const double *value_arg);
+  const double* expires() const;
+  void set_expires(const double* value_arg);
   void set_expires(double value_arg);
 
-  const bool *is_http_only() const;
-  void set_is_http_only(const bool *value_arg);
+  const bool* is_http_only() const;
+  void set_is_http_only(const bool* value_arg);
   void set_is_http_only(bool value_arg);
 
-  const bool *is_secure() const;
-  void set_is_secure(const bool *value_arg);
+  const bool* is_secure() const;
+  void set_is_secure(const bool* value_arg);
   void set_is_secure(bool value_arg);
 
-  const int64_t *same_site() const;
-  void set_same_site(const int64_t *value_arg);
+  const int64_t* same_site() const;
+  void set_same_site(const int64_t* value_arg);
   void set_same_site(int64_t value_arg);
 
-  const bool *is_session() const;
-  void set_is_session(const bool *value_arg);
+  const bool* is_session() const;
+  void set_is_session(const bool* value_arg);
   void set_is_session(bool value_arg);
 
-  bool operator==(const WindowsCookieData &other) const;
-  bool operator!=(const WindowsCookieData &other) const;
-  /// Returns a hash code value for the object. This method is supported for the
-  /// benefit of hash tables.
+  bool operator==(const WindowsCookieData& other) const;
+  bool operator!=(const WindowsCookieData& other) const;
+  /// Returns a hash code value for the object. This method is supported for the benefit of hash tables.
   size_t Hash() const;
   /// Stream output operator for formatted string representation.
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const WindowsCookieData &obj);
-
-private:
-  static WindowsCookieData
-  FromEncodableList(const ::flutter::EncodableList &list);
+  friend std::ostream& operator<<(std::ostream& os, const WindowsCookieData& obj);
+ private:
+  static WindowsCookieData FromEncodableList(const ::flutter::EncodableList& list);
   ::flutter::EncodableList ToEncodableList() const;
   friend class WindowsWebViewHostApi;
   friend class PigeonInternalCodecSerializer;
@@ -198,11 +205,14 @@ private:
   std::optional<bool> is_session_;
 };
 
+
 // Generated class from Pigeon that represents data sent in messages.
 class WindowsPointData {
-public:
+ public:
   // Constructs an object setting all fields.
-  explicit WindowsPointData(double x, double y);
+  explicit WindowsPointData(
+    double x,
+    double y);
 
   double x() const;
   void set_x(double value_arg);
@@ -210,31 +220,45 @@ public:
   double y() const;
   void set_y(double value_arg);
 
-  bool operator==(const WindowsPointData &other) const;
-  bool operator!=(const WindowsPointData &other) const;
-  /// Returns a hash code value for the object. This method is supported for the
-  /// benefit of hash tables.
+  bool operator==(const WindowsPointData& other) const;
+  bool operator!=(const WindowsPointData& other) const;
+  /// Returns a hash code value for the object. This method is supported for the benefit of hash tables.
   size_t Hash() const;
   /// Stream output operator for formatted string representation.
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const WindowsPointData &obj);
-
-private:
-  static WindowsPointData
-  FromEncodableList(const ::flutter::EncodableList &list);
+  friend std::ostream& operator<<(std::ostream& os, const WindowsPointData& obj);
+ private:
+  static WindowsPointData FromEncodableList(const ::flutter::EncodableList& list);
   ::flutter::EncodableList ToEncodableList() const;
+  friend class WindowsSizeData;
+  friend class WindowsPointerButtonData;
   friend class WindowsWebViewHostApi;
   friend class PigeonInternalCodecSerializer;
   double x_;
   double y_;
 };
 
+
 // Generated class from Pigeon that represents data sent in messages.
 class WindowsSizeData {
-public:
-  // Constructs an object setting all fields.
-  explicit WindowsSizeData(double width, double height, double scale_factor);
+ public:
+  // Constructs an object setting all non-nullable fields.
+  explicit WindowsSizeData(
+    double width,
+    double height,
+    double scale_factor);
 
+  // Constructs an object setting all fields.
+  explicit WindowsSizeData(
+    double width,
+    double height,
+    double scale_factor,
+    const WindowsPointData* origin);
+
+  ~WindowsSizeData() = default;
+  WindowsSizeData(const WindowsSizeData& other);
+  WindowsSizeData& operator=(const WindowsSizeData& other);
+  WindowsSizeData(WindowsSizeData&& other) = default;
+  WindowsSizeData& operator=(WindowsSizeData&& other) noexcept = default;
   double width() const;
   void set_width(double value_arg);
 
@@ -244,31 +268,39 @@ public:
   double scale_factor() const;
   void set_scale_factor(double value_arg);
 
-  bool operator==(const WindowsSizeData &other) const;
-  bool operator!=(const WindowsSizeData &other) const;
-  /// Returns a hash code value for the object. This method is supported for the
-  /// benefit of hash tables.
+  const WindowsPointData* origin() const;
+  void set_origin(const WindowsPointData* value_arg);
+  void set_origin(const WindowsPointData& value_arg);
+
+  bool operator==(const WindowsSizeData& other) const;
+  bool operator!=(const WindowsSizeData& other) const;
+  /// Returns a hash code value for the object. This method is supported for the benefit of hash tables.
   size_t Hash() const;
   /// Stream output operator for formatted string representation.
-  friend std::ostream &operator<<(std::ostream &os, const WindowsSizeData &obj);
-
-private:
-  static WindowsSizeData
-  FromEncodableList(const ::flutter::EncodableList &list);
+  friend std::ostream& operator<<(std::ostream& os, const WindowsSizeData& obj);
+ private:
+  static WindowsSizeData FromEncodableList(const ::flutter::EncodableList& list);
   ::flutter::EncodableList ToEncodableList() const;
   friend class WindowsWebViewHostApi;
   friend class PigeonInternalCodecSerializer;
   double width_;
   double height_;
   double scale_factor_;
+  std::unique_ptr<WindowsPointData> origin_;
 };
+
 
 // Generated class from Pigeon that represents data sent in messages.
 class WindowsPointerUpdateData {
-public:
+ public:
   // Constructs an object setting all fields.
-  explicit WindowsPointerUpdateData(int64_t pointer, int64_t event, double x,
-                                    double y, double size, double pressure);
+  explicit WindowsPointerUpdateData(
+    int64_t pointer,
+    int64_t event,
+    double x,
+    double y,
+    double size,
+    double pressure);
 
   int64_t pointer() const;
   void set_pointer(int64_t value_arg);
@@ -288,18 +320,14 @@ public:
   double pressure() const;
   void set_pressure(double value_arg);
 
-  bool operator==(const WindowsPointerUpdateData &other) const;
-  bool operator!=(const WindowsPointerUpdateData &other) const;
-  /// Returns a hash code value for the object. This method is supported for the
-  /// benefit of hash tables.
+  bool operator==(const WindowsPointerUpdateData& other) const;
+  bool operator!=(const WindowsPointerUpdateData& other) const;
+  /// Returns a hash code value for the object. This method is supported for the benefit of hash tables.
   size_t Hash() const;
   /// Stream output operator for formatted string representation.
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const WindowsPointerUpdateData &obj);
-
-private:
-  static WindowsPointerUpdateData
-  FromEncodableList(const ::flutter::EncodableList &list);
+  friend std::ostream& operator<<(std::ostream& os, const WindowsPointerUpdateData& obj);
+ private:
+  static WindowsPointerUpdateData FromEncodableList(const ::flutter::EncodableList& list);
   ::flutter::EncodableList ToEncodableList() const;
   friend class WindowsWebViewHostApi;
   friend class PigeonInternalCodecSerializer;
@@ -311,66 +339,79 @@ private:
   double pressure_;
 };
 
+
 // Generated class from Pigeon that represents data sent in messages.
 class WindowsPointerButtonData {
-public:
-  // Constructs an object setting all fields.
-  explicit WindowsPointerButtonData(int64_t button, bool is_down);
+ public:
+  // Constructs an object setting all non-nullable fields.
+  explicit WindowsPointerButtonData(
+    int64_t button,
+    bool is_down);
 
+  // Constructs an object setting all fields.
+  explicit WindowsPointerButtonData(
+    int64_t button,
+    bool is_down,
+    const WindowsPointData* position);
+
+  ~WindowsPointerButtonData() = default;
+  WindowsPointerButtonData(const WindowsPointerButtonData& other);
+  WindowsPointerButtonData& operator=(const WindowsPointerButtonData& other);
+  WindowsPointerButtonData(WindowsPointerButtonData&& other) = default;
+  WindowsPointerButtonData& operator=(WindowsPointerButtonData&& other) noexcept = default;
   int64_t button() const;
   void set_button(int64_t value_arg);
 
   bool is_down() const;
   void set_is_down(bool value_arg);
 
-  bool operator==(const WindowsPointerButtonData &other) const;
-  bool operator!=(const WindowsPointerButtonData &other) const;
-  /// Returns a hash code value for the object. This method is supported for the
-  /// benefit of hash tables.
+  const WindowsPointData* position() const;
+  void set_position(const WindowsPointData* value_arg);
+  void set_position(const WindowsPointData& value_arg);
+
+  bool operator==(const WindowsPointerButtonData& other) const;
+  bool operator!=(const WindowsPointerButtonData& other) const;
+  /// Returns a hash code value for the object. This method is supported for the benefit of hash tables.
   size_t Hash() const;
   /// Stream output operator for formatted string representation.
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const WindowsPointerButtonData &obj);
-
-private:
-  static WindowsPointerButtonData
-  FromEncodableList(const ::flutter::EncodableList &list);
+  friend std::ostream& operator<<(std::ostream& os, const WindowsPointerButtonData& obj);
+ private:
+  static WindowsPointerButtonData FromEncodableList(const ::flutter::EncodableList& list);
   ::flutter::EncodableList ToEncodableList() const;
   friend class WindowsWebViewHostApi;
   friend class PigeonInternalCodecSerializer;
   int64_t button_;
   bool is_down_;
+  std::unique_ptr<WindowsPointData> position_;
 };
+
 
 // Generated class from Pigeon that represents data sent in messages.
 class WindowsVirtualHostMappingData {
-public:
+ public:
   // Constructs an object setting all fields.
-  explicit WindowsVirtualHostMappingData(const std::string &host_name,
-                                         const std::string &path,
-                                         int64_t access_kind);
+  explicit WindowsVirtualHostMappingData(
+    const std::string& host_name,
+    const std::string& path,
+    int64_t access_kind);
 
-  const std::string &host_name() const;
+  const std::string& host_name() const;
   void set_host_name(std::string_view value_arg);
 
-  const std::string &path() const;
+  const std::string& path() const;
   void set_path(std::string_view value_arg);
 
   int64_t access_kind() const;
   void set_access_kind(int64_t value_arg);
 
-  bool operator==(const WindowsVirtualHostMappingData &other) const;
-  bool operator!=(const WindowsVirtualHostMappingData &other) const;
-  /// Returns a hash code value for the object. This method is supported for the
-  /// benefit of hash tables.
+  bool operator==(const WindowsVirtualHostMappingData& other) const;
+  bool operator!=(const WindowsVirtualHostMappingData& other) const;
+  /// Returns a hash code value for the object. This method is supported for the benefit of hash tables.
   size_t Hash() const;
   /// Stream output operator for formatted string representation.
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const WindowsVirtualHostMappingData &obj);
-
-private:
-  static WindowsVirtualHostMappingData
-  FromEncodableList(const ::flutter::EncodableList &list);
+  friend std::ostream& operator<<(std::ostream& os, const WindowsVirtualHostMappingData& obj);
+ private:
+  static WindowsVirtualHostMappingData FromEncodableList(const ::flutter::EncodableList& list);
   ::flutter::EncodableList ToEncodableList() const;
   friend class WindowsWebViewHostApi;
   friend class PigeonInternalCodecSerializer;
@@ -379,45 +420,44 @@ private:
   int64_t access_kind_;
 };
 
+
 // Generated class from Pigeon that represents data sent in messages.
 class WindowsLoadRequestData {
-public:
+ public:
   // Constructs an object setting all non-nullable fields.
-  explicit WindowsLoadRequestData(const std::string &url,
-                                  const std::string &method,
-                                  const std::string &headers);
+  explicit WindowsLoadRequestData(
+    const std::string& url,
+    const std::string& method,
+    const std::string& headers);
 
   // Constructs an object setting all fields.
-  explicit WindowsLoadRequestData(const std::string &url,
-                                  const std::string &method,
-                                  const std::string &headers,
-                                  const std::vector<uint8_t> *body);
+  explicit WindowsLoadRequestData(
+    const std::string& url,
+    const std::string& method,
+    const std::string& headers,
+    const std::vector<uint8_t>* body);
 
-  const std::string &url() const;
+  const std::string& url() const;
   void set_url(std::string_view value_arg);
 
-  const std::string &method() const;
+  const std::string& method() const;
   void set_method(std::string_view value_arg);
 
-  const std::string &headers() const;
+  const std::string& headers() const;
   void set_headers(std::string_view value_arg);
 
-  const std::vector<uint8_t> *body() const;
-  void set_body(const std::vector<uint8_t> *value_arg);
-  void set_body(const std::vector<uint8_t> &value_arg);
+  const std::vector<uint8_t>* body() const;
+  void set_body(const std::vector<uint8_t>* value_arg);
+  void set_body(const std::vector<uint8_t>& value_arg);
 
-  bool operator==(const WindowsLoadRequestData &other) const;
-  bool operator!=(const WindowsLoadRequestData &other) const;
-  /// Returns a hash code value for the object. This method is supported for the
-  /// benefit of hash tables.
+  bool operator==(const WindowsLoadRequestData& other) const;
+  bool operator!=(const WindowsLoadRequestData& other) const;
+  /// Returns a hash code value for the object. This method is supported for the benefit of hash tables.
   size_t Hash() const;
   /// Stream output operator for formatted string representation.
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const WindowsLoadRequestData &obj);
-
-private:
-  static WindowsLoadRequestData
-  FromEncodableList(const ::flutter::EncodableList &list);
+  friend std::ostream& operator<<(std::ostream& os, const WindowsLoadRequestData& obj);
+ private:
+  static WindowsLoadRequestData FromEncodableList(const ::flutter::EncodableList& list);
   ::flutter::EncodableList ToEncodableList() const;
   friend class WindowsWebViewHostApi;
   friend class PigeonInternalCodecSerializer;
@@ -427,164 +467,191 @@ private:
   std::optional<std::vector<uint8_t>> body_;
 };
 
-class PigeonInternalCodecSerializer
-    : public ::flutter::StandardCodecSerializer {
-public:
+
+class PigeonInternalCodecSerializer : public ::flutter::StandardCodecSerializer {
+ public:
   PigeonInternalCodecSerializer();
-  inline static PigeonInternalCodecSerializer &GetInstance() {
+  inline static PigeonInternalCodecSerializer& GetInstance() {
     static PigeonInternalCodecSerializer sInstance;
     return sInstance;
   }
 
-  void WriteValue(const ::flutter::EncodableValue &value,
-                  ::flutter::ByteStreamWriter *stream) const override;
-
-protected:
-  ::flutter::EncodableValue
-  ReadValueOfType(uint8_t type,
-                  ::flutter::ByteStreamReader *stream) const override;
+  void WriteValue(
+    const ::flutter::EncodableValue& value,
+    ::flutter::ByteStreamWriter* stream) const override;
+ protected:
+  ::flutter::EncodableValue ReadValueOfType(
+    uint8_t type,
+    ::flutter::ByteStreamReader* stream) const override;
 };
 
-// Generated interface from Pigeon that represents a handler of messages from
-// Flutter.
+// Generated interface from Pigeon that represents a handler of messages from Flutter.
 class WindowsWebViewHostApi {
-public:
-  WindowsWebViewHostApi(const WindowsWebViewHostApi &) = delete;
-  WindowsWebViewHostApi &operator=(const WindowsWebViewHostApi &) = delete;
+ public:
+  WindowsWebViewHostApi(const WindowsWebViewHostApi&) = delete;
+  WindowsWebViewHostApi& operator=(const WindowsWebViewHostApi&) = delete;
   virtual ~WindowsWebViewHostApi() {}
   virtual void InitializeEnvironment(
-      const WindowsEnvironmentOptions &options,
-      std::function<void(std::optional<FlutterError> reply)> result) = 0;
+    const WindowsEnvironmentOptions& options,
+    std::function<void(std::optional<FlutterError> reply)> result) = 0;
   virtual void EnsureEnvironment(
-      const WindowsEnvironmentOptions &options,
-      std::function<void(std::optional<FlutterError> reply)> result) = 0;
+    const WindowsEnvironmentOptions& options,
+    std::function<void(std::optional<FlutterError> reply)> result) = 0;
   virtual ErrorOr<std::optional<std::string>> GetWebViewVersion() = 0;
   virtual std::optional<FlutterError> OpenWebView2DownloadPage() = 0;
-  virtual void ClearAllWebsiteDataForEnvironment(
-      std::function<void(ErrorOr<bool> reply)> result) = 0;
-  virtual void
-  CreateWebView(std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)>
-                    result) = 0;
-  virtual void CreatePrivateWebView(
-      std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)>
-          result) = 0;
-  virtual void
-  IsIncognitoSupported(std::function<void(ErrorOr<bool> reply)> result) = 0;
+  virtual void ClearAllWebsiteDataForEnvironment(std::function<void(ErrorOr<bool> reply)> result) = 0;
+  virtual void CreateWebView(std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result) = 0;
+  virtual void CreatePrivateWebView(std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result) = 0;
+  virtual void CreateProfileWebView(
+    const std::string& name,
+    bool incognito,
+    std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result) = 0;
+  virtual void IsIncognitoSupported(std::function<void(ErrorOr<bool> reply)> result) = 0;
   virtual std::optional<FlutterError> DisposeWebView(int64_t texture_id) = 0;
-  virtual std::optional<FlutterError> LoadUrl(int64_t texture_id,
-                                              const std::string &url) = 0;
-  virtual std::optional<FlutterError>
-  LoadRequest(int64_t texture_id, const WindowsLoadRequestData &request) = 0;
-  virtual std::optional<FlutterError>
-  LoadStringContent(int64_t texture_id, const std::string &content) = 0;
+  virtual std::optional<FlutterError> LoadUrl(
+    int64_t texture_id,
+    const std::string& url) = 0;
+  virtual std::optional<FlutterError> LoadRequest(
+    int64_t texture_id,
+    const WindowsLoadRequestData& request) = 0;
+  virtual std::optional<FlutterError> LoadStringContent(
+    int64_t texture_id,
+    const std::string& content) = 0;
   virtual std::optional<FlutterError> Reload(int64_t texture_id) = 0;
   virtual std::optional<FlutterError> Stop(int64_t texture_id) = 0;
   virtual std::optional<FlutterError> GoBack(int64_t texture_id) = 0;
   virtual std::optional<FlutterError> GoForward(int64_t texture_id) = 0;
   virtual void AddScriptToExecuteOnDocumentCreated(
-      int64_t texture_id, const std::string &script,
-      std::function<void(ErrorOr<std::optional<std::string>> reply)>
-          result) = 0;
-  virtual std::optional<FlutterError>
-  RemoveScriptToExecuteOnDocumentCreated(int64_t texture_id,
-                                         const std::string &script_id) = 0;
-  virtual void
-  ExecuteScript(int64_t texture_id, const std::string &script,
-                std::function<void(ErrorOr<std::string> reply)> result) = 0;
-  virtual std::optional<FlutterError>
-  PostWebMessage(int64_t texture_id, const std::string &message) = 0;
-  virtual std::optional<FlutterError>
-  SetUserAgent(int64_t texture_id, const std::string *user_agent) = 0;
-  virtual ErrorOr<std::optional<std::string>>
-  GetUserAgent(int64_t texture_id) = 0;
-  virtual std::optional<FlutterError> SetJavaScriptEnabled(int64_t texture_id,
-                                                           bool enabled) = 0;
-  virtual void
-  ClearCookies(int64_t texture_id,
-               std::function<void(ErrorOr<bool> reply)> result) = 0;
-  virtual std::optional<FlutterError>
-  SetCookie(int64_t texture_id, const WindowsCookieData &cookie) = 0;
+    int64_t texture_id,
+    const std::string& script,
+    std::function<void(ErrorOr<std::optional<std::string>> reply)> result) = 0;
+  virtual std::optional<FlutterError> RemoveScriptToExecuteOnDocumentCreated(
+    int64_t texture_id,
+    const std::string& script_id) = 0;
+  virtual void ExecuteScript(
+    int64_t texture_id,
+    const std::string& script,
+    std::function<void(ErrorOr<std::string> reply)> result) = 0;
+  virtual std::optional<FlutterError> PostWebMessage(
+    int64_t texture_id,
+    const std::string& message) = 0;
+  virtual std::optional<FlutterError> SetUserAgent(
+    int64_t texture_id,
+    const std::string* user_agent) = 0;
+  virtual ErrorOr<std::optional<std::string>> GetUserAgent(int64_t texture_id) = 0;
+  virtual std::optional<FlutterError> SetJavaScriptEnabled(
+    int64_t texture_id,
+    bool enabled) = 0;
+  virtual void ClearCookies(
+    int64_t texture_id,
+    std::function<void(ErrorOr<bool> reply)> result) = 0;
+  virtual std::optional<FlutterError> SetCookie(
+    int64_t texture_id,
+    const WindowsCookieData& cookie) = 0;
   virtual void GetCookies(
-      int64_t texture_id, const std::string &url,
-      std::function<void(ErrorOr<::flutter::EncodableList> reply)> result) = 0;
-  virtual std::optional<FlutterError>
-  DeleteCookie(int64_t texture_id, const WindowsCookieData &cookie) = 0;
-  virtual std::optional<FlutterError>
-  DeleteCookiesWithNameAndUrl(int64_t texture_id, const std::string &name,
-                              const std::string &url) = 0;
+    int64_t texture_id,
+    const std::string& url,
+    std::function<void(ErrorOr<::flutter::EncodableList> reply)> result) = 0;
+  virtual std::optional<FlutterError> DeleteCookie(
+    int64_t texture_id,
+    const WindowsCookieData& cookie) = 0;
+  virtual std::optional<FlutterError> DeleteCookiesWithNameAndUrl(
+    int64_t texture_id,
+    const std::string& name,
+    const std::string& url) = 0;
   virtual std::optional<FlutterError> DeleteCookiesWithNameDomainAndPath(
-      int64_t texture_id, const std::string &name, const std::string &domain,
-      const std::string &path) = 0;
+    int64_t texture_id,
+    const std::string& name,
+    const std::string& domain,
+    const std::string& path) = 0;
   virtual std::optional<FlutterError> ClearCache(int64_t texture_id) = 0;
   virtual void ClearLocalStorage(
-      int64_t texture_id,
-      std::function<void(std::optional<FlutterError> reply)> result) = 0;
-  virtual void
-  ClearAllWebsiteData(int64_t texture_id,
-                      std::function<void(ErrorOr<bool> reply)> result) = 0;
-  virtual std::optional<FlutterError> SetCacheDisabled(int64_t texture_id,
-                                                       bool disabled) = 0;
+    int64_t texture_id,
+    std::function<void(std::optional<FlutterError> reply)> result) = 0;
+  virtual void ClearAllWebsiteData(
+    int64_t texture_id,
+    std::function<void(ErrorOr<bool> reply)> result) = 0;
+  virtual std::optional<FlutterError> SetCacheDisabled(
+    int64_t texture_id,
+    bool disabled) = 0;
   virtual std::optional<FlutterError> OpenDevTools(int64_t texture_id) = 0;
-  virtual std::optional<FlutterError> SetBackgroundColor(int64_t texture_id,
-                                                         int64_t color) = 0;
-  virtual std::optional<FlutterError> SetZoomControlEnabled(int64_t texture_id,
-                                                            bool enabled) = 0;
-  virtual std::optional<FlutterError> SetDevToolsEnabled(int64_t texture_id,
-                                                         bool enabled) = 0;
-  virtual std::optional<FlutterError>
-  SetBrowserAcceleratorKeysEnabled(int64_t texture_id, bool enabled) = 0;
-  virtual std::optional<FlutterError> SetDownloadsEnabled(int64_t texture_id,
-                                                          bool enabled) = 0;
-  virtual std::optional<FlutterError> SetZoomFactor(int64_t texture_id,
-                                                    double zoom_factor) = 0;
-  virtual std::optional<FlutterError> SetPopupWindowPolicy(int64_t texture_id,
-                                                           int64_t policy) = 0;
-  virtual std::optional<FlutterError>
-  SetNavigationRequestCallbacksEnabled(int64_t texture_id, bool enabled) = 0;
-  virtual std::optional<FlutterError>
-  SetJavaScriptDialogCallbacksEnabled(int64_t texture_id, bool alert,
-                                      bool confirm, bool prompt) = 0;
+  virtual std::optional<FlutterError> SetBackgroundColor(
+    int64_t texture_id,
+    int64_t color) = 0;
+  virtual std::optional<FlutterError> SetZoomControlEnabled(
+    int64_t texture_id,
+    bool enabled) = 0;
+  virtual std::optional<FlutterError> SetDevToolsEnabled(
+    int64_t texture_id,
+    bool enabled) = 0;
+  virtual std::optional<FlutterError> SetBrowserAcceleratorKeysEnabled(
+    int64_t texture_id,
+    bool enabled) = 0;
+  virtual std::optional<FlutterError> SetDownloadsEnabled(
+    int64_t texture_id,
+    bool enabled) = 0;
+  virtual std::optional<FlutterError> SetZoomFactor(
+    int64_t texture_id,
+    double zoom_factor) = 0;
+  virtual std::optional<FlutterError> SetPopupWindowPolicy(
+    int64_t texture_id,
+    int64_t policy) = 0;
+  virtual std::optional<FlutterError> SetNavigationRequestCallbacksEnabled(
+    int64_t texture_id,
+    bool enabled) = 0;
+  virtual std::optional<FlutterError> SetJavaScriptDialogCallbacksEnabled(
+    int64_t texture_id,
+    bool alert,
+    bool confirm,
+    bool prompt) = 0;
   virtual std::optional<FlutterError> Suspend(int64_t texture_id) = 0;
   virtual std::optional<FlutterError> Resume(int64_t texture_id) = 0;
-  virtual std::optional<FlutterError>
-  SetVirtualHostNameMapping(int64_t texture_id,
-                            const WindowsVirtualHostMappingData &mapping) = 0;
-  virtual std::optional<FlutterError>
-  ClearVirtualHostNameMapping(int64_t texture_id,
-                              const std::string &host_name) = 0;
-  virtual std::optional<FlutterError> SetFpsLimit(int64_t texture_id,
-                                                  int64_t max_fps) = 0;
-  virtual std::optional<FlutterError>
-  SetPointerUpdate(int64_t texture_id,
-                   const WindowsPointerUpdateData &update) = 0;
-  virtual std::optional<FlutterError>
-  SetCursorPos(int64_t texture_id, const WindowsPointData &position) = 0;
-  virtual std::optional<FlutterError>
-  SetPointerButton(int64_t texture_id,
-                   const WindowsPointerButtonData &button) = 0;
-  virtual std::optional<FlutterError>
-  SetScrollDelta(int64_t texture_id, const WindowsPointData &delta) = 0;
-  virtual std::optional<FlutterError> SetSize(int64_t texture_id,
-                                              const WindowsSizeData &size) = 0;
-  virtual std::optional<FlutterError> SetSurfaceAttached(int64_t texture_id,
-                                                         bool attached) = 0;
-  virtual std::optional<FlutterError> SetFocus(int64_t texture_id, bool focused,
-                                               int64_t reason) = 0;
+  virtual std::optional<FlutterError> SetVirtualHostNameMapping(
+    int64_t texture_id,
+    const WindowsVirtualHostMappingData& mapping) = 0;
+  virtual std::optional<FlutterError> ClearVirtualHostNameMapping(
+    int64_t texture_id,
+    const std::string& host_name) = 0;
+  virtual std::optional<FlutterError> SetFpsLimit(
+    int64_t texture_id,
+    int64_t max_fps) = 0;
+  virtual std::optional<FlutterError> SetPointerUpdate(
+    int64_t texture_id,
+    const WindowsPointerUpdateData& update) = 0;
+  virtual std::optional<FlutterError> SetCursorPos(
+    int64_t texture_id,
+    const WindowsPointData& position) = 0;
+  virtual std::optional<FlutterError> SetPointerButton(
+    int64_t texture_id,
+    const WindowsPointerButtonData& button) = 0;
+  virtual std::optional<FlutterError> SetScrollDelta(
+    int64_t texture_id,
+    const WindowsPointData& delta) = 0;
+  virtual std::optional<FlutterError> SetSize(
+    int64_t texture_id,
+    const WindowsSizeData& size) = 0;
+  virtual std::optional<FlutterError> SetSurfaceAttached(
+    int64_t texture_id,
+    bool attached) = 0;
+  virtual std::optional<FlutterError> SetFocus(
+    int64_t texture_id,
+    bool focused,
+    int64_t reason) = 0;
 
   // The codec used by WindowsWebViewHostApi.
-  static const ::flutter::StandardMessageCodec &GetCodec();
-  // Sets up an instance of `WindowsWebViewHostApi` to handle messages through
-  // the `binary_messenger`.
-  static void SetUp(::flutter::BinaryMessenger *binary_messenger,
-                    WindowsWebViewHostApi *api);
-  static void SetUp(::flutter::BinaryMessenger *binary_messenger,
-                    WindowsWebViewHostApi *api,
-                    const std::string &message_channel_suffix);
+  static const ::flutter::StandardMessageCodec& GetCodec();
+  // Sets up an instance of `WindowsWebViewHostApi` to handle messages through the `binary_messenger`.
+  static void SetUp(
+    ::flutter::BinaryMessenger* binary_messenger,
+    WindowsWebViewHostApi* api);
+  static void SetUp(
+    ::flutter::BinaryMessenger* binary_messenger,
+    WindowsWebViewHostApi* api,
+    const std::string& message_channel_suffix);
   static ::flutter::EncodableValue WrapError(std::string_view error_message);
-  static ::flutter::EncodableValue WrapError(const FlutterError &error);
-
-protected:
+  static ::flutter::EncodableValue WrapError(const FlutterError& error);
+ protected:
   WindowsWebViewHostApi() = default;
 };
-} // namespace webview_all_windows
-#endif // PIGEON_WINDOWS_WEBVIEW_API_G_H_
+}  // namespace webview_all_windows
+#endif  // PIGEON_WINDOWS_WEBVIEW_API_G_H_

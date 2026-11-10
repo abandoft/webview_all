@@ -1,4 +1,5 @@
 #include "webview/webview.h"
+#include <mutex>
 
 #include <wrl.h>
 
@@ -21,16 +22,13 @@ using namespace Microsoft::WRL;
 namespace webview_all_windows {
 namespace {
 
-constexpr int64_t kOffscreenMargin = 1024;
-constexpr int64_t kMaximumSurfaceDimension = 16384;
-
-std::map<UINT_PTR, std::function<void()>> &DownloadTimers() {
+std::map<UINT_PTR, std::function<void()>> &WebviewTimers() {
   static auto *timers = new std::map<UINT_PTR, std::function<void()>>();
   return *timers;
 }
 
-void CALLBACK DownloadTimerProc(HWND, UINT, UINT_PTR id, DWORD) {
-  auto &timers = DownloadTimers();
+void CALLBACK WebviewTimerProc(HWND, UINT, UINT_PTR id, DWORD) {
+  auto &timers = WebviewTimers();
   const auto found = timers.find(id);
   if (found == timers.end())
     return;
@@ -40,19 +38,18 @@ void CALLBACK DownloadTimerProc(HWND, UINT, UINT_PTR id, DWORD) {
   callback();
 }
 
-UINT_PTR ScheduleDownloadTimeout(std::function<void()> callback,
-                                 UINT delay_ms = 35000) {
-  const UINT_PTR id = SetTimer(nullptr, 0, delay_ms, DownloadTimerProc);
-  if (id != 0)
-    DownloadTimers().emplace(id, std::move(callback));
+UINT_PTR ScheduleWebviewTimeout(std::function<void()> callback,
+                                UINT delay_ms = 35000) {
+  const UINT_PTR id = SetTimer(nullptr, 0, delay_ms, WebviewTimerProc);
+  if (id != 0) WebviewTimers().emplace(id, std::move(callback));
   return id;
 }
 
-void CancelDownloadTimeout(UINT_PTR id) {
+void CancelWebviewTimeout(UINT_PTR id) {
   if (id == 0)
     return;
   KillTimer(nullptr, id);
-  DownloadTimers().erase(id);
+  WebviewTimers().erase(id);
 }
 
 bool PrepareDownloadTarget(const std::string &requested,
@@ -98,11 +95,6 @@ void RemoveOwnedDownloadDirectory(const std::wstring &directory) {
   // final destination, including on an engine failure.
   DeleteFileW((std::filesystem::path(directory) / L"payload").c_str());
   RemoveDirectoryW(directory.c_str());
-}
-
-bool IsLong(int64_t value) {
-  return value >= (std::numeric_limits<LONG>::min)() &&
-         value <= (std::numeric_limits<LONG>::max)();
 }
 
 inline void ConvertColor(COREWEBVIEW2_COLOR &webview_color, int32_t color) {
@@ -301,10 +293,45 @@ struct Webview::ActiveDownload {
   EventRegistrationToken state_token{};
 };
 
+namespace {
+std::mutex active_profiles_mutex;
+std::map<const Webview*, std::wstring> active_profiles;
+}
+wil::com_ptr<ICoreWebView2Profile> Webview::GetProfile() const {
+  wil::com_ptr<ICoreWebView2Profile> profile;
+  auto view = webview_ ? webview_.try_query<ICoreWebView2_13>() : nullptr;
+  if (view) view->get_Profile(profile.put());
+  return profile;
+}
+bool Webview::IsProfileActive(const std::wstring& path, const Webview* excluding) {
+  std::lock_guard<std::mutex> guard(active_profiles_mutex);
+  for (const auto& entry : active_profiles) {
+    if (entry.first != excluding && CompareStringOrdinal(entry.second.c_str(), -1, path.c_str(), -1, TRUE) == CSTR_EQUAL) return true;
+  }
+  return false;
+}
+
+namespace {
+wil::unique_handle LockProfileFiles(const std::wstring& path, bool deletion) {
+  const std::filesystem::path profile(path);
+  const auto root = profile.parent_path() / L"webview_all_profile_locks";
+  std::error_code error;
+  std::filesystem::create_directories(root, error);
+  if (error) return {};
+  auto name = profile.filename().wstring() + L".lock";
+  auto lock_path = root / name;
+  return wil::unique_handle(CreateFileW(lock_path.c_str(), deletion ? GENERIC_WRITE : GENERIC_READ,
+      deletion ? 0 : FILE_SHARE_READ, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_HIDDEN, nullptr));
+}
+}
+wil::unique_handle Webview::AcquireProfileDeletionLock(const std::wstring& path) {
+  return LockProfileFiles(path, true);
+}
+
 Webview::Webview(
     wil::com_ptr<ICoreWebView2CompositionController> composition_controller,
     std::shared_ptr<WebviewHost> host, HWND parent_window,
-    winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor)
+    winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor, bool profile_management)
     : parent_window_(parent_window),
       composition_controller_(std::move(composition_controller)),
       host_(std::move(host)) {
@@ -341,6 +368,19 @@ Webview::Webview(
     settings->put_AreDefaultContextMenusEnabled(FALSE);
   }
 
+  if (auto profile = GetProfile()) {
+    wil::unique_cotaskmem_string path;
+    if (SUCCEEDED(profile->get_ProfilePath(path.put())) && path) {
+      managed_profile_path_ = path.get();
+      wil::unique_cotaskmem_string name;
+      if (!profile_management && SUCCEEDED(profile->get_ProfileName(name.put())) && name && std::wstring(name.get()).rfind(L"webview_all_", 0) == 0) {
+        managed_profile_lock_ = LockProfileFiles(managed_profile_path_, false);
+        if (!managed_profile_lock_) return;
+      }
+      std::lock_guard<std::mutex> guard(active_profiles_mutex);
+      active_profiles[this] = managed_profile_path_;
+    }
+  }
   EnableSecurityUpdates();
   RegisterEventHandlers();
 
@@ -348,6 +388,13 @@ Webview::Webview(
 }
 
 Webview::~Webview() {
+  {
+    std::lock_guard<std::mutex> guard(active_profiles_mutex);
+    active_profiles.erase(this);
+  }
+  SetNewWindowDelegateEnabled(false);
+  CompleteCapture(pending_capture_, nullptr, "The WebView was disposed.");
+  ClearFind();
   resource_bridge_.reset();
   DisposeDownloads();
   InvalidatePendingNavigationRequests();
@@ -481,6 +528,9 @@ void Webview::RegisterEventHandlers() {
             if (ConsumeApprovedNavigation(url) ||
                 !navigation_request_callbacks_enabled_ ||
                 !navigation_requested_callback_) {
+              ClearFind();
+              while (!pending_windows_.empty())
+                CompleteNewWindow(pending_windows_.begin()->first, nullptr);
               return S_OK;
             }
 
@@ -556,7 +606,7 @@ void Webview::RegisterEventHandlers() {
                 // can consume only the matching download conversion. Genuine
                 // connection failures still reach the application.
                 const std::weak_ptr<LifetimeState> weak = lifetime_state_;
-                const UINT_PTR timer = ScheduleDownloadTimeout(
+                const UINT_PTR timer = ScheduleWebviewTimeout(
                     [weak, navigation_id]() {
                       const auto state = weak.lock();
                       if (!state || !state->owner)
@@ -1031,26 +1081,64 @@ void Webview::RegisterEventHandlers() {
       Callback<ICoreWebView2NewWindowRequestedEventHandler>(
           [this](ICoreWebView2 *sender,
                  ICoreWebView2NewWindowRequestedEventArgs *args) -> HRESULT {
-            switch (popup_window_policy_) {
-            case WebviewPopupWindowPolicy::Deny:
+            if (new_window_delegate_enabled_ && new_window_callback_ &&
+                popup_window_policy_ != WebviewPopupWindowPolicy::Deny) {
               args->put_Handled(TRUE);
-              break;
-            case WebviewPopupWindowPolicy::ShowInSameWindow: {
-              wil::unique_cotaskmem_string wuri;
-              if (SUCCEEDED(args->get_Uri(&wuri)) && wuri != nullptr) {
-                args->put_Handled(TRUE);
-                webview_->Navigate(wuri.get());
+              auto pending = std::make_shared<PendingWindow>();
+              if (FAILED(args->GetDeferral(pending->deferral.put())))
+                return S_OK;
+              pending->args = args;
+              const std::string id = std::to_string(++next_window_id_);
+              pending_windows_[id] = pending;
+              const std::weak_ptr<LifetimeState> weak = lifetime_state_;
+              pending->timeout = ScheduleWebviewTimeout(
+                  [weak, id]() {
+                    const auto state = weak.lock();
+                    if (state && state->owner)
+                      state->owner->CompleteNewWindow(id, nullptr);
+                  },
+                  25000);
+              if (!pending->timeout) {
+                CompleteNewWindow(id, nullptr);
+                return S_OK;
               }
-              break;
+              wil::unique_cotaskmem_string uri;
+              BOOL gesture = FALSE;
+              args->get_Uri(&uri);
+              args->get_IsUserInitiated(&gesture);
+              new_window_callback_(
+                  id, uri ? util::Utf8FromUtf16(uri.get()) : "", gesture);
+              return S_OK;
             }
-            case WebviewPopupWindowPolicy::Allow:
-              break;
+            switch (popup_window_policy_) {
+              case WebviewPopupWindowPolicy::Deny:
+                args->put_Handled(TRUE);
+                break;
+              case WebviewPopupWindowPolicy::ShowInSameWindow: {
+                wil::unique_cotaskmem_string wuri;
+                if (SUCCEEDED(args->get_Uri(&wuri)) && wuri != nullptr) {
+                  args->put_Handled(TRUE);
+                  webview_->Navigate(wuri.get());
+                }
+                break;
+              }
+              case WebviewPopupWindowPolicy::Allow:
+                break;
             }
 
             return S_OK;
           })
           .Get(),
       &event_registrations_.new_windows_requested_token_);
+
+  webview_->add_WindowCloseRequested(
+      Callback<ICoreWebView2WindowCloseRequestedEventHandler>(
+          [this](ICoreWebView2 *, IUnknown *) -> HRESULT {
+            if (window_close_callback_) window_close_callback_();
+            return S_OK;
+          })
+          .Get(),
+      &event_registrations_.window_close_requested_token_);
 
   webview_->add_ContainsFullScreenElementChanged(
       Callback<ICoreWebView2ContainsFullScreenElementChangedEventHandler>(
@@ -1064,6 +1152,23 @@ void Webview::RegisterEventHandlers() {
           })
           .Get(),
       &event_registrations_.contains_fullscreen_element_changed_token_);
+
+  webview_->add_ProcessFailed(
+      Callback<ICoreWebView2ProcessFailedEventHandler>(
+          [this](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT {
+            COREWEBVIEW2_PROCESS_FAILED_KIND kind;
+            if (FAILED(args->get_ProcessFailedKind(&kind))) return S_OK;
+            if (kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED ||
+                kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED) {
+              while (!pending_windows_.empty())
+                CompleteNewWindow(pending_windows_.begin()->first, nullptr);
+              CompleteCapture(pending_capture_, nullptr, "The renderer process exited.");
+              ClearFind();
+              InvalidatePendingNavigationRequests();
+            }
+            if (process_failed_callback_) process_failed_callback_(static_cast<int>(kind));
+            return S_OK;
+          }).Get(), &event_registrations_.process_failed_token_);
 
   auto webview24 = webview_.try_query<ICoreWebView2_4>();
   if (webview24) {
@@ -1079,103 +1184,123 @@ void Webview::RegisterEventHandlers() {
 }
 
 std::optional<RECT>
-Webview::CalculateOffscreenBounds(size_t width, size_t height,
-                                  float scale_factor) const {
-  if (parent_window_ == nullptr || !IsWindow(parent_window_) || width == 0 ||
-      height == 0 || !std::isfinite(scale_factor) || scale_factor <= 0.0f) {
+Webview::CalculateControllerBounds(double width, double height,
+                                   float scale_factor,
+                                   std::optional<SurfaceOrigin> origin) const {
+  POINT parent_origin{};
+  if (!parent_window_ || !IsWindow(parent_window_) ||
+      !ClientToScreen(parent_window_, &parent_origin)) {
     return std::nullopt;
   }
-
-  const long double scaled_width_value =
-      std::ceil(static_cast<long double>(width) * scale_factor);
-  const long double scaled_height_value =
-      std::ceil(static_cast<long double>(height) * scale_factor);
-  if (scaled_width_value <= 0 || scaled_height_value <= 0 ||
-      scaled_width_value > kMaximumSurfaceDimension ||
-      scaled_height_value > kMaximumSurfaceDimension) {
+  const auto bounds = CalculateSurfaceBounds(
+      width, height, scale_factor, origin, parent_origin.x, parent_origin.y,
+      GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN));
+  if (!bounds)
     return std::nullopt;
-  }
-
-  const int64_t scaled_width = static_cast<int64_t>(scaled_width_value);
-  const int64_t scaled_height = static_cast<int64_t>(scaled_height_value);
-  POINT parent_origin = {};
-  if (!ClientToScreen(parent_window_, &parent_origin)) {
-    return std::nullopt;
-  }
-
-  const int64_t virtual_left = GetSystemMetrics(SM_XVIRTUALSCREEN);
-  const int64_t virtual_top = GetSystemMetrics(SM_YVIRTUALSCREEN);
-  const int64_t offscreen_right =
-      virtual_left - kOffscreenMargin - parent_origin.x;
-  const int64_t offscreen_bottom =
-      virtual_top - kOffscreenMargin - parent_origin.y;
-  const int64_t offscreen_left = offscreen_right - scaled_width;
-  const int64_t offscreen_top = offscreen_bottom - scaled_height;
-  if (!IsLong(offscreen_left) || !IsLong(offscreen_top) ||
-      !IsLong(offscreen_right) || !IsLong(offscreen_bottom)) {
-    return std::nullopt;
-  }
-
-  return RECT{
-      static_cast<LONG>(offscreen_left), static_cast<LONG>(offscreen_top),
-      static_cast<LONG>(offscreen_right), static_cast<LONG>(offscreen_bottom)};
+  return RECT{bounds->left, bounds->top, bounds->right, bounds->bottom};
 }
 
-bool Webview::UpdateControllerBounds(size_t width, size_t height,
+bool Webview::UpdateControllerBounds(double width, double height,
                                      float scale_factor) {
-  const auto bounds = CalculateOffscreenBounds(width, height, scale_factor);
+  const auto bounds = CalculateControllerBounds(
+      width, height, scale_factor,
+      surface_visible_ ? surface_origin_ : std::nullopt);
   if (!bounds || !webview_controller_ ||
-      FAILED(webview_controller_->put_RasterizationScale(scale_factor)) ||
+      FAILED(
+          webview_controller_->put_RasterizationScale(rasterization_scale_)) ||
       FAILED(webview_controller_->put_Bounds(*bounds))) {
     return false;
   }
-
   surface_width_ = width;
   surface_height_ = height;
   scale_factor_ = scale_factor;
   return true;
 }
 
-HRESULT Webview::SetSurfaceSize(size_t width, size_t height,
-                                float scale_factor) {
-  if (!IsValid() || !surface_) {
+HRESULT Webview::SetSurfaceSize(double width, double height, float scale_factor,
+                                std::optional<SurfaceOrigin> origin) {
+  if (!IsValid() || !surface_)
     return E_UNEXPECTED;
-  }
-
-  const auto bounds = CalculateOffscreenBounds(width, height, scale_factor);
-  if (!bounds) {
+  // Validate the eventual visible placement even while the view is parked.
+  const auto visible_bounds =
+      CalculateControllerBounds(width, height, scale_factor, origin);
+  if (!visible_bounds)
     return E_INVALIDARG;
-  }
-
-  const float scaled_width = static_cast<float>(bounds->right - bounds->left);
-  const float scaled_height = static_cast<float>(bounds->bottom - bounds->top);
-  HRESULT result = webview_controller_->put_RasterizationScale(scale_factor);
-  if (FAILED(result)) {
+  const auto bounds =
+      surface_visible_ ? visible_bounds
+                       : CalculateControllerBounds(width, height, scale_factor,
+                                                   std::nullopt);
+  if (!bounds)
+    return E_INVALIDARG;
+  const bool resized = width != surface_width_ || height != surface_height_ ||
+                       scale_factor != scale_factor_;
+  const UINT dpi = GetDpiForWindow(parent_window_);
+  if (!dpi)
+    return E_UNEXPECTED;
+  const double dpi_scale = dpi / 96.0;
+  double current_zoom;
+  HRESULT result = webview_controller_->get_ZoomFactor(&current_zoom);
+  if (FAILED(result))
     return result;
-  }
-  result = webview_controller_->put_Bounds(*bounds);
-  if (FAILED(result)) {
+  const auto zoom =
+      CalculateSurfaceZoom(current_zoom, scale_factor_, rasterization_scale_,
+                           scale_factor, dpi_scale);
+  if (!zoom)
+    return E_INVALIDARG;
+  // Native IME uses the HWND's DPI. An additional Flutter visual scale belongs
+  // in page zoom; changing rasterization DPI instead offsets IME candidates.
+  // Updating zoom and bounds together also preserves the page's CSS viewport.
+  result = webview_controller_->put_RasterizationScale(dpi_scale);
+  if (FAILED(result))
     return result;
+  if (*zoom == current_zoom) {
+    result = webview_controller_->put_Bounds(*bounds);
+  } else {
+    result = webview_controller_->SetBoundsAndZoomFactor(*bounds, *zoom);
   }
-  result = surface_->put_Size({scaled_width, scaled_height});
-  if (FAILED(result)) {
+  if (FAILED(result))
     return result;
+  // Keep the scale state consistent even if resizing the capture surface fails.
+  scale_factor_ = scale_factor;
+  rasterization_scale_ = dpi_scale;
+  if (resized) {
+    result =
+        surface_->put_Size({static_cast<float>(bounds->right - bounds->left),
+                            static_cast<float>(bounds->bottom - bounds->top)});
+    if (FAILED(result))
+      return result;
   }
-
   surface_width_ = width;
   surface_height_ = height;
-  scale_factor_ = scale_factor;
-  return S_OK;
+  surface_origin_ = origin;
+  return webview_controller_->NotifyParentWindowPositionChanged();
 }
 
 HRESULT Webview::SetVisible(bool visible) {
-  if (!IsValid() || !webview_controller_) {
+  if (!IsValid() || !webview_controller_)
     return E_UNEXPECTED;
-  }
   if (!visible) {
     SetFocus(false, COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+    const HRESULT result = webview_controller_->put_IsVisible(FALSE);
+    if (FAILED(result))
+      return result;
+    surface_visible_ = false;
+    return UpdateControllerBounds(surface_width_, surface_height_,
+                                  scale_factor_)
+               ? S_OK
+               : E_FAIL;
   }
-  return webview_controller_->put_IsVisible(visible ? TRUE : FALSE);
+  surface_visible_ = true;
+  if (!UpdateControllerBounds(surface_width_, surface_height_, scale_factor_)) {
+    surface_visible_ = false;
+    return E_FAIL;
+  }
+  const HRESULT result = webview_controller_->put_IsVisible(TRUE);
+  if (FAILED(result)) {
+    surface_visible_ = false;
+    UpdateControllerBounds(surface_width_, surface_height_, scale_factor_);
+  }
+  return result;
 }
 
 HRESULT Webview::SetFocus(bool focused, COREWEBVIEW2_MOVE_FOCUS_REASON reason) {
@@ -1206,8 +1331,8 @@ void Webview::NotifyParentWindowPositionChanged() {
   if (!IsValid() || !webview_controller_) {
     return;
   }
-  if (FAILED(webview_controller_->NotifyParentWindowPositionChanged()) ||
-      !UpdateControllerBounds(surface_width_, surface_height_, scale_factor_)) {
+  if (!UpdateControllerBounds(surface_width_, surface_height_, scale_factor_) ||
+      FAILED(webview_controller_->NotifyParentWindowPositionChanged())) {
     util::LogWarning("Updating WebView parent window position failed.");
   }
 }
@@ -1479,6 +1604,16 @@ void Webview::ClearAllWebsiteData(WebsiteDataClearedCallback callback) {
       });
 }
 
+void Webview::ClearWebsiteData(uint64_t kinds,
+                               WebsiteDataClearedCallback callback) {
+  WebviewHost::ClearWebsiteData(
+      webview_.get(), kinds,
+      [callback =
+           std::move(callback)](WebviewHostWebsiteDataClearingResult result) {
+        callback(result.supported, result.succeeded);
+      });
+}
+
 bool Webview::SetCacheDisabled(bool disabled) {
   if (!IsValid()) {
     return false;
@@ -1492,6 +1627,10 @@ bool Webview::SetCacheDisabled(bool disabled) {
 
 void Webview::SetPopupWindowPolicy(WebviewPopupWindowPolicy policy) {
   popup_window_policy_ = policy;
+  if (policy == WebviewPopupWindowPolicy::Deny) {
+    while (!pending_windows_.empty())
+      CompleteNewWindow(pending_windows_.begin()->first, nullptr);
+  }
 }
 
 void Webview::SetNavigationRequestCallbacksEnabled(bool enabled) {
@@ -1627,7 +1766,9 @@ bool Webview::SetZoomFactor(double factor) {
   if (!IsValid()) {
     return false;
   }
-  return webview_controller_->put_ZoomFactor(factor) == S_OK;
+  const auto zoom = CalculateSurfaceZoom(factor, 1, 1, scale_factor_,
+                                         rasterization_scale_);
+  return zoom && webview_controller_->put_ZoomFactor(*zoom) == S_OK;
 }
 
 void Webview::SetCursorPos(double x, double y) {
@@ -1790,6 +1931,7 @@ void Webview::SetScrollDelta(double delta_x, double delta_y) {
 }
 
 void Webview::LoadUrl(const std::string &url) {
+  window_target_available_ = false;
   if (IsValid()) {
     InvalidatePendingNavigationRequests();
     MarkNavigationApproved(url);
@@ -1802,6 +1944,7 @@ void Webview::LoadUrl(const std::string &url) {
 bool Webview::LoadRequest(const std::string &url, const std::string &method,
                           const std::string &headers,
                           const std::vector<uint8_t> *body) {
+  window_target_available_ = false;
   if (!IsValid()) {
     return false;
   }
@@ -1827,6 +1970,7 @@ bool Webview::LoadRequest(const std::string &url, const std::string &method,
 }
 
 HRESULT Webview::LoadStringContent(const std::string &content) {
+  window_target_available_ = false;
   if (!IsValid()) {
     return E_UNEXPECTED;
   }
@@ -1846,8 +1990,361 @@ bool Webview::Stop() {
   if (!IsValid()) {
     return false;
   }
-  return SUCCEEDED(webview_->CallDevToolsProtocolMethod(L"Page.stopLoading",
-                                                        L"{}", nullptr));
+  InvalidatePendingNavigationRequests();
+  return SUCCEEDED(webview_->Stop());
+}
+
+void Webview::NavigateToHistoryEntry(int64_t entry_id,
+                                     ScriptExecutedCallback callback) {
+  InvalidatePendingNavigationRequests();
+  const auto generation = latest_navigation_request_id_;
+  ++bypass_next_navigation_count_;
+  const std::weak_ptr<LifetimeState> weak = lifetime_state_;
+  CallBrowserProtocol(
+      "Page.navigateToHistoryEntry",
+      "{\"entryId\":" + std::to_string(entry_id) + "}",
+      [weak, generation, callback = std::move(callback)](
+          bool success, const std::string &data) {
+        const auto state = weak.lock();
+        if (!success && state && state->owner &&
+            state->owner->latest_navigation_request_id_ == generation &&
+            state->owner->bypass_next_navigation_count_ > 0) {
+          --state->owner->bypass_next_navigation_count_;
+        }
+        callback(success, data);
+      });
+}
+
+void Webview::CallBrowserProtocol(const std::string &method,
+                                  const std::string &params,
+                                  ScriptExecutedCallback callback) {
+  if (!IsValid()) {
+    callback(false, "");
+    return;
+  }
+  const std::weak_ptr<LifetimeState> weak = lifetime_state_;
+  auto complete = std::make_shared<ScriptExecutedCallback>(std::move(callback));
+  auto timeout = std::make_shared<UINT_PTR>(0);
+  auto reply = [weak, complete, timeout](bool success, const std::string &data) {
+    if (!*complete) return;
+    CancelWebviewTimeout(*timeout);
+    *timeout = 0;
+    auto callback = std::move(*complete);
+    const auto state = weak.lock();
+    callback(success && state && state->owner, data);
+  };
+  *timeout = ScheduleWebviewTimeout([reply]() { reply(false, ""); }, 30000);
+  if (!*timeout) {
+    reply(false, "");
+    return;
+  }
+  HRESULT hr = webview_->CallDevToolsProtocolMethod(
+      util::Utf16FromUtf8(method).c_str(), util::Utf16FromUtf8(params).c_str(),
+      Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+          [reply](HRESULT error, LPCWSTR data) {
+            reply(SUCCEEDED(error), data ? util::Utf8FromUtf16(data) : "");
+            return S_OK;
+          })
+          .Get());
+  if (FAILED(hr)) reply(false, "");
+}
+
+bool Webview::SupportsNewWindows() {
+  if (!IsValid()) return false;
+  auto view = webview_.try_query<ICoreWebView2_13>();
+  wil::com_ptr<ICoreWebView2Profile> profile;
+  BOOL private_mode = TRUE;
+  return view && SUCCEEDED(view->get_Profile(profile.put())) && profile &&
+         SUCCEEDED(profile->get_IsInPrivateModeEnabled(&private_mode));
+}
+
+void Webview::SetNewWindowDelegateEnabled(bool enabled) {
+  new_window_delegate_enabled_ = enabled && SupportsNewWindows();
+  if (!new_window_delegate_enabled_) {
+    while (!pending_windows_.empty())
+      CompleteNewWindow(pending_windows_.begin()->first, nullptr);
+  }
+}
+
+bool Webview::CompleteNewWindow(const std::string &id, Webview *child) {
+  const auto item = pending_windows_.find(id);
+  if (item == pending_windows_.end()) return false;
+  auto pending = item->second;
+  pending_windows_.erase(item);
+  CancelWebviewTimeout(pending->timeout);
+  bool attached = false;
+  // Private views use independent profiles; never attach a controller from
+  // another store.
+  if (new_window_delegate_enabled_ &&
+      popup_window_policy_ != WebviewPopupWindowPolicy::Deny && child &&
+      child != this && child->IsValid() && child->host_ == host_ &&
+      child->window_target_available_ && SupportsNewWindows() &&
+      child->SupportsNewWindows()) {
+    wil::com_ptr<ICoreWebView2Profile> parent_profile, child_profile;
+    auto parent_view = webview_.try_query<ICoreWebView2_13>();
+    auto child_view = child->webview_.try_query<ICoreWebView2_13>();
+    wil::unique_cotaskmem_string parent_name, child_name;
+    BOOL parent_private = FALSE, child_private = FALSE;
+    if (SUCCEEDED(parent_view->get_Profile(parent_profile.put())) &&
+        parent_profile &&
+        SUCCEEDED(child_view->get_Profile(child_profile.put())) &&
+        child_profile &&
+        SUCCEEDED(parent_profile->get_ProfileName(&parent_name)) &&
+        parent_name && SUCCEEDED(child_profile->get_ProfileName(&child_name)) &&
+        child_name && wcscmp(parent_name.get(), child_name.get()) == 0 &&
+        SUCCEEDED(parent_profile->get_IsInPrivateModeEnabled(&parent_private)) &&
+        SUCCEEDED(child_profile->get_IsInPrivateModeEnabled(&child_private)) &&
+        parent_private == child_private) {
+      attached = SUCCEEDED(pending->args->put_NewWindow(child->webview_.get()));
+      if (attached) child->window_target_available_ = false;
+    }
+  }
+  pending->args->put_Handled(TRUE);
+  pending->deferral->Complete();
+  return attached;
+}
+
+bool Webview::SupportsPdf() {
+  return IsValid() && !!webview_.try_query<ICoreWebView2_16>();
+}
+
+void Webview::CompleteCapture(std::shared_ptr<PendingCapture> request,
+                              IStream *stream, const std::string &error) {
+  if (!request || pending_capture_ != request) return;
+  pending_capture_.reset();
+  CancelWebviewTimeout(request->timeout);
+  std::vector<uint8_t> bytes;
+  std::string failure = error;
+  constexpr size_t max_bytes = 64 * 1024 * 1024;
+  if (failure.empty() && stream) {
+    STATSTG info{};
+    LARGE_INTEGER start{};
+    if (FAILED(stream->Stat(&info, STATFLAG_NONAME)) ||
+        info.cbSize.QuadPart == 0 || info.cbSize.QuadPart > max_bytes ||
+        FAILED(stream->Seek(start, STREAM_SEEK_SET, nullptr))) {
+      failure =
+          "The capture is empty, unreadable or exceeds the export size limit.";
+    } else {
+      bytes.resize(static_cast<size_t>(info.cbSize.QuadPart));
+      ULONG read = 0;
+      if (FAILED(stream->Read(bytes.data(), static_cast<ULONG>(bytes.size()),
+                              &read)) ||
+          read != bytes.size()) {
+        bytes.clear();
+        failure = "Reading the native capture failed.";
+      }
+    }
+  } else if (failure.empty())
+    failure = "The native capture produced no data.";
+  auto completion = std::move(request->completion);
+  completion(std::move(bytes), failure);
+}
+
+void Webview::CapturePage(bool pdf, CaptureCallback callback,
+                          std::optional<PdfOptions> options) {
+  if (!IsValid() || pending_capture_) {
+    callback({}, "The WebView is closed or another capture is in progress.");
+    return;
+  }
+  const double pixel_width = std::ceil(surface_width_ * scale_factor_);
+  const double pixel_height = std::ceil(surface_height_ * scale_factor_);
+  if (!pdf && (pixel_width <= 0 || pixel_height <= 0 ||
+               pixel_width > 16 * 1024 * 1024 / pixel_height)) {
+    callback({}, "The viewport is empty or exceeds the capture size limit.");
+    return;
+  }
+  auto request = std::make_shared<PendingCapture>();
+  request->completion = std::move(callback);
+  pending_capture_ = request;
+  const std::weak_ptr<LifetimeState> weak = lifetime_state_;
+  request->timeout = ScheduleWebviewTimeout(
+      [weak, request]() {
+        const auto state = weak.lock();
+        if (state && state->owner)
+          state->owner->CompleteCapture(request, nullptr,
+                                        "The native capture timed out.");
+      },
+      30000);
+  if (!request->timeout) {
+    CompleteCapture(request, nullptr,
+                    "Creating the native capture timeout failed.");
+    return;
+  }
+  auto complete = [weak, request](HRESULT hr, IStream *stream) {
+    const auto state = weak.lock();
+    if (state && state->owner)
+      state->owner->CompleteCapture(
+          request, stream,
+          SUCCEEDED(hr) ? ""
+                        : "The native page capture failed or is unavailable.");
+  };
+  HRESULT hr;
+  if (pdf) {
+    auto view = webview_.try_query<ICoreWebView2_16>();
+    if (!view) {
+      complete(E_NOINTERFACE, nullptr);
+      return;
+    }
+    wil::com_ptr<ICoreWebView2PrintSettings> settings;
+    if (options) {
+      settings = host_->CreatePrintSettings();
+      if (!settings) { complete(E_NOINTERFACE, nullptr); return; }
+      // Public settings use inches; the common interface uses points.
+      HRESULT configured = settings->put_PageWidth(options->width / 72.0);
+      if (SUCCEEDED(configured)) configured = settings->put_PageHeight(options->height / 72.0);
+      if (SUCCEEDED(configured)) configured = settings->put_MarginTop(options->top / 72.0);
+      if (SUCCEEDED(configured)) configured = settings->put_MarginBottom(options->bottom / 72.0);
+      if (SUCCEEDED(configured)) configured = settings->put_MarginLeft(options->left / 72.0);
+      if (SUCCEEDED(configured)) configured = settings->put_MarginRight(options->right / 72.0);
+      if (SUCCEEDED(configured)) configured = settings->put_Orientation(options->landscape ? COREWEBVIEW2_PRINT_ORIENTATION_LANDSCAPE : COREWEBVIEW2_PRINT_ORIENTATION_PORTRAIT);
+      if (FAILED(configured)) { complete(configured, nullptr); return; }
+    }
+    hr = view->PrintToPdfStream(
+        settings.get(), Callback<ICoreWebView2PrintToPdfStreamCompletedHandler>(
+                     [complete](HRESULT error, IStream *stream) {
+                       complete(error, stream);
+                       return S_OK;
+                     })
+                     .Get());
+  } else {
+    hr = CreateStreamOnHGlobal(nullptr, TRUE, request->stream.put());
+    if (SUCCEEDED(hr))
+      hr = webview_->CapturePreview(
+          COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG, request->stream.get(),
+          Callback<ICoreWebView2CapturePreviewCompletedHandler>(
+              [complete, request](HRESULT error) {
+                complete(error, request->stream.get());
+                return S_OK;
+              })
+              .Get());
+  }
+  if (FAILED(hr)) complete(hr, nullptr);
+}
+
+bool Webview::SupportsFind() {
+  if (!IsValid()) return false;
+  auto view = webview_.try_query<ICoreWebView2_28>();
+  if (!view || !host_->CreateFindOptions()) return false;
+  if (!find_) view->get_Find(find_.put());
+  return find_ != nullptr;
+}
+
+bool Webview::ShowPrintUI() {
+  if (!IsValid() || pending_capture_) return false;
+  auto view = webview_.try_query<ICoreWebView2_16>();
+  return view && SUCCEEDED(view->ShowPrintUI(COREWEBVIEW2_PRINT_DIALOG_KIND_SYSTEM));
+}
+bool Webview::SetNativeContextMenus(bool enabled) {
+  if (!IsValid()) return false;
+  wil::com_ptr<ICoreWebView2Settings> settings;
+  return SUCCEEDED(webview_->get_Settings(settings.put())) && settings && SUCCEEDED(settings->put_AreDefaultContextMenusEnabled(enabled ? TRUE : FALSE));
+}
+bool Webview::SupportsAudioMuting() { return IsValid() && !!webview_.try_query<ICoreWebView2_8>(); }
+bool Webview::SetAudioMuted(bool muted) {
+  if (!IsValid()) return false;
+  auto view = webview_.try_query<ICoreWebView2_8>();
+  return view && SUCCEEDED(view->put_IsMuted(muted ? TRUE : FALSE));
+}
+
+void Webview::CompleteFind(std::shared_ptr<PendingFind> pending,
+                           bool available) {
+  if (!pending || pending_find_ != pending) return;
+  pending_find_.reset();
+  if (pending->subscribed && find_)
+    find_->remove_ActiveMatchIndexChanged(pending->token);
+  CancelWebviewTimeout(pending->timeout);
+  INT32 count = 0, active = -1;
+  if (available && find_) {
+    available = SUCCEEDED(find_->get_MatchCount(&count)) &&
+                SUCCEEDED(find_->get_ActiveMatchIndex(&active));
+  }
+  auto completion = std::move(pending->completion);
+  if (completion) completion(available, count, active > 0 ? active - 1 : -1);
+}
+
+void Webview::AdvanceFind(std::shared_ptr<PendingFind> pending, bool forward) {
+  INT32 count = 0;
+  if (!find_ || FAILED(find_->get_MatchCount(&count))) {
+    CompleteFind(pending, false);
+    return;
+  }
+  if (count <= 1) {
+    CompleteFind(pending, true);
+    return;
+  }
+  const std::weak_ptr<LifetimeState> weak = lifetime_state_;
+  HRESULT hr = find_->add_ActiveMatchIndexChanged(
+      Callback<ICoreWebView2FindActiveMatchIndexChangedEventHandler>(
+          [weak, pending](ICoreWebView2Find *, IUnknown *) {
+            const auto state = weak.lock();
+            if (state && state->owner)
+              state->owner->CompleteFind(pending, true);
+            return S_OK;
+          })
+          .Get(),
+      &pending->token);
+  pending->subscribed = SUCCEEDED(hr);
+  if (SUCCEEDED(hr)) hr = forward ? find_->FindNext() : find_->FindPrevious();
+  if (FAILED(hr)) CompleteFind(pending, false);
+}
+
+void Webview::FindText(const std::string &text, bool forward,
+                       bool case_sensitive, FindCallback callback) {
+  if (!SupportsFind()) {
+    callback(false, 0, -1);
+    return;
+  }
+  if (pending_find_) CompleteFind(pending_find_, false);
+  auto pending = std::make_shared<PendingFind>();
+  pending->completion = std::move(callback);
+  pending_find_ = pending;
+  const std::weak_ptr<LifetimeState> weak = lifetime_state_;
+  pending->timeout = ScheduleWebviewTimeout(
+      [weak, pending]() {
+        const auto state = weak.lock();
+        if (state && state->owner) state->owner->CompleteFind(pending, false);
+      },
+      10000);
+  INT32 previous_count = 0;
+  if (find_text_ == text && find_case_sensitive_ == case_sensitive &&
+      SUCCEEDED(find_->get_MatchCount(&previous_count)) && previous_count > 0) {
+    AdvanceFind(pending, forward);
+    return;
+  }
+  find_->Stop();
+  find_text_ = text;
+  find_case_sensitive_ = case_sensitive;
+  auto options = host_->CreateFindOptions();
+  if (!options) {
+    CompleteFind(pending, false);
+    return;
+  }
+  options->put_FindTerm(util::Utf16FromUtf8(text).c_str());
+  options->put_IsCaseSensitive(case_sensitive);
+  options->put_ShouldHighlightAllMatches(TRUE);
+  options->put_SuppressDefaultFindDialog(TRUE);
+  const HRESULT hr = find_->Start(
+      options.get(),
+      Callback<ICoreWebView2FindStartCompletedHandler>([weak, pending, forward](
+                                                           HRESULT error) {
+        const auto state = weak.lock();
+        if (!state || !state->owner || state->owner->pending_find_ != pending)
+          return S_OK;
+        if (FAILED(error))
+          state->owner->CompleteFind(pending, false);
+        else if (!forward)
+          state->owner->AdvanceFind(pending, false);
+        else
+          state->owner->CompleteFind(pending, true);
+        return S_OK;
+      }).Get());
+  if (FAILED(hr)) CompleteFind(pending, false);
+}
+
+void Webview::ClearFind() {
+  if (pending_find_) CompleteFind(pending_find_, false);
+  if (find_) find_->Stop();
+  find_text_.clear();
 }
 
 bool Webview::Reload() {
@@ -2053,6 +2550,17 @@ HRESULT Webview::ConfigureResources(flutter::BinaryMessenger *messenger,
     resource_bridge_ = std::make_unique<ResourceBridgeWindows>(webview_.get());
   return resource_bridge_->Configure(messenger, channel, host, enabled);
 }
+HRESULT Webview::ConfigureNetworkBridge(flutter::BinaryMessenger* messenger,
+    const flutter::EncodableMap& configuration) {
+  if (!IsValid()) return E_ABORT;
+  if (!resource_bridge_) resource_bridge_ = std::make_unique<ResourceBridgeWindows>(webview_.get());
+  return resource_bridge_->ConfigureNetwork(messenger, configuration);
+}
+HRESULT Webview::ConfigureContentRules(const flutter::EncodableList& rules) {
+  if (!IsValid()) return E_ABORT;
+  if (!resource_bridge_) resource_bridge_ = std::make_unique<ResourceBridgeWindows>(webview_.get());
+  return resource_bridge_->ConfigureRules(rules);
+}
 
 HRESULT Webview::StartDownload(ICoreWebView2DownloadStartingEventArgs *args) {
   const std::string id = std::to_string(++next_download_id_);
@@ -2081,7 +2589,7 @@ HRESULT Webview::StartDownload(ICoreWebView2DownloadStartingEventArgs *args) {
   if (deferred != deferred_download_navigation_errors_.rend() &&
       (navigating == navigation_urls_.rend() ||
        deferred->first > navigating->first)) {
-    CancelDownloadTimeout(deferred->second.timer);
+    CancelWebviewTimeout(deferred->second.timer);
     deferred_download_navigation_errors_.erase(deferred->first);
   } else if (navigating != navigation_urls_.rend()) {
     download_navigation_ids_.insert(navigating->first);
@@ -2130,7 +2638,7 @@ HRESULT Webview::StartDownload(ICoreWebView2DownloadStartingEventArgs *args) {
   }
   pending_downloads_[id] = pending;
   const std::weak_ptr<LifetimeState> weak = lifetime_state_;
-  pending->timeout = ScheduleDownloadTimeout([weak, id]() {
+  pending->timeout = ScheduleWebviewTimeout([weak, id]() {
     const auto state = weak.lock();
     if (!state || !state->owner)
       return;
@@ -2159,7 +2667,7 @@ void Webview::ResolveDownload(std::shared_ptr<PendingDownload> pending,
   if (pending->completed)
     return;
   pending->completed = true;
-  CancelDownloadTimeout(pending->timeout);
+  CancelWebviewTimeout(pending->timeout);
   pending_downloads_.erase(pending->request.id);
   std::string error = decision.error_code;
   std::string description = decision.description;
@@ -2356,7 +2864,7 @@ void Webview::CancelPendingDownloads() {
 
 void Webview::DisposeDownloads() {
   for (const auto &entry : deferred_download_navigation_errors_)
-    CancelDownloadTimeout(entry.second.timer);
+    CancelWebviewTimeout(entry.second.timer);
   deferred_download_navigation_errors_.clear();
   navigation_urls_.clear();
   download_navigation_ids_.clear();

@@ -1,7 +1,9 @@
 #pragma once
+#include <flutter/encodable_value.h>
 
 #include <WebView2.h>
 #include "webview/resource_bridge.h"
+#include "webview/surface_bounds.h"
 #include <wil/com.h>
 #include <windows.ui.composition.h>
 #include <winrt/base.h>
@@ -177,7 +179,9 @@ struct EventRegistrations {
   EventRegistrationToken script_dialog_opening_token_{};
   EventRegistrationToken devtools_protocol_event_token_{};
   EventRegistrationToken new_windows_requested_token_{};
+  EventRegistrationToken window_close_requested_token_{};
   EventRegistrationToken contains_fullscreen_element_changed_token_{};
+  EventRegistrationToken process_failed_token_{};
   EventRegistrationToken download_starting_token_{};
 };
 
@@ -254,8 +258,12 @@ public:
   }
 
   bool IsValid() { return is_valid_; }
+  wil::com_ptr<ICoreWebView2Profile> GetProfile() const;
+  static bool IsProfileActive(const std::wstring& path, const Webview* excluding = nullptr);
+  static wil::unique_handle AcquireProfileDeletionLock(const std::wstring& path);
 
-  HRESULT SetSurfaceSize(size_t width, size_t height, float scale_factor);
+  HRESULT SetSurfaceSize(double width, double height, float scale_factor,
+                         std::optional<SurfaceOrigin> origin);
   HRESULT SetVisible(bool visible);
   HRESULT SetFocus(bool focused, COREWEBVIEW2_MOVE_FOCUS_REASON reason);
   void NotifyParentWindowPositionChanged();
@@ -270,6 +278,46 @@ public:
                    const std::vector<uint8_t> *body);
   HRESULT LoadStringContent(const std::string &content);
   bool Stop();
+  void NavigateToHistoryEntry(int64_t entry_id,
+                              ScriptExecutedCallback callback);
+  void CallBrowserProtocol(const std::string &method, const std::string &params,
+                           ScriptExecutedCallback callback);
+  bool SupportsFind();
+  bool ShowPrintUI();
+  bool SetNativeContextMenus(bool enabled);
+  bool SetAudioMuted(bool muted);
+  bool SupportsAudioMuting();
+  HRESULT ConfigureNetworkBridge(flutter::BinaryMessenger* messenger,
+                                const flutter::EncodableMap& configuration);
+  HRESULT ConfigureContentRules(const flutter::EncodableList& rules);
+  bool SupportsPdf();
+  bool SupportsNewWindows();
+  void SetNewWindowDelegateEnabled(bool enabled);
+  bool CompleteNewWindow(const std::string &id, Webview *child);
+  using NewWindowCallback =
+      std::function<void(const std::string &, const std::string &, bool)>;
+  void OnNewWindowRequested(NewWindowCallback callback) {
+    new_window_callback_ = std::move(callback);
+  }
+  void OnWindowCloseRequested(std::function<void()> callback) {
+    window_close_callback_ = std::move(callback);
+  }
+  void OnProcessFailed(std::function<void(int)> callback) {
+    process_failed_callback_ = std::move(callback);
+  }
+  using CaptureCallback =
+      std::function<void(std::vector<uint8_t>, const std::string &)>;
+  struct PdfOptions {
+    double width, height, top, bottom, left, right;
+    bool landscape;
+  };
+  void CapturePage(bool pdf, CaptureCallback callback,
+                   std::optional<PdfOptions> options = std::nullopt);
+  using FindCallback =
+      std::function<void(bool available, int count, int active)>;
+  void FindText(const std::string &text, bool forward, bool case_sensitive,
+                FindCallback callback);
+  void ClearFind();
   bool Reload();
   bool GoBack();
   bool GoForward();
@@ -292,6 +340,7 @@ public:
   bool ClearCache();
   void ClearLocalStorage(OperationCompletedCallback callback);
   void ClearAllWebsiteData(WebsiteDataClearedCallback callback);
+  void ClearWebsiteData(uint64_t kinds, WebsiteDataClearedCallback callback);
   bool SetCacheDisabled(bool disabled);
   void SetPopupWindowPolicy(WebviewPopupWindowPolicy policy);
   void SetNavigationRequestCallbacksEnabled(bool enabled);
@@ -404,10 +453,15 @@ private:
   struct ActiveDownload;
 
   HWND parent_window_;
+  wil::unique_handle managed_profile_lock_;
+  std::wstring managed_profile_path_;
   bool is_valid_ = false;
   float scale_factor_ = 1.0;
-  size_t surface_width_ = 1280;
-  size_t surface_height_ = 720;
+  double rasterization_scale_ = 1.0;
+  double surface_width_ = 1280;
+  double surface_height_ = 720;
+  std::optional<SurfaceOrigin> surface_origin_;
+  bool surface_visible_ = false;
   wil::com_ptr<ICoreWebView2CompositionController> composition_controller_;
   wil::com_ptr<ICoreWebView2Controller3> webview_controller_;
   wil::com_ptr<ICoreWebView2> webview_;
@@ -448,6 +502,37 @@ private:
   double vertical_scroll_remainder_ = 0.0;
   std::shared_ptr<LifetimeState> lifetime_state_ =
       std::make_shared<LifetimeState>();
+  struct PendingWindow {
+    wil::com_ptr<ICoreWebView2NewWindowRequestedEventArgs> args;
+    wil::com_ptr<ICoreWebView2Deferral> deferral;
+    UINT_PTR timeout = 0;
+  };
+  std::map<std::string, std::shared_ptr<PendingWindow>> pending_windows_;
+  uint64_t next_window_id_ = 0;
+  bool new_window_delegate_enabled_ = false;
+  bool window_target_available_ = true;
+  NewWindowCallback new_window_callback_;
+  std::function<void()> window_close_callback_;
+  struct PendingCapture {
+    CaptureCallback completion;
+    UINT_PTR timeout = 0;
+    wil::com_ptr<IStream> stream;
+  };
+  std::shared_ptr<PendingCapture> pending_capture_;
+  void CompleteCapture(std::shared_ptr<PendingCapture> request, IStream *stream,
+                       const std::string &error);
+  struct PendingFind {
+    FindCallback completion;
+    EventRegistrationToken token{};
+    bool subscribed = false;
+    UINT_PTR timeout = 0;
+  };
+  std::shared_ptr<PendingFind> pending_find_;
+  wil::com_ptr<ICoreWebView2Find> find_;
+  std::string find_text_;
+  bool find_case_sensitive_ = false;
+  void CompleteFind(std::shared_ptr<PendingFind> pending, bool available);
+  void AdvanceFind(std::shared_ptr<PendingFind> pending, bool forward);
 
   winrt::com_ptr<ABI::Windows::UI::Composition::IVisual> surface_;
 
@@ -475,17 +560,20 @@ private:
   DevtoolsProtocolEventCallback devtools_protocol_event_callback_;
   ContainsFullScreenElementChangedCallback
       contains_fullscreen_element_changed_callback_;
+  std::function<void(int)> process_failed_callback_;
 
   Webview(
       wil::com_ptr<ICoreWebView2CompositionController> composition_controller,
       std::shared_ptr<WebviewHost> host, HWND parent_window,
-      winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor);
+      winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor,
+      bool profile_management = false);
 
   bool CreateSurface(
       winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor);
-  std::optional<RECT> CalculateOffscreenBounds(size_t width, size_t height,
-                                               float scale_factor) const;
-  bool UpdateControllerBounds(size_t width, size_t height, float scale_factor);
+  std::optional<RECT> CalculateControllerBounds(
+      double width, double height, float scale_factor,
+      std::optional<SurfaceOrigin> origin) const;
+  bool UpdateControllerBounds(double width, double height, float scale_factor);
   void RegisterEventHandlers();
   HRESULT StartDownload(ICoreWebView2DownloadStartingEventArgs *args);
   void ResolveDownload(std::shared_ptr<PendingDownload> pending,

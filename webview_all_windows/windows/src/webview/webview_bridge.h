@@ -24,6 +24,7 @@ public:
                 GraphicsContext *graphics_context,
                 std::unique_ptr<Webview> webview);
   ~WebviewBridge();
+  void DisableAsyncReplies() { *async_replies_enabled_ = false; }
 
   TextureBridge *texture_bridge() const { return texture_bridge_.get(); }
 
@@ -33,13 +34,18 @@ public:
     return initialization_error_;
   }
 
+  bool AttachNewWindow(const std::string &id, WebviewBridge *child) {
+    return webview_->CompleteNewWindow(id,
+                                       child ? child->webview_.get() : nullptr);
+  }
   void SetCursorPos(double x, double y);
   void SetPointerUpdate(int64_t pointer, int64_t event, double x, double y,
                         double size, double pressure);
   void SetScrollDelta(double dx, double dy);
   void SetPointerButtonState(int64_t button, bool is_down);
   std::optional<WindowsRenderingError> SetSize(double width, double height,
-                                               double scale_factor);
+                                               double scale_factor,
+                                               std::optional<SurfaceOrigin> origin);
   std::optional<WindowsRenderingError> SetSurfaceAttached(bool attached);
   HRESULT SetFocus(bool focused, int64_t reason);
   void NotifyParentWindowPositionChanged();
@@ -102,31 +108,35 @@ public:
   void SetFpsLimit(int64_t max_fps);
 
 private:
-  std::unique_ptr<flutter::TextureVariant> flutter_texture_;
-  std::unique_ptr<TextureBridge> texture_bridge_;
-  std::unique_ptr<Webview> webview_;
-  std::unique_ptr<flutter::EventSink<flutter::EncodableValue>> event_sink_;
-  std::unique_ptr<flutter::EventChannel<flutter::EncodableValue>>
-      event_channel_;
-  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
-      method_channel_;
+ std::shared_ptr<bool> async_replies_enabled_ = std::make_shared<bool>(true);
+ std::unique_ptr<flutter::TextureVariant> flutter_texture_;
+ std::unique_ptr<TextureBridge> texture_bridge_;
+ std::unique_ptr<Webview> webview_;
+ std::unique_ptr<flutter::EventSink<flutter::EncodableValue>> event_sink_;
+ std::unique_ptr<flutter::EventChannel<flutter::EncodableValue>> event_channel_;
+ std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+     method_channel_;
 
-  flutter::TextureRegistrar *texture_registrar_;
-  int64_t texture_id_ = -1;
-  bool surface_attached_ = false;
-  bool surface_size_set_ = false;
-  bool suspended_ = false;
-  std::optional<WindowsRenderingError> initialization_error_;
+ flutter::TextureRegistrar *texture_registrar_;
+ int64_t texture_id_ = -1;
+ bool surface_attached_ = false;
+ bool surface_size_set_ = false;
+ double surface_width_ = 0;
+ double surface_height_ = 0;
+ double surface_scale_ = 0;
+ bool suspended_ = false;
+ std::optional<WindowsRenderingError> initialization_error_;
 
-  void RegisterEventHandlers();
-  void OnDownloadRequested(const WebviewDownloadRequest &request,
-                           Webview::DownloadRequestedCompleter completer);
-  std::optional<WindowsRenderingError> UpdateRenderingState();
+ void RegisterEventHandlers();
+ void OnDownloadRequested(const WebviewDownloadRequest &request,
+                          Webview::DownloadRequestedCompleter completer);
+ std::optional<WindowsRenderingError> UpdateRenderingState();
 
-  template <typename T> void EmitEvent(const T &value) {
-    if (event_sink_) {
-      event_sink_->Success(value);
-    }
+ template <typename T>
+ void EmitEvent(const T &value) {
+   if (event_sink_) {
+     event_sink_->Success(value);
+   }
   }
 
   void

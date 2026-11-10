@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
@@ -64,6 +65,9 @@ class WindowsWebViewControllerCreationParams
   /// Creates a new [WindowsWebViewControllerCreationParams].
   const WindowsWebViewControllerCreationParams({
     super.sessionMode,
+    super.mediaPlaybackPolicy,
+    super.profileName,
+    super.customSchemes,
     this.popupWindowPolicy = WindowsPopupWindowPolicy.sameWindow,
     this.devToolsEnabled = false,
     this.browserAcceleratorKeysEnabled,
@@ -150,7 +154,419 @@ class WindowsNavigationDelegateCreationParams
 
 /// A WebView2-backed implementation of [PlatformWebViewController].
 class WindowsWebViewController extends PlatformWebViewController
-    with WebViewResourceControllerMixin {
+    with WebViewResourceControllerMixin, WebViewNetworkControllerMixin {
+  @override
+  Future<WebViewBrowserCapabilities> getBrowserCapabilities() async {
+    await _ensureInitialized();
+    final find = await _webviewController.supportsFind();
+    final pdf = await _webviewController.supportsPdf();
+    final newWindows = await _webviewController.supportsNewWindows();
+    return WebViewBrowserCapabilities(
+      stopLoading: true,
+      newWindowDelegate: newWindows,
+      windowCloseRequests: true,
+      fullscreenEvents: true,
+      processFailureEvents: true,
+      clearHistory: true,
+      viewportScreenshot: true,
+      archiveFormats: const {WebViewArchiveFormat.mhtml},
+      contextMenuControl: true,
+      audioMuting:
+          await _webviewController.browserFlag('supportsAudioMuting') ?? false,
+      printing: pdf, // Both operations require ICoreWebView2_16.
+      fullDocumentScreenshot: true,
+      screenshotRegion: true,
+      screenshotScale: true,
+      pdfExport: pdf,
+      pdfPageLayout: pdf,
+      navigationHistory: true,
+      historyNavigation: true,
+      findText: find,
+      findCaseSensitive: find,
+      findMatchCount: find,
+      popupWindowPolicies: const {
+        WebViewPopupWindowPolicy.platformDefault,
+        WebViewPopupWindowPolicy.deny,
+        WebViewPopupWindowPolicy.sameView,
+      },
+      limitation:
+          'Native text search requires a Runtime with the WebView2 Find API and always wraps around. Custom file selection and per-view autoplay gesture configuration are unavailable.',
+    );
+  }
+
+  FutureOr<void> Function(WebViewNewWindowRequest<PlatformWebViewController>)?
+  _newWindowDelegate;
+  VoidCallback? _onWindowCloseRequested;
+  bool _nativeFullscreen = false;
+
+  @override
+  bool get nativeNetworkBodies => true;
+  @override
+  Future<WebViewNetworkCapabilities> getNetworkCapabilities() async {
+    await _ensureInitialized();
+    return WebViewNetworkCapabilities(
+      contentRules: true,
+      resourceTypes: {
+        WebViewNetworkResourceType.document,
+        WebViewNetworkResourceType.image,
+        WebViewNetworkResourceType.styleSheet,
+        WebViewNetworkResourceType.script,
+        WebViewNetworkResourceType.font,
+        WebViewNetworkResourceType.media,
+        WebViewNetworkResourceType.raw,
+        WebViewNetworkResourceType.ping,
+        WebViewNetworkResourceType.other,
+      },
+      httpInterception: true,
+      customSchemes:
+          params.customSchemes.isEmpty ||
+          await _webviewController.supportsCustomSchemes(),
+      customSchemeFetch:
+          params.customSchemes.isEmpty ||
+          await _webviewController.supportsCustomSchemes(),
+      customSchemeRequestBodies: true,
+      requestBodies: true,
+      limitation:
+          'Custom schemes use scheme://host/path and must be declared before environment creation. WebView2 only exposes bodies that can be cloned within the 4 MiB limit. Main-frame status is unavailable. Responses accept files or bytes; native request interception does not guarantee coverage of service workers, WebSocket traffic or redirect chains.',
+    );
+  }
+
+  @override
+  Future<bool> configureContentRules(List<Map<String, Object?>> rules) async {
+    if (_isDisposed) return false;
+    await _ensureInitialized();
+    return await _webviewController.invokeBrowserOperation('setContentRules', {
+          'rules': rules,
+        }) ==
+        true;
+  }
+
+  @override
+  Future<bool> configureNetworkBridge(
+    Map<String, Object?> configuration,
+  ) async {
+    if (_isDisposed) return false;
+    await _ensureInitialized();
+    return await _webviewController.invokeBrowserOperation(
+          'configureNetworkBridge',
+          configuration,
+        ) ==
+        true;
+  }
+
+  @override
+  Future<PlatformWebViewController?> createRelatedController() =>
+      browserOperation<PlatformWebViewController?>(
+        'createRelatedController',
+        null,
+        () async {
+          if (_isDisposed) return null;
+          await _ensureInitialized();
+          final child = WindowsWebViewController(
+            params,
+            sharedProfileName: _webviewController.profileName,
+          );
+          try {
+            await child._ensureInitialized();
+            return child;
+          } catch (_) {
+            await child.closeWebViewSession();
+            rethrow;
+          }
+        },
+      );
+
+  @override
+  Future<bool> clearNavigationHistory() =>
+      browserOperation('clearNavigationHistory', false, () async {
+        if (_isDisposed) return false;
+        await _ensureInitialized();
+        return _webviewController.clearNavigationHistory();
+      });
+
+  @override
+  Future<void> setFullscreenDelegate(
+    WebViewFullscreenDelegate? delegate,
+  ) async {
+    await _ensureInitialized();
+    await updateFullscreenDelegate(delegate);
+    if (_nativeFullscreen && delegate != null) await notifyFullscreenEntered();
+  }
+
+  @override
+  Future<bool> exitFullscreen() async {
+    if (_isDisposed || !_nativeFullscreen) return false;
+    return exitDocumentFullscreen();
+  }
+
+  @override
+  Future<void> setOnProcessFailed(
+    FutureOr<void> Function(WebViewProcessFailure)? callback,
+  ) async {
+    await _ensureInitialized();
+    updateProcessFailureCallback(callback);
+  }
+
+  @override
+  Future<void> setNewWindowDelegate(
+    FutureOr<void> Function(WebViewNewWindowRequest<PlatformWebViewController>)?
+    delegate,
+  ) async {
+    await _ensureInitialized();
+    if (delegate != null && !await _webviewController.supportsNewWindows()) {
+      debugPrint(
+        'webview_all_windows: native child-window attachment requires compatible shared WebView2 profiles; private profiles are unavailable through this API.',
+      );
+      return;
+    }
+    final previous = _newWindowDelegate;
+    _newWindowDelegate = delegate;
+    try {
+      await _webviewController.setNewWindowDelegateEnabled(delegate != null);
+    } catch (error) {
+      _newWindowDelegate = previous;
+      debugPrint(
+        'webview_all_windows: new-window delegation is unavailable: $error',
+      );
+    }
+  }
+
+  @override
+  Future<void> setOnWindowCloseRequested(VoidCallback? callback) async {
+    await _ensureInitialized();
+    _onWindowCloseRequested = callback;
+  }
+
+  Future<void> _handleNewWindowRequest(Map<Object?, Object?> args) async {
+    final id = args['requestId']! as String;
+    final request = WebViewNewWindowRequest<PlatformWebViewController>(
+      url: (args['url'] as String?)?.isNotEmpty == true
+          ? Uri.tryParse(args['url']! as String)
+          : null,
+      isUserGesture: args['isUserGesture'] as bool?,
+      onCreateController: () async {
+        if (_isDisposed) return null;
+        final child = WindowsWebViewController(
+          params,
+          sharedProfileName: _webviewController.profileName,
+        );
+        try {
+          await child._ensureInitialized();
+        } catch (_) {
+          try {
+            await child.closeWebViewSession();
+          } catch (_) {}
+          rethrow;
+        }
+        return child;
+      },
+      onAttach: (child) async {
+        if (_isDisposed ||
+            child is! WindowsWebViewController ||
+            child == this ||
+            child._isDisposed) {
+          await _webviewController.attachNewWindow(id, null);
+          return false;
+        }
+        await child._ensureInitialized();
+        final accepted = await _webviewController.attachNewWindow(
+          id,
+          child._webviewController,
+        );
+        if (!accepted) {
+          debugPrint(
+            'webview_all_windows: child-window attachment was rejected; use a fresh controller with the same profile and privacy mode before the request expires.',
+          );
+        }
+        return accepted;
+      },
+      onReject: () async {
+        await _webviewController.attachNewWindow(id, null);
+      },
+    );
+    await dispatchWebViewNewWindowRequest(
+      _isDisposed ? null : _newWindowDelegate,
+      request,
+    );
+  }
+
+  @override
+  Future<bool> setAudioMuted(
+    bool muted,
+  ) => browserOperation('setAudioMuted', false, () async {
+    await _ensureInitialized();
+    final accepted =
+        await _webviewController.browserFlag('setAudioMuted', muted) ?? false;
+    if (!accepted) {
+      debugPrint(
+        'webview_all_windows: setAudioMuted is unavailable in this engine or the native view is closed.',
+      );
+    }
+    return accepted;
+  });
+
+  @override
+  Future<bool> setContextMenuEnabled(
+    bool enabled,
+  ) => browserOperation('setContextMenuEnabled', false, () async {
+    await _ensureInitialized();
+    final accepted =
+        await _webviewController.browserFlag(
+          'setContextMenuEnabled',
+          enabled,
+        ) ??
+        false;
+    if (!accepted) {
+      debugPrint(
+        'webview_all_windows: setContextMenuEnabled is unavailable in this engine or the native view is closed.',
+      );
+    }
+    return accepted;
+  });
+
+  @override
+  Future<Uint8List?> createArchive({required WebViewArchiveFormat format}) {
+    if (format != WebViewArchiveFormat.mhtml) {
+      return super.createArchive(format: format);
+    }
+    return capturePageData('Page archive', () async {
+      if (_isDisposed) return null;
+      await _ensureInitialized();
+      return _webviewController.captureArchive();
+    });
+  }
+
+  @override
+  Future<WebViewPrintJob?> printPage({String jobName = 'Web page'}) async {
+    if (_isDisposed) return null;
+    await _ensureInitialized();
+    return startNativePrint(
+      jobName,
+      (method, args) => _webviewController.invokeBrowserOperation(method, args),
+    );
+  }
+
+  @override
+  Future<Uint8List?> takeScreenshot({
+    WebViewScreenshotOptions options = const WebViewScreenshotOptions(),
+  }) => captureScreenshot(options, () async {
+    await _ensureInitialized();
+    return options.fullDocument
+        ? _webviewController.captureFullDocument()
+        : _webviewController.capturePage(pdf: false);
+  });
+
+  @override
+  Future<Uint8List?> createPdf({WebViewPdfOptions? options}) =>
+      capturePageData('createPdf', () async {
+        await _ensureInitialized();
+        if (options != null && !options.isValid) {
+          throw ArgumentError('Invalid PDF paper size or margins.');
+        }
+        return _webviewController.capturePage(
+          pdf: true,
+          options: options?.toMap(),
+        );
+      });
+
+  @override
+  Future<void> stopLoading() async {
+    await _ensureInitialized();
+    _cancelNavigationPolicy();
+    await _webviewController.stop();
+  }
+
+  @override
+  Future<WebViewNavigationHistory> getNavigationHistory() async {
+    await _ensureInitialized();
+    final data = await _webviewController.getNavigationHistoryData();
+    return WebViewNavigationHistory(
+      currentIndex: (data['currentIndex'] as num?)?.toInt() ?? -1,
+      items: (data['entries'] as List<Object?>? ?? []).whereType<Map>().map(
+        (entry) => WebViewHistoryItem(
+          url: entry['url'] as String,
+          title: entry['title'] as String?,
+          originalUrl: entry['userTypedURL'] as String?,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<bool> goToHistoryIndex(int index) async {
+    await _ensureInitialized();
+    final data = await _webviewController.getNavigationHistoryData();
+    final entries = data['entries'] as List<Object?>? ?? [];
+    if (index < 0 || index >= entries.length) return false;
+    if ((data['currentIndex'] as num?)?.toInt() == index) return true;
+    _cancelNavigationPolicy();
+    final entry = entries[index] as Map;
+    try {
+      return await _webviewController.navigateToHistoryEntry(
+        (entry['id'] as num).toInt(),
+      );
+    } on PlatformException catch (error) {
+      debugPrint(
+        'webview_all_windows: the history entry is no longer available: ${error.message}',
+      );
+      return false;
+    }
+  }
+
+  @override
+  Future<WebViewFindResult?> findText(
+    String text, {
+    bool forward = true,
+    bool caseSensitive = false,
+    bool wrapAround = true,
+  }) async {
+    await _ensureInitialized();
+    if (!wrapAround || !await _webviewController.supportsFind()) {
+      debugPrint(
+        'webview_all_windows: native text search requires a Runtime with the Find API and wrapAround: true; the requested search was skipped.',
+      );
+      return null;
+    }
+    if (text.isEmpty) {
+      await clearFindMatches();
+      return const WebViewFindResult(matchFound: false, matchCount: 0);
+    }
+    return serializeTextSearch(() async {
+      final result = await _webviewController.findText(
+        text,
+        forward,
+        caseSensitive,
+      );
+      return result == null ? null : WebViewFindResult.fromMap(result);
+    });
+  }
+
+  @override
+  Future<void> clearFindMatches() async {
+    await _ensureInitialized();
+    await serializeTextSearch(() => _webviewController.clearFindMatches());
+  }
+
+  @override
+  Future<void> setPopupPolicy(WebViewPopupWindowPolicy policy) async {
+    await _ensureInitialized();
+    await _webviewController.setPopupWindowPolicy(switch (policy) {
+      WebViewPopupWindowPolicy.deny =>
+        native_types.WebviewPopupWindowPolicy.deny,
+      WebViewPopupWindowPolicy.sameView =>
+        native_types.WebviewPopupWindowPolicy.sameWindow,
+      WebViewPopupWindowPolicy.platformDefault =>
+        switch (_windowsParams.popupWindowPolicy) {
+          WindowsPopupWindowPolicy.allow =>
+            native_types.WebviewPopupWindowPolicy.allow,
+          WindowsPopupWindowPolicy.deny =>
+            native_types.WebviewPopupWindowPolicy.deny,
+          WindowsPopupWindowPolicy.sameWindow =>
+            native_types.WebviewPopupWindowPolicy.sameWindow,
+        },
+    });
+  }
+
   @override
   String get resourceUrlScheme => 'https';
   @override
@@ -170,17 +586,38 @@ class WindowsWebViewController extends PlatformWebViewController
   }
 
   /// Creates a [WindowsWebViewController].
-  WindowsWebViewController(PlatformWebViewControllerCreationParams params)
-    : _webviewController = native_webview.WebviewController(
-        incognito: params.sessionMode != WebViewSessionMode.shared,
-      ),
-      super.implementation(
-        params is WindowsWebViewControllerCreationParams
-            ? params
-            : WindowsWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
-                params,
-              ),
-      ) {
+  WindowsWebViewController(
+    PlatformWebViewControllerCreationParams params, {
+    String? sharedProfileName,
+  }) : _webviewController = native_webview.WebviewController(
+         customSchemes: params.customSchemes,
+         incognito: params.sessionMode != WebViewSessionMode.shared,
+         profileName:
+             sharedProfileName ??
+             params.profileName ??
+             (params.sessionMode == WebViewSessionMode.shared
+                 ? null
+                 : 'private_' +
+                       List.generate(
+                         16,
+                         (_) => Random.secure()
+                             .nextInt(256)
+                             .toRadixString(16)
+                             .padLeft(2, '0'),
+                       ).join()),
+       ),
+       super.implementation(
+         params is WindowsWebViewControllerCreationParams
+             ? params
+             : WindowsWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
+                 params,
+               ),
+       ) {
+    if (params.mediaPlaybackPolicy != null) {
+      debugPrint(
+        'webview_all_windows: per-view autoplay gesture configuration is unavailable; the engine retains its normal media playback policy.',
+      );
+    }
     final WeakReference<WindowsWebViewController> weakThis =
         WeakReference<WindowsWebViewController>(this);
     _setInitializationFuture(_initialize(weakThis));
@@ -218,6 +655,15 @@ class WindowsWebViewController extends PlatformWebViewController
 
   Future<void>? _initializationFuture;
   Future<void>? _disposeFuture;
+  Completer<void> _navigationPolicyCancelled = Completer<void>();
+
+  void _cancelNavigationPolicy() {
+    if (!_navigationPolicyCancelled.isCompleted) {
+      _navigationPolicyCancelled.complete();
+    }
+    _navigationPolicyCancelled = Completer<void>();
+  }
+
   bool _isDisposed = false;
   WebViewDownloadDelegate? _downloadDelegate;
   int _downloadDelegateGeneration = 0;
@@ -407,6 +853,64 @@ class WindowsWebViewController extends PlatformWebViewController
     );
     _throwIfDisposed();
     _subscriptions.addAll(<StreamSubscription<dynamic>>[
+      _webviewController.containsFullScreenElementChanged.listen((active) {
+        final owner = weakThis.target;
+        if (owner == null || owner._isDisposed) return;
+        owner._nativeFullscreen = active;
+        unawaited(
+          active
+              ? owner.notifyFullscreenEntered()
+              : owner.notifyFullscreenExited(),
+        );
+      }),
+      _webviewController.processFailures.stream.listen((code) {
+        final owner = weakThis.target;
+        if (owner == null || owner._isDisposed) return;
+        final mainFrameLost = code == 0 || code == 1;
+        if (mainFrameLost) {
+          owner._nativeFullscreen = false;
+          owner._cancelPendingAsyncJavaScriptInvocations(
+            const JavaScriptExecutionException(
+              name: 'ProcessError',
+              message: 'The renderer process exited.',
+            ),
+          );
+        }
+        unawaited(
+          owner.notifyProcessFailed(
+            WebViewProcessFailure(
+              kind: switch (code) {
+                0 => WebViewProcessFailureKind.browserExited,
+                1 => WebViewProcessFailureKind.rendererExited,
+                2 => WebViewProcessFailureKind.rendererUnresponsive,
+                _ => WebViewProcessFailureKind.other,
+              },
+              recovery: code == 0
+                  ? WebViewProcessRecovery.recreate
+                  : code == 1
+                  ? WebViewProcessRecovery.reload
+                  : WebViewProcessRecovery.none,
+              nativeCode: code,
+              description: 'WebView2 reported process failure kind $code.',
+            ),
+          ),
+        );
+      }),
+      _webviewController.newWindowRequests.stream.listen((args) {
+        final owner = weakThis.target;
+        if (owner != null) unawaited(owner._handleNewWindowRequest(args));
+      }),
+      _webviewController.windowCloseRequests.stream.listen((_) {
+        final owner = weakThis.target;
+        if (owner == null || owner._isDisposed) return;
+        try {
+          owner._onWindowCloseRequested?.call();
+        } catch (error) {
+          debugPrint(
+            'webview_all_windows: window-close callback failed: $error',
+          );
+        }
+      }),
       _webviewController.onDownloadEvent.listen((event) {
         weakThis.target?._handleDownloadEvent(event);
       }),
@@ -663,6 +1167,9 @@ class WindowsWebViewController extends PlatformWebViewController
     }
 
     _isDisposed = true;
+    _newWindowDelegate = null;
+    _onWindowCloseRequested = null;
+    _cancelNavigationPolicy();
     for (final entry in _downloadDelegates.entries.toList()) {
       entry.value.notifyResult(
         WebViewDownloadResult(
@@ -696,6 +1203,10 @@ class WindowsWebViewController extends PlatformWebViewController
   }
 
   Future<void> _dispose() async {
+    disposeBrowserLifecycleCallbacks();
+    disposeJavaScriptHandlers();
+    final networkDisposal = disposeNetworkBridges();
+    if (networkDisposal != null) await networkDisposal;
     final resourceDisposal = disposeResourceBridge();
     if (resourceDisposal != null) await resourceDisposal;
     // Initialization errors are reported by the operation that initialized the
@@ -905,6 +1416,7 @@ class WindowsWebViewController extends PlatformWebViewController
   }
 
   void _cancelPendingAsyncJavaScriptInvocations(Object error) {
+    cancelJavaScriptHandlerCalls();
     final List<Completer<Object?>> pending = _pendingAsyncJavaScriptInvocations
         .values
         .toList(growable: false);
@@ -1176,7 +1688,9 @@ class WindowsWebViewController extends PlatformWebViewController
     if (!await _shouldNavigate(url)) {
       return;
     }
+    final cancellation = _navigationPolicyCancelled;
     await _setVirtualHostMapping(_fileVirtualHost, folderPath);
+    if (cancellation.isCompleted) return;
     await _webviewController.loadUrl(url);
   }
 
@@ -1216,14 +1730,19 @@ class WindowsWebViewController extends PlatformWebViewController
     if (!await _shouldNavigate(url)) {
       return;
     }
+    final cancellation = _navigationPolicyCancelled;
     await _setVirtualHostMapping(_assetVirtualHost, resolvedRootPath);
+    if (cancellation.isCompleted) return;
     await _webviewController.loadUrl(url);
   }
 
   @override
   Future<void> loadHtmlString(String html, {String? baseUrl}) async {
     await _ensureInitialized();
+    _cancelNavigationPolicy();
+    final cancellation = _navigationPolicyCancelled;
     await _clearManagedVirtualHostMappings();
+    if (cancellation.isCompleted) return;
     final content = baseUrl == null ? html : _injectBaseUrl(html, baseUrl);
     await _webviewController.loadStringContent(content);
   }
@@ -1270,18 +1789,21 @@ class WindowsWebViewController extends PlatformWebViewController
   @override
   Future<void> goBack() async {
     await _ensureInitialized();
+    _cancelNavigationPolicy();
     await _webviewController.goBack();
   }
 
   @override
   Future<void> goForward() async {
     await _ensureInitialized();
+    _cancelNavigationPolicy();
     await _webviewController.goForward();
   }
 
   @override
   Future<void> reload() async {
     await _ensureInitialized();
+    _cancelNavigationPolicy();
     await _webviewController.reload();
   }
 
@@ -1359,6 +1881,7 @@ class WindowsWebViewController extends PlatformWebViewController
 
   @override
   Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
+    if (!params.world.isPage) return invokeAsyncJavaScriptInWorld(params);
     await _ensureInitialized();
     final String identifier = _createWindowsVirtualHost(
       'async-${++_nextAsyncJavaScriptInvocationIdentifier}',
@@ -1400,21 +1923,46 @@ class WindowsWebViewController extends PlatformWebViewController
   Future<void> closeOffscreenWebView() => dispose();
 
   @override
+  Future<WebViewJavaScriptCapabilities> getJavaScriptCapabilities({
+    WebViewJavaScriptWorld world = WebViewJavaScriptWorld.page,
+  }) async => const WebViewJavaScriptCapabilities(
+    supportsPromiseHandlers: true,
+    userScriptInjectionTimes: {
+      WebViewUserScriptInjectionTime.documentStart,
+      WebViewUserScriptInjectionTime.documentEnd,
+    },
+    supportsTrustedFrameInformation: true,
+    documentEndIsEmulated: true,
+    limitation:
+        'Windows supports main-document handlers. Isolated worlds and verified security origins are unavailable.',
+  );
+
+  @override
   Future<bool> isUserScriptInjectionSupported(
     WebViewUserScriptInjectionTime injectionTime,
   ) async {
     await _ensureInitialized();
-    return injectionTime == WebViewUserScriptInjectionTime.documentStart;
+    return true;
   }
 
   @override
   Future<String> addUserScript(WebViewUserScript userScript) async {
+    if (!userScript.world.isPage) {
+      throw UnsupportedError(
+        'Isolated user scripts are unavailable on this platform. Use tryAddUserScript to skip unsupported scripts with a warning.',
+      );
+    }
+
     await _ensureInitialized();
     final String identifier = 'webview_all_${++_nextUserScriptIdentifier}';
-    final String source = buildUserScriptSource(
+    final String scoped = buildUserScriptSource(
       userScript,
       platformHandlesMainFrameOnly: false,
     );
+    final String source =
+        userScript.injectionTime == WebViewUserScriptInjectionTime.documentEnd
+        ? buildDocumentEndScript(scoped)
+        : scoped;
     final String? nativeIdentifier = await _webviewController
         .addScriptToExecuteOnDocumentCreated(source);
     if (nativeIdentifier == null) {
@@ -1442,21 +1990,9 @@ class WindowsWebViewController extends PlatformWebViewController
 
   @override
   Future<void> removeAllUserScripts() async {
-    await _ensureInitialized();
-    final List<MapEntry<String, String>> scripts = _userScriptIds.entries
-        .toList(growable: false);
-    _userScriptIds.clear();
-    for (int index = 0; index < scripts.length; index++) {
-      final MapEntry<String, String> script = scripts[index];
-      try {
-        await _webviewController.removeScriptToExecuteOnDocumentCreated(
-          script.value,
-        );
-      } catch (_) {
-        for (final MapEntry<String, String> remaining in scripts.skip(index)) {
-          _userScriptIds[remaining.key] = remaining.value;
-        }
-        rethrow;
+    for (final identifier in _userScriptIds.keys.toList()) {
+      if (!isJavaScriptBridgeScript(identifier)) {
+        await removeUserScript(identifier);
       }
     }
   }
@@ -1472,7 +2008,7 @@ class WindowsWebViewController extends PlatformWebViewController
     return '''
 (()=>{
   const __identifier=${jsonEncode(identifier)};
-  const __arguments=${jsonEncode(params.arguments)};
+  const __arguments=JSON.parse(${jsonEncode(jsonEncode(params.arguments))});
   const __post=(payload)=>window.chrome.webview.postMessage(payload);
   const __postError=(error)=>__post({
     ${jsonEncode(_channelMessageType)}:${jsonEncode(_asyncJavaScriptMessageType)},
@@ -1958,23 +2494,28 @@ ${params.functionBody}
   }
 
   Future<bool> _shouldNavigate(String url) async {
+    _cancelNavigationPolicy();
+    final cancellation = _navigationPolicyCancelled;
     final callback = _currentNavigationDelegate?._onNavigationRequest;
     final bool shouldNavigate = callback == null
         ? true
-        : await _awaitPendingRequest<bool>(
-            () async {
-              final NavigationDecision decision = await callback(
-                NavigationRequest(url: url, isMainFrame: true),
-              );
-              return decision == NavigationDecision.navigate;
-            },
-            fallback: false,
-            requestName: 'navigation request',
-          );
+        : await Future.any<bool>([
+            cancellation.future.then((_) => false),
+            _awaitPendingRequest<bool>(
+              () async {
+                final NavigationDecision decision = await callback(
+                  NavigationRequest(url: url, isMainFrame: true),
+                );
+                return decision == NavigationDecision.navigate;
+              },
+              fallback: false,
+              requestName: 'navigation request',
+            ),
+          ]);
     if (shouldNavigate && !_isManagedVirtualHost(url)) {
       await _clearManagedVirtualHostMappings();
     }
-    return shouldNavigate;
+    return shouldNavigate && !cancellation.isCompleted && !_isDisposed;
   }
 
   Future<void> _executeScriptBestEffort(String operation, String script) async {

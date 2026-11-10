@@ -14,11 +14,13 @@ class WindowsEnvironmentOptions {
     this.userDataPath,
     this.browserExePath,
     this.additionalArguments,
+    this.customSchemes,
   });
 
   String? userDataPath;
   String? browserExePath;
   String? additionalArguments;
+  List<String>? customSchemes;
 }
 
 class WindowsCreateWebViewResult {
@@ -63,11 +65,14 @@ class WindowsSizeData {
     required this.width,
     required this.height,
     required this.scaleFactor,
+    this.origin,
   });
 
   double width;
   double height;
   double scaleFactor;
+  // Physical pixels relative to the Flutter HWND; null parks the native view.
+  WindowsPointData? origin;
 }
 
 class WindowsPointerUpdateData {
@@ -89,10 +94,15 @@ class WindowsPointerUpdateData {
 }
 
 class WindowsPointerButtonData {
-  WindowsPointerButtonData({required this.button, required this.isDown});
+  WindowsPointerButtonData({
+    required this.button,
+    required this.isDown,
+    this.position,
+  });
 
   int button;
   bool isDown;
+  WindowsPointData? position;
 }
 
 class WindowsVirtualHostMappingData {
@@ -141,6 +151,9 @@ abstract class WindowsWebViewHostApi {
 
   @async
   WindowsCreateWebViewResult createPrivateWebView();
+
+  @async
+  WindowsCreateWebViewResult createProfileWebView(String name, bool incognito);
 
   @async
   bool isIncognitoSupported();

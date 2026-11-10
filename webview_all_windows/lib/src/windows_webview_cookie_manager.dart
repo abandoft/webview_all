@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 import 'windows_webview_cookie.dart';
@@ -26,6 +30,29 @@ class WindowsWebViewCookieManagerCreationParams
 /// `WindowsWebViewController.ensureEnvironment` before the first cookie operation
 /// or WebView. If no environment exists, cookie operations initialize defaults.
 class WindowsWebViewCookieManager extends PlatformWebViewCookieManager {
+  @override
+  Future<WebViewCookieCapabilities> getCapabilities() async =>
+      WebViewCookieCapabilities(
+        setHttpOnly: true,
+        deleteByIdentity: true,
+        readableAttributes: Set.unmodifiable(WebViewCookieAttribute.values),
+      );
+
+  @override
+  Future<bool> deleteCookie({
+    required String name,
+    required String domain,
+    String path = '/',
+  }) async {
+    WebViewCookie(name: name, value: '', domain: domain, path: path).validate();
+    await deleteCookiesWithNameDomainAndPath(
+      name: name,
+      domain: domain,
+      path: path,
+    );
+    return true;
+  }
+
   /// Creates a [WindowsWebViewCookieManager].
   WindowsWebViewCookieManager(PlatformWebViewCookieManagerCreationParams params)
     : super.implementation(
@@ -44,19 +71,86 @@ class WindowsWebViewCookieManager extends PlatformWebViewCookieManager {
 
   native_webview.WebviewController? _sessionController;
 
-  @override
-  Future<bool> clearCookies() async {
-    final controller = _sessionController ?? native_webview.WebviewController();
-    await controller.initialize();
+  // WebView2 can end its browser process when its last controller closes.
+  // Keep one unattached ordinary controller alive so session cookies set before
+  // the first displayed page survive. Engine disposal releases the native view.
+  static native_webview.WebviewController? _ordinaryController;
+  static Future<native_webview.WebviewController>? _ordinaryInitialization;
+  static StreamSubscription<int>? _ordinaryFailures;
+
+  static Future<native_webview.WebviewController> _ordinaryStore() {
+    final pending = _ordinaryInitialization;
+    if (pending != null) return pending;
+    final controller = native_webview.WebviewController();
+    _ordinaryController = controller;
+    return _ordinaryInitialization = () async {
+      try {
+        await controller.initialize();
+        if (!identical(_ordinaryController, controller)) {
+          throw StateError('Cookie-store initialization was cancelled.');
+        }
+        _ordinaryFailures = controller.processFailures.stream.listen((kind) {
+          if ((kind == 0 || kind == 1) &&
+              identical(_ordinaryController, controller)) {
+            unawaited(resetSharedCookieController());
+          }
+        });
+        return controller;
+      } catch (_) {
+        if (identical(_ordinaryController, controller)) {
+          _ordinaryController = null;
+          _ordinaryInitialization = null;
+        }
+        try {
+          await controller.dispose();
+        } catch (_) {}
+        rethrow;
+      }
+    }();
+  }
+
+  @visibleForTesting
+  static Future<void> resetSharedCookieController() async {
+    final pending = _ordinaryInitialization;
+    final subscription = _ordinaryFailures;
+    _ordinaryController = null;
+    _ordinaryInitialization = null;
+    _ordinaryFailures = null;
     try {
-      return await controller.clearCookiesWithResult();
-    } finally {
-      if (_sessionController == null) await controller.dispose();
+      await subscription?.cancel();
+      if (pending != null) await (await pending).dispose();
+    } catch (error) {
+      debugPrint(
+        'webview_all_windows: releasing the ordinary cookie store failed: $error',
+      );
+    }
+  }
+
+  Future<T> _withController<T>(
+    Future<T> Function(native_webview.WebviewController) operation,
+  ) async {
+    final controller = _sessionController ?? await _ordinaryStore();
+    if (_sessionController != null) await controller.initialize();
+    try {
+      return await operation(controller);
+    } on PlatformException {
+      // Never replay a write with an unknown outcome. Recreate the ordinary
+      // helper for the next explicit operation after a native process failure.
+      if (_sessionController == null &&
+          identical(_ordinaryController, controller)) {
+        await resetSharedCookieController();
+      }
+      rethrow;
     }
   }
 
   @override
+  Future<bool> clearCookies() =>
+      _withController((controller) => controller.clearCookiesWithResult());
+
+  @override
   Future<void> setCookie(WebViewCookie cookie) async {
+    cookie.validate();
     _validateCookieFields(
       name: cookie.name,
       domain: cookie.domain,
@@ -69,6 +163,12 @@ class WindowsWebViewCookieManager extends PlatformWebViewCookieManager {
         value: cookie.value,
         domain: cookie.domain,
         path: cookie.path,
+        expires: cookie.expires,
+        isSecure: cookie.isSecure,
+        isHttpOnly: cookie.isHttpOnly,
+        sameSite: cookie.sameSite == null
+            ? null
+            : WindowsWebViewCookieSameSite.values[cookie.sameSite!.index],
       ),
     );
   }
@@ -83,6 +183,13 @@ class WindowsWebViewCookieManager extends PlatformWebViewCookieManager {
             value: cookie.value,
             domain: cookie.domain,
             path: cookie.path,
+            expires: cookie.isSession == true ? null : cookie.expires,
+            isSecure: cookie.isSecure,
+            isHttpOnly: cookie.isHttpOnly,
+            isSession: cookie.isSession,
+            sameSite: cookie.sameSite == null
+                ? null
+                : WebViewCookieSameSite.values[cookie.sameSite!.index],
           ),
         )
         .toList();
@@ -96,10 +203,8 @@ class WindowsWebViewCookieManager extends PlatformWebViewCookieManager {
       path: cookie.path,
     );
 
-    final controller = _sessionController ?? native_webview.WebviewController();
-    await controller.initialize();
-    try {
-      await controller.setCookie(
+    await _withController(
+      (controller) => controller.setCookie(
         name: cookie.name,
         value: cookie.value,
         domain: cookie.domain,
@@ -108,63 +213,40 @@ class WindowsWebViewCookieManager extends PlatformWebViewCookieManager {
         isHttpOnly: cookie.isHttpOnly,
         isSecure: cookie.isSecure,
         sameSite: cookie.sameSite?.index,
-      );
-    } finally {
-      if (_sessionController == null) await controller.dispose();
-    }
+      ),
+    );
   }
 
   /// Returns full Windows WebView2 cookies visible for [url].
-  Future<List<WindowsWebViewCookie>> getWindowsCookies(Uri url) async {
-    final controller = _sessionController ?? native_webview.WebviewController();
-    await controller.initialize();
-    try {
-      final cookies = await controller.getCookies(url.toString());
-      return cookies;
-    } finally {
-      if (_sessionController == null) await controller.dispose();
-    }
-  }
+  Future<List<WindowsWebViewCookie>> getWindowsCookies(Uri url) =>
+      _withController((controller) => controller.getCookies(url.toString()));
 
   /// Deletes a cookie by its native WebView2 cookie identity.
-  Future<void> deleteWindowsCookie(WindowsWebViewCookie cookie) async {
-    final controller = _sessionController ?? native_webview.WebviewController();
-    await controller.initialize();
-    try {
-      await controller.deleteCookie(cookie);
-    } finally {
-      if (_sessionController == null) await controller.dispose();
-    }
-  }
+  Future<void> deleteWindowsCookie(WindowsWebViewCookie cookie) =>
+      _withController((controller) async {
+        await controller.deleteCookie(cookie);
+        await controller.getCookies('');
+      });
 
   /// Deletes cookies matching [name] and [url].
   Future<void> deleteCookiesWithNameAndUrl({
     required String name,
     required Uri url,
-  }) async {
-    final controller = _sessionController ?? native_webview.WebviewController();
-    await controller.initialize();
-    try {
-      await controller.deleteCookiesWithNameAndUrl(name, url.toString());
-    } finally {
-      if (_sessionController == null) await controller.dispose();
-    }
-  }
+  }) => _withController((controller) async {
+    await controller.deleteCookiesWithNameAndUrl(name, url.toString());
+    await controller.getCookies('');
+  });
 
   /// Deletes cookies matching [name], [domain], and [path].
   Future<void> deleteCookiesWithNameDomainAndPath({
     required String name,
     required String domain,
     required String path,
-  }) async {
-    final controller = _sessionController ?? native_webview.WebviewController();
-    await controller.initialize();
-    try {
-      await controller.deleteCookiesWithNameDomainAndPath(name, domain, path);
-    } finally {
-      if (_sessionController == null) await controller.dispose();
-    }
-  }
+  }) => _withController((controller) async {
+    await controller.deleteCookiesWithNameDomainAndPath(name, domain, path);
+    // Wait for the native cookie queue, without restarting its browser.
+    await controller.getCookies('');
+  });
 
   void _validateCookieFields({
     required String name,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -25,11 +26,54 @@ void main() {
 
   tearDown(() async {
     try {
+      await WindowsWebViewCookieManager.resetSharedCookieController();
       await _disposeTestControllers();
     } finally {
       _clearWindowsWebViewCreationMock();
     }
   });
+
+  test(
+    'selective clearing uses only native category flags without a renderer',
+    () async {
+      var created = 0;
+      final masks = <int>[];
+      _mockWindowsWebViewCreation(
+        beforeCreateWebView: () async {
+          created++;
+        },
+      );
+      const channel = MethodChannel('com.abandoft.webview_all_windows/data');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        masks.add(call.arguments as int);
+        return true;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      final manager = WindowsWebViewDataManager(
+        const PlatformWebViewDataManagerCreationParams(),
+      );
+      expect(
+        (await manager.getCapabilities()).canClear({WebViewDataType.cookies}),
+        isTrue,
+      );
+      final result = await manager.clearWebsiteData(
+        dataTypes: {
+          WebViewDataType.cookies,
+          WebViewDataType.localStorage,
+          WebViewDataType.sessionStorage,
+        },
+      );
+      expect(masks, [0, 0x44]);
+      expect(created, 0);
+      expect(result.clearedDataTypes, {
+        WebViewDataType.cookies,
+        WebViewDataType.localStorage,
+      });
+      expect(result.unsupportedDataTypes, {WebViewDataType.sessionStorage});
+    },
+  );
 
   test('registerWith sets the Windows WebView platform implementation', () {
     final WebViewPlatform? previousInstance = WebViewPlatform.instance;
@@ -43,6 +87,41 @@ void main() {
 
     expect(WebViewPlatform.instance, isA<WindowsWebViewPlatform>());
   });
+
+  test(
+    'full-document capture bounds native dimensions and decodes PNG data',
+    () async {
+      final controller = _createNativeController();
+      await controller.initialize();
+      final calls = <MethodCall>[];
+      var width = 500.2;
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(
+        MethodChannel('$windowsWebViewChannelPrefix/$_activeMockTextureId'),
+        (call) async {
+          calls.add(call);
+          if (call.method == 'captureLayoutMetrics') {
+            return jsonEncode({
+              'cssContentSize': {'width': width, 'height': 1800.1},
+            });
+          }
+          if (call.method == 'captureFullDocument') {
+            return jsonEncode({
+              'data': base64Encode([1, 2, 3]),
+            });
+          }
+          throw MissingPluginException();
+        },
+      );
+      expect(await controller.captureFullDocument(), [1, 2, 3]);
+      expect(calls.last.arguments, {'width': 501.0, 'height': 1801.0});
+      calls.clear();
+      width = 16000000;
+      await expectLater(controller.captureFullDocument(), throwsStateError);
+      expect(calls.map((call) => call.method), ['captureLayoutMetrics']);
+    },
+  );
 
   test(
     'download delegate preserves native request and reports saved result',
@@ -550,6 +629,84 @@ void main() {
     );
   });
 
+  test(
+    'origin-data queries use the configured environment before creating a view',
+    () async {
+      final calls = <String>[];
+      WindowsEnvironmentOptions? environmentOptions;
+      _mockWindowsWebViewCreation(
+        onEnsureEnvironment: (options) {
+          calls.add('ensure');
+          environmentOptions = options;
+        },
+        beforeCreateWebView: () async => calls.add('create'),
+        onDisposeWebView: () => calls.add('dispose'),
+      );
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      final channel = MethodChannel(
+        '$windowsWebViewChannelPrefix/$_activeMockTextureId',
+      );
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        expect(call.method, 'queryOriginData');
+        expect(jsonDecode(call.arguments as String), {
+          'origin': 'https://example.test',
+        });
+        calls.add('query');
+        return jsonEncode({
+          'usageBreakdown': [
+            {'storageType': 'local_storage', 'usage': 42},
+          ],
+        });
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      final manager = WindowsWebViewDataManager(
+        const WindowsWebViewDataManagerCreationParams(
+          userDataPath: r'C:\AppData\WebView2',
+          browserExePath: r'C:\Runtime',
+          additionalArguments: '--disable-features=Example',
+        ),
+      );
+
+      final records = await manager.getWebsiteDataRecords(
+        target: WebViewDataTarget.origin(Uri.parse('https://example.test')),
+        dataTypes: {WebViewDataType.localStorage},
+      );
+
+      expect(calls, ['ensure', 'create', 'query', 'dispose']);
+      expect(environmentOptions?.userDataPath, r'C:\AppData\WebView2');
+      expect(environmentOptions?.browserExePath, r'C:\Runtime');
+      expect(
+        environmentOptions?.additionalArguments,
+        '--disable-features=Example',
+      );
+      expect(records?.single.sizeBytes, 42);
+    },
+  );
+
+  test(
+    'origin-data configuration conflicts do not create or query a view',
+    () async {
+      var created = 0;
+      _mockWindowsWebViewCreation(
+        ensureEnvironmentFailureCode: 'environment_configuration_conflict',
+        beforeCreateWebView: () async => created++,
+      );
+      final manager = WindowsWebViewDataManager(
+        const WindowsWebViewDataManagerCreationParams(
+          userDataPath: r'C:\OtherProfile',
+        ),
+      );
+
+      final records = await manager.getWebsiteDataRecords(
+        target: WebViewDataTarget.origin(Uri.parse('https://example.test')),
+      );
+
+      expect(created, 0);
+      expect(records, isNull);
+    },
+  );
+
   test('website-data consumers wait for initialization failure', () async {
     final initialization = Completer<void>();
     final requested = Completer<void>();
@@ -594,7 +751,7 @@ void main() {
   });
 
   test(
-    'cookie clearing creates a view without requesting default options',
+    'ordinary cookie managers share a live store without requesting default options',
     () async {
       var ensureCalls = 0;
       var createCalls = 0;
@@ -613,9 +770,34 @@ void main() {
 
       expect(ensureCalls, 0);
       expect(createCalls, 1);
+      expect(disposeCalls, 0);
+      final second = WindowsWebViewCookieManager(
+        const PlatformWebViewCookieManagerCreationParams(),
+      );
+      await second.clearCookies();
+      expect(createCalls, 1);
+      await WindowsWebViewCookieManager.resetSharedCookieController();
       expect(disposeCalls, 1);
     },
   );
+
+  test('failed ordinary cookie-store initialization can be retried', () async {
+    var attempts = 0;
+    _mockWindowsWebViewCreation(
+      beforeCreateWebView: () async {
+        if (++attempts == 1) throw PlatformException(code: 'creation_failed');
+      },
+    );
+    final manager = WindowsWebViewCookieManager(
+      const PlatformWebViewCookieManagerCreationParams(),
+    );
+    await expectLater(
+      manager.clearCookies(),
+      throwsA(isA<PlatformException>()),
+    );
+    await manager.clearCookies();
+    expect(attempts, 2);
+  });
 
   test(
     'reports website-data clearing as unsupported on old runtimes',
@@ -1264,6 +1446,219 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(attachmentStates, <bool>[true, false, true]);
+  });
+
+  _widgetTest(
+    'button events carry current coordinates after the view moves under the pointer',
+    (tester) async {
+      final buttons = <WindowsPointerButtonData>[];
+      _mockWindowsWebViewCreation(onSetPointerButton: buttons.add);
+      final controller = _createNativeController();
+      await controller.initialize();
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final offset = ValueNotifier<Offset>(const Offset(100, 80));
+      addTearDown(offset.dispose);
+      final child = SizedBox(
+        width: 200,
+        height: 100,
+        child: native_webview.Webview(controller),
+      );
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: ValueListenableBuilder<Offset>(
+            valueListenable: offset,
+            child: child,
+            builder: (_, value, child) => Stack(
+              children: [
+                Positioned(left: value.dx, top: value.dy, child: child!),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(const Offset(140, 110));
+      offset.value = const Offset(120, 95);
+      await tester.pumpAndSettle();
+      await mouse.down(const Offset(140, 110));
+      await mouse.up();
+      await mouse.removePointer();
+      await tester.pump();
+      expect(buttons, hasLength(2));
+      expect(buttons.map((v) => v.isDown), [true, false]);
+      for (final event in buttons) {
+        expect(event.position!.x, 20);
+        expect(event.position!.y, 15);
+      }
+    },
+  );
+
+  _widgetTest(
+    'native origin follows retained ancestor movement without resizing',
+    (tester) async {
+      final sizes = <WindowsSizeData>[];
+      _mockWindowsWebViewCreation(onSetSize: sizes.add);
+      final controller = _createNativeController();
+      await controller.initialize();
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final offset = ValueNotifier<Offset>(Offset.zero);
+      addTearDown(offset.dispose);
+      final child = RepaintBoundary(
+        child: SizedBox(
+          width: 200,
+          height: 80,
+          child: native_webview.Webview(controller),
+        ),
+      );
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Stack(
+            children: [
+              Positioned(
+                left: 25,
+                top: 35,
+                child: ValueListenableBuilder<Offset>(
+                  valueListenable: offset,
+                  child: child,
+                  builder: (_, value, child) =>
+                      Transform.translate(offset: value, child: child),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(sizes.last.origin!.x, 50);
+      expect(sizes.last.origin!.y, 70);
+      final width = sizes.last.width, height = sizes.last.height;
+      final count = sizes.length;
+      offset.value = const Offset(45, -10);
+      await tester.pumpAndSettle();
+      expect(sizes.last.origin!.x, 140);
+      expect(sizes.last.origin!.y, 50);
+      expect(sizes.last.width, width);
+      expect(sizes.last.height, height);
+      expect(sizes.length, count + 1);
+      await tester.pump();
+      await tester.pump();
+      expect(sizes.length, count + 1);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    },
+  );
+
+  _widgetTest('native geometry includes uniform visual scale and DPI', (
+    tester,
+  ) async {
+    final sizes = <WindowsSizeData>[];
+    _mockWindowsWebViewCreation(onSetSize: sizes.add);
+    final controller = _createNativeController();
+    await controller.initialize();
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Stack(
+          children: [
+            Positioned(
+              left: 30,
+              top: 20,
+              child: Transform.scale(
+                scale: 1.5,
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: 200,
+                  height: 80,
+                  child: native_webview.Webview(controller),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(sizes.last.origin!.x, 60);
+    expect(sizes.last.origin!.y, 40);
+    expect(sizes.last.width, 200);
+    expect(sizes.last.height, 80);
+    expect(sizes.last.scaleFactor, 3);
+  });
+
+  _widgetTest('zero scale parks a retained view until it becomes visible', (
+    tester,
+  ) async {
+    final attachments = <bool>[];
+    _mockWindowsWebViewCreation(onSetSurfaceAttached: attachments.add);
+    final controller = _createNativeController();
+    await controller.initialize();
+    final scale = ValueNotifier<double>(1);
+    addTearDown(scale.dispose);
+    final child = SizedBox(
+      width: 200,
+      height: 80,
+      child: native_webview.Webview(controller),
+    );
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: ValueListenableBuilder<double>(
+          valueListenable: scale,
+          child: child,
+          builder: (_, value, child) =>
+              Transform.scale(scale: value, child: child),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(attachments, [true]);
+    scale.value = 0;
+    await tester.pumpAndSettle();
+    expect(attachments, [true, false]);
+    scale.value = 1;
+    await tester.pumpAndSettle();
+    expect(attachments, [true, false, true]);
+  });
+
+  _widgetTest('pending geometry cannot attach a disposed widget', (
+    tester,
+  ) async {
+    final held = Completer<void>();
+    final sizes = <WindowsSizeData>[], attachments = <bool>[];
+    _mockWindowsWebViewCreation(
+      onSetSize: (value) {
+        sizes.add(value);
+        return held.future;
+      },
+      onSetSurfaceAttached: attachments.add,
+    );
+    final controller = _createNativeController();
+    await controller.initialize();
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: SizedBox(
+          width: 200,
+          height: 80,
+          child: native_webview.Webview(controller),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(sizes, hasLength(1));
+    expect(attachments, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    held.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(attachments, isEmpty);
   });
 
   _widgetTest('native surface updates an explicit scale factor', (
@@ -2929,6 +3324,61 @@ void main() {
     },
   );
 
+  for (final nativeRequest in [false, true]) {
+    test(
+      'stop cancels pending ${nativeRequest ? 'native' : 'controller'} navigation policy',
+      () async {
+        final loaded = <WindowsLoadRequestData>[];
+        _mockWindowsWebViewCreation(onLoadRequest: loaded.add);
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMessageHandler(
+          _hostApiChannel('stop'),
+          (_) async => _encodePigeonSuccess(),
+        );
+        addTearDown(
+          () => messenger.setMockMessageHandler(_hostApiChannel('stop'), null),
+        );
+        final controller = _createWindowsController(
+          const PlatformWebViewControllerCreationParams(),
+        );
+        final started = Completer<void>();
+        final decision = Completer<NavigationDecision>();
+        final delegate = WindowsNavigationDelegate(
+          const PlatformNavigationDelegateCreationParams(),
+        );
+        await delegate.setOnNavigationRequest((_) {
+          started.complete();
+          return decision.future;
+        });
+        await controller.setPlatformNavigationDelegate(delegate);
+        final Future<Object?> pending = nativeRequest
+            ? _invokeWindowsWebViewMethod(
+                'navigationRequested',
+                <String, Object?>{
+                  'url': 'https://example.test/pending',
+                  'isUserInitiated': true,
+                  'isRedirected': false,
+                },
+              )
+            : controller
+                  .loadRequest(
+                    LoadRequestParams(
+                      uri: Uri.parse('https://example.test/pending'),
+                    ),
+                  )
+                  .then<Object?>((_) => null);
+        await started.future.timeout(const Duration(seconds: 2));
+        await controller.stopLoading();
+        final result = await pending.timeout(const Duration(seconds: 2));
+        if (nativeRequest) expect(result, isFalse);
+        decision.complete(NavigationDecision.navigate);
+        await Future<void>.delayed(Duration.zero);
+        expect(loaded, isEmpty);
+      },
+    );
+  }
+
   test(
     'uses encoded JavaScript channel names in the current document',
     () async {
@@ -3165,10 +3615,11 @@ void _mockWindowsWebViewCreation({
   FutureOr<void> Function(bool enabled)? onSetBrowserAcceleratorKeysEnabled,
   FutureOr<void> Function(bool enabled)? onSetDownloadsEnabled,
   void Function(bool enabled)? onSetNavigationRequestCallbacksEnabled,
-  void Function(WindowsSizeData size)? onSetSize,
+  FutureOr<void> Function(WindowsSizeData size)? onSetSize,
   int setSizeFailureCount = 0,
   void Function(bool attached)? onSetSurfaceAttached,
   void Function(bool focused, int reason)? onSetFocus,
+  void Function(WindowsPointerButtonData button)? onSetPointerButton,
   void Function()? onDisposeWebView,
   void Function({
     required bool alert,
@@ -3416,7 +3867,7 @@ void _mockWindowsWebViewCreation({
     ByteData? message,
   ) async {
     final args = _decodePigeonArgs(message);
-    onSetSize?.call(args[1]! as WindowsSizeData);
+    await onSetSize?.call(args[1]! as WindowsSizeData);
     if (remainingSetSizeFailures > 0) {
       remainingSetSizeFailures -= 1;
       return WindowsWebViewHostApi.pigeonChannelCodec.encodeMessage(<Object?>[
@@ -3451,6 +3902,17 @@ void _mockWindowsWebViewCreation({
     return _encodePigeonSuccess();
   });
 
+  messenger.setMockMessageHandler(
+    _hostApiChannel('setCursorPos'),
+    (message) async => _encodePigeonSuccess(),
+  );
+  messenger.setMockMessageHandler(_hostApiChannel('setPointerButton'), (
+    message,
+  ) async {
+    final args = _decodePigeonArgs(message);
+    onSetPointerButton?.call(args[1]! as WindowsPointerButtonData);
+    return _encodePigeonSuccess();
+  });
   messenger.setMockMethodCallHandler(
     MethodChannel('$windowsWebViewChannelPrefix/$_activeMockTextureId'),
     (MethodCall call) async => call.method == 'setDownloadDelegateEnabled'
@@ -3532,6 +3994,8 @@ void _clearWindowsWebViewCreationMock() {
     null,
   );
   messenger.setMockMessageHandler(_hostApiChannel('setSize'), null);
+  messenger.setMockMessageHandler(_hostApiChannel('setCursorPos'), null);
+  messenger.setMockMessageHandler(_hostApiChannel('setPointerButton'), null);
   messenger.setMockMessageHandler(_hostApiChannel('setSurfaceAttached'), null);
   messenger.setMockMessageHandler(_hostApiChannel('setFocus'), null);
   messenger.setMockMessageHandler(_hostApiChannel('disposeWebView'), null);

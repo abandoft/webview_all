@@ -156,12 +156,14 @@ class WebviewController extends ValueNotifier<WebviewValue> {
     String? userDataPath,
     String? browserExePath,
     String? additionalArguments,
+    List<String>? customSchemes,
   }) async {
     return _hostApi.initializeEnvironment(
       WindowsEnvironmentOptions(
         userDataPath: userDataPath,
         browserExePath: browserExePath,
         additionalArguments: additionalArguments,
+        customSchemes: customSchemes,
       ),
     );
   }
@@ -179,12 +181,14 @@ class WebviewController extends ValueNotifier<WebviewValue> {
     String? userDataPath,
     String? browserExePath,
     String? additionalArguments,
+    List<String>? customSchemes,
   }) async {
     return _hostApi.ensureEnvironment(
       WindowsEnvironmentOptions(
         userDataPath: userDataPath,
         browserExePath: browserExePath,
         additionalArguments: additionalArguments,
+        customSchemes: customSchemes,
       ),
     );
   }
@@ -296,6 +300,196 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   }
 
   late MethodChannel _methodChannel;
+  static const _browserChannel = MethodChannel(
+    'com.abandoft.webview_all_windows/browser',
+  );
+  Future<bool> attachNewWindow(
+    String requestId,
+    WebviewController? child,
+  ) async {
+    if (_isDisposed) return false;
+    if (child != null) await child.ready;
+    return await _browserChannel.invokeMethod<bool>('attachNewWindow', {
+          'parentId': _textureId,
+          'childId': child?._textureId,
+          'requestId': requestId,
+        }) ??
+        false;
+  }
+
+  Future<bool> supportsNewWindows() async {
+    await ready;
+    return await _methodChannel.invokeMethod<bool>('supportsNewWindows') ??
+        false;
+  }
+
+  Future<void> setNewWindowDelegateEnabled(bool enabled) async {
+    await ready;
+    await _methodChannel.invokeMethod<void>(
+      'setNewWindowDelegateEnabled',
+      enabled,
+    );
+  }
+
+  final newWindowRequests = StreamController<Map<Object?, Object?>>.broadcast();
+  final windowCloseRequests = StreamController<void>.broadcast();
+
+  static const MethodChannel _dataChannel = MethodChannel(
+    'com.abandoft.webview_all_windows/data',
+  );
+
+  static Future<bool> clearWebsiteDataForEnvironment(int kinds) async =>
+      await _dataChannel.invokeMethod<bool>('clearWebsiteData', kinds) ?? false;
+
+  Future<bool> clearWebsiteData(int kinds) async {
+    await ready;
+    if (_isDisposed) return false;
+    return await _methodChannel.invokeMethod<bool>('clearWebsiteData', kinds) ??
+        false;
+  }
+
+  Future<bool> supportsPdf() async {
+    await ready;
+    return await _methodChannel.invokeMethod<bool>('supportsPdf') ?? false;
+  }
+
+  Future<bool> clearNavigationHistory() async {
+    await ready;
+    if (_isDisposed) return false;
+    return await _methodChannel.invokeMethod<bool>('clearNavigationHistory') ??
+        false;
+  }
+
+  Future<bool?> browserFlag(String method, [bool? value]) async {
+    await ready;
+    if (_isDisposed) return false;
+    return _methodChannel.invokeMethod<bool>(method, value);
+  }
+
+  Future<Uint8List?> captureArchive() async {
+    await ready;
+    if (_isDisposed) return null;
+    final raw = await _methodChannel.invokeMethod<String>('createArchive');
+    if (raw == null) return null;
+    final decoded = jsonDecode(raw) as Map;
+    final data = decoded['data'];
+    if (data is! String || data.isEmpty) return null;
+    final bytes = Uint8List.fromList(utf8.encode(data));
+    if (bytes.length > 64 * 1024 * 1024) {
+      throw StateError('The archive exceeds the output limit.');
+    }
+    return bytes;
+  }
+
+  Future<String?> originDataOperation(String method, String parameters) async {
+    await ready;
+    if (_isDisposed) return null;
+    return _methodChannel.invokeMethod<String>(method, parameters);
+  }
+
+  Future<Object?> invokeBrowserOperation(
+    String method,
+    Map<String, Object?> arguments,
+  ) async {
+    await ready;
+    if (_isDisposed) return null;
+    return _methodChannel.invokeMethod<Object?>(method, arguments);
+  }
+
+  Future<Uint8List?> captureFullDocument() async {
+    await ready;
+    if (_isDisposed) return null;
+    final metricsJson = await _methodChannel.invokeMethod<String>(
+      'captureLayoutMetrics',
+    );
+    if (metricsJson == null || _isDisposed) return null;
+    final metrics = jsonDecode(metricsJson) as Map<String, Object?>;
+    final size = metrics['cssContentSize'] as Map<String, Object?>?;
+    if (size == null) {
+      throw StateError('The Runtime cannot report CSS document bounds.');
+    }
+    final width = (size['width'] as num).toDouble().ceilToDouble();
+    final height = (size['height'] as num).toDouble().ceilToDouble();
+    if (!width.isFinite ||
+        !height.isFinite ||
+        width <= 0 ||
+        height <= 0 ||
+        width * height > 16 * 1024 * 1024) {
+      throw StateError(
+        'The document exceeds the 16 Mi pixel screenshot limit.',
+      );
+    }
+    final result = await _methodChannel.invokeMethod<String>(
+      'captureFullDocument',
+      {'width': width, 'height': height},
+    );
+    if (result == null || _isDisposed) return null;
+    final data =
+        (jsonDecode(result) as Map<String, Object?>)['data'] as String?;
+    if (data == null || data.length > 90 * 1024 * 1024) {
+      throw StateError('The native screenshot exceeds the output limit.');
+    }
+    final bytes = base64Decode(data);
+    if (bytes.length > 64 * 1024 * 1024) {
+      throw StateError(
+        'The native screenshot exceeds the 64 MiB output limit.',
+      );
+    }
+    return bytes;
+  }
+
+  Future<Uint8List?> capturePage({
+    required bool pdf,
+    Map<String, Object?>? options,
+  }) async {
+    await ready;
+    if (_isDisposed) return null;
+    return _methodChannel.invokeMethod<Uint8List>(
+      pdf ? 'createPdf' : 'takeScreenshot',
+      options,
+    );
+  }
+
+  Future<bool> supportsFind() async {
+    await ready;
+    return await _methodChannel.invokeMethod<bool>('supportsFind') ?? false;
+  }
+
+  Future<Map<String, Object?>> getNavigationHistoryData() async {
+    await ready;
+    final data = await _methodChannel.invokeMethod<String>(
+      'getNavigationHistory',
+    );
+    return Map<String, Object?>.from(jsonDecode(data!) as Map);
+  }
+
+  Future<bool> navigateToHistoryEntry(int id) async {
+    await ready;
+    return await _methodChannel.invokeMethod<bool>(
+          'navigateToHistoryEntry',
+          id,
+        ) ??
+        false;
+  }
+
+  Future<Map<Object?, Object?>?> findText(
+    String text,
+    bool forward,
+    bool caseSensitive,
+  ) async {
+    await ready;
+    return _methodChannel.invokeMapMethod<Object?, Object?>('findText', {
+      'text': text,
+      'forward': forward,
+      'caseSensitive': caseSensitive,
+    });
+  }
+
+  Future<void> clearFindMatches() async {
+    await ready;
+    await _methodChannel.invokeMethod<void>('clearFindMatches');
+  }
+
   late EventChannel _eventChannel;
   StreamSubscription? _eventStreamSubscription;
 
@@ -385,11 +579,22 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   /// A stream reflecting whether the document currently contains full-screen elements.
   Stream<bool> get containsFullScreenElementChanged =>
       _containsFullScreenElementChangedStreamController.stream;
+  final processFailures = StreamController<int>.broadcast();
 
-  WebviewController({this.incognito = false})
-    : super(WebviewValue.uninitialized());
+  WebviewController({
+    this.incognito = false,
+    this.profileName,
+    this.customSchemes = const [],
+  }) : super(WebviewValue.uninitialized());
 
   final bool incognito;
+  final String? profileName;
+  final List<String> customSchemes;
+  bool _customSchemesReady = false;
+  Future<bool> supportsCustomSchemes() async {
+    await ready;
+    return _customSchemesReady;
+  }
 
   static Future<bool> isIncognitoSupported() => _hostApi.isIncognitoSupported();
 
@@ -405,7 +610,19 @@ class WebviewController extends ValueNotifier<WebviewValue> {
 
   Future<void> _initialize() async {
     try {
-      final reply = await (incognito
+      if (customSchemes.isNotEmpty) {
+        try {
+          await ensureEnvironment(customSchemes: customSchemes);
+          _customSchemesReady = true;
+        } catch (error) {
+          debugPrint(
+            'webview_all_windows: custom schemes must be declared before WebView2 environment initialization. Scheme handling is unavailable for this controller; ordinary browsing retains the selected profile. $error',
+          );
+        }
+      }
+      final reply = await (profileName != null
+          ? _hostApi.createProfileWebView(profileName!, incognito)
+          : incognito
           ? _hostApi.createPrivateWebView()
           : _hostApi.createWebView());
       _textureId = reply.textureId;
@@ -516,8 +733,19 @@ class WebviewController extends ValueNotifier<WebviewValue> {
               ));
             }
             break;
+          case 'newWindowRequested':
+            newWindowRequests.add(
+              Map<Object?, Object?>.from(map['value'] as Map),
+            );
+            break;
+          case 'windowCloseRequested':
+            windowCloseRequests.add(null);
+            break;
           case 'containsFullScreenElementChanged':
             _containsFullScreenElementChangedStreamController.add(map['value']);
+            break;
+          case 'processFailed':
+            processFailures.add((map['value'] as num).toInt());
             break;
         }
       });
@@ -789,6 +1017,9 @@ class WebviewController extends ValueNotifier<WebviewValue> {
     unawaited(_securityStateChangedStreamController.close());
     unawaited(_titleStreamController.close());
     unawaited(_cursorStreamController.close());
+    unawaited(newWindowRequests.close());
+    unawaited(windowCloseRequests.close());
+    unawaited(processFailures.close());
     unawaited(_focusEvents.close());
     unawaited(_webMessageStreamController.close());
     unawaited(_webMessageWithSourceStreamController.close());
@@ -1342,14 +1573,24 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   }
 
   /// Indicates whether the specified [button] is currently down.
-  Future<void> _setPointerButtonState(PointerButton button, bool isDown) async {
+  Future<void> _setPointerButtonState(
+    PointerButton button,
+    bool isDown, {
+    Offset? position,
+  }) async {
     if (_isDisposed) {
       return;
     }
     assert(value.isInitialized);
     return _hostApi.setPointerButton(
       _textureId,
-      WindowsPointerButtonData(button: button.index, isDown: isDown),
+      WindowsPointerButtonData(
+        button: button.index,
+        isDown: isDown,
+        position: position?.isFinite == true
+            ? WindowsPointData(x: position!.dx, y: position.dy)
+            : null,
+      ),
     );
   }
 
@@ -1363,7 +1604,7 @@ class WebviewController extends ValueNotifier<WebviewValue> {
   }
 
   /// Sets the surface size to the provided [size].
-  Future<void> _setSize(Size size, double scaleFactor) async {
+  Future<void> _setSize(Size size, double scaleFactor, {Offset? origin}) async {
     if (_isDisposed || _renderingError.value != null) {
       return;
     }
@@ -1375,6 +1616,9 @@ class WebviewController extends ValueNotifier<WebviewValue> {
           width: size.width,
           height: size.height,
           scaleFactor: scaleFactor,
+          origin: origin == null
+              ? null
+              : WindowsPointData(x: origin.dx, y: origin.dy),
         ),
       );
     } catch (error) {
@@ -1466,6 +1710,12 @@ class Webview extends StatefulWidget {
   _WebviewState createState() => _WebviewState();
 }
 
+typedef _WindowsSurfaceGeometry = ({
+  Size size,
+  double scaleFactor,
+  Offset? origin,
+});
+
 class _WebviewState extends State<Webview> with WidgetsBindingObserver {
   final GlobalKey _key = GlobalKey();
   final FocusNode _focusNode = FocusNode(
@@ -1489,6 +1739,11 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
   bool _surfaceAttached = false;
   bool _visibilityCheckScheduled = false;
   bool _surfaceSizeReportScheduled = false;
+  bool _surfaceGeometryReady = false;
+  bool _updatingSurfaceGeometry = false;
+  bool _reportSurfaceAgain = false;
+  bool _reportedGeometryLimitation = false;
+  _WindowsSurfaceGeometry? _lastSurfaceGeometry;
   bool _renderingRetryInProgress = false;
 
   @override
@@ -1611,8 +1866,11 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
       );
       if (_surfaceAttached) {
         oldWidget.controller._detachSurface();
-        _controller._attachSurface();
+        _surfaceAttached = false;
       }
+      _surfaceGeometryReady = false;
+      _lastSurfaceGeometry = null;
+      _focusNode.canRequestFocus = false;
       unawaited(_cursorSubscription?.cancel());
       _cursorSubscription = null;
       _surfaceSizeGeneration += 1;
@@ -1671,6 +1929,7 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
     final bool shouldAttach =
         _surfacePainted &&
         _applicationVisible &&
+        _surfaceGeometryReady &&
         _controller._renderingError.value == null;
     _focusNode.canRequestFocus =
         shouldAttach && _controller.value.isInitialized;
@@ -1703,6 +1962,7 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
         _handleSurfacePainted(
           renderObject.attached && renderObject.isEffectivelyPainted,
         );
+        unawaited(_reportSurfaceSize());
       }
       // Retained layers can become visible again without repainting the child.
       _scheduleVisibilityCheck();
@@ -1778,7 +2038,11 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
                     }
                     final button = getButton(ev.buttons);
                     _downButtons[ev.pointer] = button;
-                    _controller._setPointerButtonState(button, true);
+                    _controller._setPointerButtonState(
+                      button,
+                      true,
+                      position: ev.localPosition,
+                    );
                   },
                   onPointerUp: (ev) {
                     _pointerKind = ev.kind;
@@ -1794,7 +2058,11 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
                     }
                     final button = _downButtons.remove(ev.pointer);
                     if (button != null) {
-                      _controller._setPointerButtonState(button, false);
+                      _controller._setPointerButtonState(
+                        button,
+                        false,
+                        position: ev.localPosition,
+                      );
                     }
                   },
                   onPointerCancel: (ev) {
@@ -1851,8 +2119,11 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
     setState(() {
       _renderingRetryInProgress = true;
     });
+    _surfaceGeometryReady = false;
+    _syncSurfaceAttachment();
     await _controller._retryRendering();
     if (mounted && _controller._renderingError.value == null) {
+      _lastSurfaceGeometry = null;
       await _reportSurfaceSize();
     }
     if (mounted) {
@@ -1875,28 +2146,105 @@ class _WebviewState extends State<Webview> with WidgetsBindingObserver {
     });
   }
 
+  _WindowsSurfaceGeometry? _readSurfaceGeometry() {
+    final box = _key.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached || !box.hasSize || box.size.isEmpty) {
+      return null;
+    }
+    RenderObject root = box;
+    while (root.parent != null) {
+      root = root.parent!;
+    }
+    if (root is! RenderView || root.child == null) return null;
+    // Exclude RenderView's DPR transform, then convert to physical HWND pixels.
+    final transform = box.getTransformTo(root.child!);
+    final values = transform.storage;
+    if (MatrixUtils.transformRect(transform, Offset.zero & box.size).isEmpty) {
+      return null;
+    }
+    final dpr = root.configuration.devicePixelRatio;
+    final origin = MatrixUtils.transformPoint(transform, Offset.zero) * dpr;
+    final planar =
+        values.every((value) => value.isFinite) &&
+        values[0] > 0 &&
+        values[5] > 0 &&
+        (values[0] - values[5]).abs() <= 1e-6 * (values[0] + values[5]) &&
+        (values[10] - 1).abs() < 1e-6 &&
+        (values[15] - 1).abs() < 1e-6 &&
+        const [
+          1,
+          2,
+          3,
+          4,
+          6,
+          7,
+          8,
+          9,
+          11,
+          14,
+        ].every((index) => values[index].abs() < 1e-6);
+    final rasterScale = widget.scaleFactor ?? dpr;
+    if ((!planar || (rasterScale - dpr).abs() > 1e-6) &&
+        !_reportedGeometryLimitation) {
+      _reportedGeometryLimitation = true;
+      debugPrint(
+        'webview_all_windows: rotation, perspective, non-uniform transforms or a custom scaleFactor that differs from the view DPI can make native input and popup positions approximate. Rendering continues; translation and positive uniform scaling use the actual view coordinates.',
+      );
+    }
+    return (
+      size: box.size,
+      scaleFactor: rasterScale * (planar ? values[0] : 1),
+      origin: origin.isFinite ? origin : null,
+    );
+  }
+
   Future<void> _reportSurfaceSize() async {
-    final int generation = ++_surfaceSizeGeneration;
-    final BuildContext? initialContext = _key.currentContext;
-    final RenderBox? box = initialContext?.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) {
+    if (_updatingSurfaceGeometry) {
+      _reportSurfaceAgain = true;
       return;
     }
-    final Size size = box.size;
-
+    _updatingSurfaceGeometry = true;
     try {
-      await _controller.ready;
-      if (!mounted || generation != _surfaceSizeGeneration) {
-        return;
-      }
-      final BuildContext? currentContext = _key.currentContext;
-      if (currentContext == null) {
-        return;
-      }
-      final double scaleFactor =
-          widget.scaleFactor ?? View.of(currentContext).devicePixelRatio;
-      await _controller._setSize(size, scaleFactor);
-    } catch (_) {}
+      do {
+        _reportSurfaceAgain = false;
+        final controller = _controller;
+        final generation = _surfaceSizeGeneration;
+        await controller.ready;
+        if (!mounted) return;
+        if (controller != _controller || generation != _surfaceSizeGeneration) {
+          _reportSurfaceAgain = true;
+          continue;
+        }
+        if (controller._renderingError.value != null) return;
+        final geometry = _readSurfaceGeometry();
+        if (geometry == null) {
+          _surfaceGeometryReady = false;
+          _syncSurfaceAttachment();
+          return;
+        }
+        if (geometry != _lastSurfaceGeometry) {
+          await controller._setSize(
+            geometry.size,
+            geometry.scaleFactor,
+            origin: geometry.origin,
+          );
+          if (!mounted) return;
+          if (controller != _controller ||
+              generation != _surfaceSizeGeneration) {
+            _reportSurfaceAgain = true;
+            continue;
+          }
+          if (controller._renderingError.value != null) return;
+          _lastSurfaceGeometry = geometry;
+        }
+        _surfaceGeometryReady = true;
+        _syncSurfaceAttachment();
+      } while (_reportSurfaceAgain && mounted);
+    } catch (_) {
+      // Controller initialization/disposal reports its own native failure.
+    } finally {
+      _updatingSurfaceGeometry = false;
+    }
   }
 
   @override

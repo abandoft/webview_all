@@ -1,7 +1,15 @@
 #pragma once
 
 #include <WebView2.h>
+// The SDK's custom-scheme property setters shadow WRL storage members.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4458)
+#endif
 #include <WebView2EnvironmentOptions.h>
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 #include <wil/com.h>
 
 #include <functional>
@@ -65,20 +73,26 @@ public:
   static void Create(std::optional<std::wstring> user_data_directory,
                      std::optional<std::wstring> browser_exe_path,
                      std::optional<std::string> arguments,
-                     WebviewHostCreationCallback callback);
+                     WebviewHostCreationCallback callback,
+                     const std::vector<std::string>& custom_schemes = {});
 
   void CreateWebview(
       HWND parent_window,
       winrt::com_ptr<ABI::Windows::UI::Composition::ICompositor> compositor,
-      WebviewCreationCallback callback, bool incognito = false);
+      WebviewCreationCallback callback, bool incognito = false, std::optional<std::wstring> profile_name = std::nullopt, bool profile_management = false);
 
   bool SupportsIncognito() const;
+  wil::com_ptr<ICoreWebView2FindOptions> CreateFindOptions();
+  wil::com_ptr<ICoreWebView2PrintSettings> CreatePrintSettings();
 
   void CreateWebViewPointerInfo(PointerInfoCreationCallback cb);
 
   static void ClearAllWebsiteData(ICoreWebView2 *webview,
                                   WebsiteDataClearingCallback callback);
   void ClearAllWebsiteData(WebsiteDataClearingCallback callback);
+  static void ClearWebsiteData(ICoreWebView2 *webview, uint64_t kinds,
+                               WebsiteDataClearingCallback callback);
+  void ClearWebsiteData(uint64_t kinds, WebsiteDataClearingCallback callback);
 
   wil::com_ptr<ICoreWebView2WebResourceRequest>
   CreateWebResourceRequest(const std::string &url, const std::string &method,
@@ -92,7 +106,7 @@ private:
   void
   CreateWebViewCompositionController(HWND hwnd,
                                      CompositionControllerCreationCallback cb,
-                                     bool incognito = false);
+                                     bool incognito = false, std::optional<std::wstring> profile_name = std::nullopt);
 };
 
 } // namespace webview_all_windows

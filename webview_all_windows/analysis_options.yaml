@@ -4,3 +4,5 @@ analyzer:
   exclude:
     - lib/src/**/*.g.dart
     - test/**/*.g.dart
+    - build/**
+    - windows/**

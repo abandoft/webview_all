@@ -1,10 +1,14 @@
 #include "plugin/windows_host_api.h"
+#include "plugin/profile_name.h"
+#include <mutex>
+#include <algorithm>
 
 #include <shellapi.h>
 #include <shlobj.h>
 #include <windows.h>
 
 #include <cstdint>
+#include <cmath>
 #include <filesystem>
 #include <functional>
 #include <iomanip>
@@ -165,6 +169,98 @@ WindowsHostApi::WindowsHostApi(flutter::TextureRegistrar *textures,
     : textures_(textures), messenger_(messenger),
       parent_window_(parent_window) {
   lifetime_state_->owner = this;
+  browser_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          messenger, "com.abandoft.webview_all_windows/browser",
+          &flutter::StandardMethodCodec::GetInstance());
+  browser_channel_->SetMethodCallHandler(
+      [weak = std::weak_ptr<LifetimeState>(lifetime_state_)](
+          const flutter::MethodCall<flutter::EncodableValue> &call,
+          std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+              result) {
+        const auto state = weak.lock();
+        if (!state || !state->owner) return;
+        if (call.method_name() == "profileManagementCapabilities" || call.method_name() == "listProfiles" ||
+            call.method_name() == "requestProfileDeletion") {
+          state->owner->HandleProfileMethod(call, std::move(result)); return;
+        }
+        if (call.method_name() != "attachNewWindow") {
+          result->NotImplemented();
+          return;
+        }
+        const auto *args =
+            call.arguments()
+                ? std::get_if<flutter::EncodableMap>(call.arguments())
+                : nullptr;
+        if (!args) {
+          result->Error("invalid_argument",
+                        "Window attachment parameters are required.");
+          return;
+        }
+        auto number = [args](const char *name) -> int64_t {
+          const auto value = args->find(flutter::EncodableValue(name));
+          if (value == args->end()) return -1;
+          if (const auto *int_value = std::get_if<int32_t>(&value->second))
+            return *int_value;
+          if (const auto *large = std::get_if<int64_t>(&value->second))
+            return *large;
+          return -1;
+        };
+        const auto id = args->find(flutter::EncodableValue("requestId"));
+        const auto *request_id =
+            id == args->end() ? nullptr : std::get_if<std::string>(&id->second);
+        auto *parent = state->owner->FindBridge(number("parentId"));
+        auto *child = state->owner->FindBridge(number("childId"));
+        result->Success(flutter::EncodableValue(
+            parent && request_id &&
+            parent->AttachNewWindow(*request_id, child)));
+      });
+
+  data_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          messenger, "com.abandoft.webview_all_windows/data",
+          &flutter::StandardMethodCodec::GetInstance());
+  data_channel_->SetMethodCallHandler(
+      [weak = std::weak_ptr<LifetimeState>(lifetime_state_)](
+          const flutter::MethodCall<flutter::EncodableValue> &call,
+          std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+              result) {
+        const auto state = weak.lock();
+        if (!state || !state->owner) return;
+        if (call.method_name() != "clearWebsiteData") {
+          result->NotImplemented();
+          return;
+        }
+        int64_t kinds = -1;
+        if (call.arguments()) {
+          if (const auto *value = std::get_if<int32_t>(call.arguments()))
+            kinds = *value;
+          else if (const auto *value64 = std::get_if<int64_t>(call.arguments()))
+            kinds = *value64;
+        }
+        if (kinds < 0 || (kinds & ~0x15eLL) != 0) {
+          result->Error("invalid_argument", "Invalid website data categories.");
+          return;
+        }
+        if (!state->owner->webview_host_) {
+          result->Error("environment_unavailable",
+                        "The WebView2 environment has not been initialized.");
+          return;
+        }
+        auto reply =
+            std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(
+                std::move(result));
+        state->owner->webview_host_->ClearWebsiteData(
+            static_cast<uint64_t>(kinds),
+            [weak, reply](WebviewHostWebsiteDataClearingResult outcome) {
+              const auto state = weak.lock();
+              if (!state || !state->owner) return;
+              if (outcome.supported && !outcome.succeeded)
+                reply->Error("data_clearing_failed", outcome.message);
+              else
+                reply->Success(flutter::EncodableValue(outcome.supported));
+            });
+      });
 }
 
 WindowsHostApi::~WindowsHostApi() {
@@ -176,6 +272,7 @@ WindowsHostApi::~WindowsHostApi() {
   // inside FlutterDesktopMessengerSetCallback. The dispatcher is torn down
   // with the engine anyway. See flutter/flutter#118611 and the contract
   // documented on flutter::MethodChannel::SetMethodCallHandler.
+  for (auto &entry : instances_) entry.second->DisableAsyncReplies();
   instances_.clear();
   if (registrar_ != nullptr && window_proc_delegate_id_ >= 0) {
     registrar_->UnregisterTopLevelWindowProcDelegate(window_proc_delegate_id_);
@@ -227,6 +324,17 @@ void WindowsHostApi::EnsureEnvironment(
                                     options.additional_arguments())) {
     requested = ResolveEnvironmentConfiguration(options);
   }
+  const auto* active = environment_configuration_ ? &*environment_configuration_ :
+      pending_environment_configuration_ ? &*pending_environment_configuration_ : nullptr;
+  if (options.custom_schemes() && !requested) {
+    requested = active ? *active : ResolveEnvironmentConfiguration(options);
+    requested->custom_schemes = ResolveEnvironmentConfiguration(options).custom_schemes;
+  }
+  if (active && requested) {
+    if (!options.custom_schemes() || std::includes(active->custom_schemes.begin(), active->custom_schemes.end(),
+        requested->custom_schemes.begin(), requested->custom_schemes.end()))
+      requested->custom_schemes = active->custom_schemes;
+  }
 
   switch (SelectEnvironmentRequestAction(requested, webview_host_ != nullptr,
                                          environment_configuration_,
@@ -269,10 +377,17 @@ WindowsHostApi::ResolveEnvironmentConfiguration(
       !options.browser_exe_path()->empty()) {
     browser_exe_path = util::Utf16FromUtf8(*options.browser_exe_path());
   }
+  std::vector<std::string> schemes;
+  if (options.custom_schemes()) for (const auto& value : *options.custom_schemes()) {
+    const auto* name = std::get_if<std::string>(&value);
+    schemes.push_back(name ? *name : "?invalid");
+  }
+  std::sort(schemes.begin(), schemes.end());
+  schemes.erase(std::unique(schemes.begin(), schemes.end()), schemes.end());
   return EnvironmentConfiguration{
       NormalizeEnvironmentPath(std::move(user_data_path)),
       NormalizeEnvironmentPath(std::move(browser_exe_path)),
-      NormalizeEnvironmentArguments(options.additional_arguments())};
+      NormalizeEnvironmentArguments(options.additional_arguments()), std::move(schemes)};
 }
 
 void WindowsHostApi::CreateEnvironment(
@@ -309,7 +424,7 @@ void WindowsHostApi::CreateEnvironment(
           owner->CompleteEnvironmentCreation(configuration,
                                              std::move(creation_result));
         }
-      });
+      }, configuration.custom_schemes);
 }
 
 void WindowsHostApi::CompleteEnvironmentCreation(
@@ -407,18 +522,30 @@ void WindowsHostApi::CreatePrivateWebView(
   CreateWebViewForMode(std::move(result), true);
 }
 
+void WindowsHostApi::CreateProfileWebView(const std::string& name, bool incognito,
+    std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result) {
+  if (name.empty() || name.size() > 64 ||
+      name.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != std::string::npos) {
+    result(FlutterError("invalid_profile", "Profile names require 1-64 ASCII letters, numbers, underscores or hyphens.")); return;
+  }
+  if (ProfileDeletionPending(name)) {
+    result(FlutterError("profile_deleting", "WebView2 is still deleting this profile. Close its browser process before reusing the name.")); return;
+  }
+  CreateWebViewForMode(std::move(result), incognito, util::Utf16FromUtf8(name));
+}
+
 void WindowsHostApi::IsIncognitoSupported(
     std::function<void(ErrorOr<bool>)> result) {
-  const WindowsEnvironmentOptions options;
-  EnsureEnvironment(
-      options, [lifetime_state = lifetime_state_,
-                result = std::move(result)](std::optional<FlutterError> error) {
-        if (!lifetime_state->owner)
-          return;
-        if (error)
-          return result(*error);
-        result(lifetime_state->owner->webview_host_->SupportsIncognito());
-      });
+  if (webview_host_) { result(webview_host_->SupportsIncognito()); return; }
+  // A capability query must not start a browser process and permanently lock
+  // custom scheme registrations. The runtime floor for Environment10 is 101.
+  const auto* selected = pending_environment_configuration_ ? &*pending_environment_configuration_ : nullptr;
+  wil::unique_cotaskmem_string version;
+  auto hr = GetAvailableCoreWebView2BrowserVersionString(
+      selected && selected->browser_exe_path ? selected->browser_exe_path->c_str() : nullptr, version.put());
+  int comparison = -1;
+  if (SUCCEEDED(hr) && version) hr = CompareBrowserVersions(version.get(), L"101.0.1210.39", &comparison);
+  result(SUCCEEDED(hr) && comparison >= 0);
 }
 
 void WindowsHostApi::CreateWebViewForMode(
@@ -426,7 +553,7 @@ void WindowsHostApi::CreateWebViewForMode(
                        webview_all_windows::WindowsCreateWebViewResult>
                            reply)>
         result,
-    bool incognito) {
+    bool incognito, std::optional<std::wstring> profile_name) {
   if (parent_window_ == nullptr || !IsWindow(parent_window_)) {
     return result(webview_all_windows::FlutterError(
         kErrorCodeInvalidParentWindow,
@@ -434,12 +561,12 @@ void WindowsHostApi::CreateWebViewForMode(
   }
 
   if (webview_host_) {
-    CreateWebViewWithEnvironment(std::move(result), incognito);
+    CreateWebViewWithEnvironment(std::move(result), incognito, profile_name);
     return;
   }
 
   EnvironmentInitializationCallback continue_creation =
-      [lifetime_state = lifetime_state_, incognito,
+      [lifetime_state = lifetime_state_, incognito, profile_name,
        result = std::move(result)](std::optional<FlutterError> error) mutable {
         WindowsHostApi *const owner = lifetime_state->owner;
         if (owner == nullptr) {
@@ -449,7 +576,7 @@ void WindowsHostApi::CreateWebViewForMode(
           result(*error);
           return;
         }
-        owner->CreateWebViewWithEnvironment(std::move(result), incognito);
+        owner->CreateWebViewWithEnvironment(std::move(result), incognito, profile_name);
       };
   if (pending_environment_configuration_.has_value()) {
     pending_environment_callbacks_.push_back(std::move(continue_creation));
@@ -466,15 +593,20 @@ void WindowsHostApi::CreateWebViewWithEnvironment(
                        webview_all_windows::WindowsCreateWebViewResult>
                            reply)>
         result,
-    bool incognito) {
+    bool incognito, std::optional<std::wstring> profile_name) {
   if (const std::optional<FlutterError> platform_error =
           EnsureRenderingPlatform()) {
     return result(*platform_error);
   }
 
+  std::optional<std::wstring> native_name;
+  if (profile_name) {
+    native_name = ManagedProfileName(*profile_name);
+    if (!native_name) return result(FlutterError("profile_name_failed", "Unable to prepare the native named profile."));
+  }
   webview_host_->CreateWebview(
       parent_window_, platform_->compositor(),
-      [lifetime_state = lifetime_state_, result = std::move(result)](
+      [lifetime_state = lifetime_state_, result = std::move(result), incognito, profile_name](
           std::unique_ptr<Webview> webview,
           std::unique_ptr<WebviewCreationError> error) mutable {
         WindowsHostApi *const owner = lifetime_state->owner;
@@ -493,6 +625,23 @@ void WindowsHostApi::CreateWebViewWithEnvironment(
               owner->webview_runtime_version_));
         }
 
+        if (!incognito && profile_name) {
+          auto name = *profile_name;
+          auto registry = owner->ProfileRegistryPath();
+          auto profile = webview->GetProfile();
+          wil::unique_cotaskmem_string path;
+          if (!registry.empty() && profile && SUCCEEDED(profile->get_ProfilePath(path.put())) && path) {
+            if (GetPrivateProfileIntW(name.c_str(), L"pending", 0, registry.c_str()) != 0) {
+              return result(FlutterError("profile_deleting", "This profile is awaiting native deletion."));
+            }
+            wil::unique_cotaskmem_string native;
+            if (FAILED(profile->get_ProfileName(native.put())) || !native ||
+                !WritePrivateProfileStringW(name.c_str(), L"path", path.get(), registry.c_str()) ||
+                !WritePrivateProfileStringW(name.c_str(), L"nativeName", native.get(), registry.c_str())) {
+              return result(FlutterError("profile_registry_failed", "Unable to record ownership of the named profile."));
+            }
+          }
+        }
         auto bridge = std::make_unique<WebviewBridge>(
             owner->messenger_, owner->textures_,
             owner->platform_->graphics_context(), std::move(webview));
@@ -513,7 +662,164 @@ void WindowsHostApi::CreateWebViewWithEnvironment(
 
         result(webview_all_windows::WindowsCreateWebViewResult(texture_id));
       },
-      incognito);
+      incognito, native_name);
+}
+
+namespace {
+std::mutex deleting_profiles_mutex;
+std::vector<std::wstring> deleting_profiles;
+bool IsProfileDeletionInFlight(const std::wstring& path) {
+  std::lock_guard<std::mutex> guard(deleting_profiles_mutex);
+  return std::any_of(deleting_profiles.begin(), deleting_profiles.end(), [&](const auto& item) {
+    return CompareStringOrdinal(item.c_str(), -1, path.c_str(), -1, TRUE) == CSTR_EQUAL;
+  });
+}
+struct ProfileDeletionReservation {
+  std::wstring path;
+  wil::unique_handle lock;
+  ProfileDeletionReservation(std::wstring profile, wil::unique_handle file_lock)
+      : path(std::move(profile)), lock(std::move(file_lock)) {
+    std::lock_guard<std::mutex> guard(deleting_profiles_mutex);
+    deleting_profiles.push_back(path);
+  }
+  ~ProfileDeletionReservation() {
+    std::lock_guard<std::mutex> guard(deleting_profiles_mutex);
+    deleting_profiles.erase(std::remove(deleting_profiles.begin(), deleting_profiles.end(), path), deleting_profiles.end());
+  }
+};
+bool ValidManagedProfile(const std::string& name) {
+  return !name.empty() && name.size() <= 64 &&
+      name.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") == std::string::npos;
+}
+flutter::EncodableValue ProfileOutcome(const char* status, const std::string& description = "") {
+  return flutter::EncodableValue(flutter::EncodableMap{
+    {flutter::EncodableValue("status"), flutter::EncodableValue(status)},
+    {flutter::EncodableValue("description"), flutter::EncodableValue(description)}});
+}
+std::wstring RegistryProfilePath(const std::wstring& registry, const std::wstring& name) {
+  std::vector<wchar_t> value(32768);
+  auto count = GetPrivateProfileStringW(name.c_str(), L"path", L"", value.data(), static_cast<DWORD>(value.size()), registry.c_str());
+  return std::wstring(value.data(), count);
+}
+}
+std::wstring WindowsHostApi::ProfileRegistryPath() {
+  const auto* config = environment_configuration_ ? &*environment_configuration_ :
+      pending_environment_configuration_ ? &*pending_environment_configuration_ : nullptr;
+  auto directory = config ? config->user_data_path : GetDefaultDataDirectory();
+  if (!directory) return L"";
+  return (std::filesystem::path(*directory) / L"webview_all_profiles.ini").wstring();
+}
+bool WindowsHostApi::ProfileDeletionPending(const std::string& name) {
+  auto registry = ProfileRegistryPath();
+  if (registry.empty()) return false;
+  auto wide = util::Utf16FromUtf8(name);
+  auto path = RegistryProfilePath(registry, wide);
+  if (!path.empty() && IsProfileDeletionInFlight(path)) return true;
+  if (!GetPrivateProfileIntW(wide.c_str(), L"pending", 0, registry.c_str())) return false;
+  std::error_code error;
+  const bool exists = path.empty() || std::filesystem::exists(path, error);
+  if (!exists && !error) { WritePrivateProfileStringW(wide.c_str(), nullptr, nullptr, registry.c_str()); return false; }
+  return true;
+}
+void WindowsHostApi::HandleProfileMethod(const flutter::MethodCall<flutter::EncodableValue>& call,
+    std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+  if (call.method_name() == "profileManagementCapabilities") {
+    const auto* config = environment_configuration_ ? &*environment_configuration_ :
+        pending_environment_configuration_ ? &*pending_environment_configuration_ : nullptr;
+    wil::unique_cotaskmem_string version;
+    auto hr = GetAvailableCoreWebView2BrowserVersionString(config && config->browser_exe_path ? config->browser_exe_path->c_str() : nullptr, version.put());
+    int comparison = -1;
+    if (SUCCEEDED(hr) && version) hr = CompareBrowserVersions(version.get(), L"120.0.0.0", &comparison);
+    result->Success(flutter::EncodableValue(flutter::EncodableMap{
+      {flutter::EncodableValue("listing"), flutter::EncodableValue(true)},
+      {flutter::EncodableValue("deletion"), flutter::EncodableValue(SUCCEEDED(hr) && comparison >= 0)},
+      {flutter::EncodableValue("limitation"), flutter::EncodableValue("Only plugin-owned named profiles are managed; names are case-insensitive. Close their views before deletion. WebView2 removes pending profile files after its browser process exits; a pending name cannot be reopened.")}})); return;
+  }
+  if (call.method_name() == "listProfiles") {
+    auto registry = ProfileRegistryPath();
+    std::vector<wchar_t> names(65536);
+    auto count = registry.empty() ? 0 : GetPrivateProfileSectionNamesW(names.data(), static_cast<DWORD>(names.size()), registry.c_str());
+    if (count >= names.size() - 2) { result->Error("profile_registry_failed", "The profile registry exceeded its supported size."); return; }
+    flutter::EncodableList rows;
+    for (const wchar_t* item = names.data(); *item; item += wcslen(item) + 1) {
+      auto name = util::Utf8FromUtf16(item);
+      if (!ValidManagedProfile(name)) continue;
+      const bool pending = ProfileDeletionPending(name);
+      auto path = RegistryProfilePath(registry, item);
+      std::error_code error;
+      if (path.empty() || (!std::filesystem::exists(path, error) && !error)) continue;
+      rows.emplace_back(flutter::EncodableMap{
+        {flutter::EncodableValue("name"), flutter::EncodableValue(name)},
+        {flutter::EncodableValue("deletionPending"), flutter::EncodableValue(pending)}});
+    }
+    result->Success(flutter::EncodableValue(rows)); return;
+  }
+  const auto* args = call.arguments() ? std::get_if<flutter::EncodableMap>(call.arguments()) : nullptr;
+  auto entry = args ? args->find(flutter::EncodableValue("name")) : flutter::EncodableMap::const_iterator();
+  const auto* name = args && entry != args->end() ? std::get_if<std::string>(&entry->second) : nullptr;
+  if (!name || !ValidManagedProfile(*name)) { result->Success(ProfileOutcome("failed", "Invalid named profile; no data was deleted.")); return; }
+  RequestProfileDeletion(*name, std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>>(std::move(result)));
+}
+void WindowsHostApi::RequestProfileDeletion(const std::string& name,
+    std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+  if (ProfileDeletionPending(name)) { result->Success(ProfileOutcome("pending")); return; }
+  auto registry = ProfileRegistryPath(), wide = util::Utf16FromUtf8(name);
+  auto path = registry.empty() ? L"" : RegistryProfilePath(registry, wide);
+  if (path.empty()) { result->Success(ProfileOutcome("notFound")); return; }
+  if (Webview::IsProfileActive(path)) { result->Success(ProfileOutcome("busy", "Close this profile's views before requesting deletion.")); return; }
+  if (!webview_host_) {
+    auto resume = [state = lifetime_state_, name, result](std::optional<FlutterError> error) {
+      if (!state->owner) return;
+      if (error) { result->Success(ProfileOutcome("failed", "The WebView2 environment could not be initialized.")); return; }
+      state->owner->RequestProfileDeletion(name, result);
+    };
+    if (pending_environment_configuration_) pending_environment_callbacks_.push_back(std::move(resume));
+    else CreateEnvironment(ResolveEnvironmentConfiguration(WindowsEnvironmentOptions()), std::move(resume));
+    return;
+  }
+  if (EnsureRenderingPlatform()) { result->Success(ProfileOutcome("failed", "The native controller could not be created.")); return; }
+  auto lock = Webview::AcquireProfileDeletionLock(path);
+  if (!lock) { result->Success(ProfileOutcome("busy", "Another process is using this profile, or its lock is inaccessible.")); return; }
+  std::vector<wchar_t> stored_name(128);
+  GetPrivateProfileStringW(wide.c_str(), L"nativeName", L"", stored_name.data(), static_cast<DWORD>(stored_name.size()), registry.c_str());
+  std::wstring native_name = stored_name.data();
+  // Earlier local builds recorded only the verified SDK path. Keep those
+  // plugin-owned profiles manageable without guessing arbitrary SDK names.
+  if (native_name.empty()) native_name = std::filesystem::path(path).filename().wstring();
+  if (native_name.rfind(L"webview_all_", 0) != 0 || native_name.size() > 64) {
+    result->Success(ProfileOutcome("failed", "The native profile mapping is unavailable.")); return;
+  }
+  // Probe registry writability without claiming that SDK deletion has begun.
+  // Only persist pending=1 after Delete succeeds: closing an engine during
+  // controller creation must not strand a profile in a durable pending state.
+  if (!WritePrivateProfileStringW(wide.c_str(), L"pending", L"0", registry.c_str())) {
+    result->Success(ProfileOutcome("failed", "Unable to record profile management state; no deletion was requested.")); return;
+  }
+  auto reservation = std::make_shared<ProfileDeletionReservation>(path, std::move(lock));
+  webview_host_->CreateWebview(parent_window_, platform_->compositor(),
+      [state = lifetime_state_, result, registry, wide, path, reservation](std::unique_ptr<Webview> view,
+          std::unique_ptr<WebviewCreationError>) {
+        (void)reservation;  // Hold the exclusive profile lock through the SDK callback.
+        if (!state->owner) return;
+        auto profile = view ? view->GetProfile() : nullptr;
+        auto profile8 = profile ? profile.try_query<ICoreWebView2Profile8>() : nullptr;
+        wil::unique_cotaskmem_string actual;
+        if (profile) profile->get_ProfilePath(actual.put());
+        if (!actual || CompareStringOrdinal(actual.get(), -1, path.c_str(), -1, TRUE) != CSTR_EQUAL) {
+          result->Success(ProfileOutcome("failed", "The native profile identity could not be verified.")); return;
+        }
+        if (Webview::IsProfileActive(path, view.get())) {
+          result->Success(ProfileOutcome("busy", "Another view opened this profile before deletion could begin.")); return;
+        }
+        const auto hr = profile8 ? profile8->Delete() : E_NOINTERFACE;
+        if (FAILED(hr)) {
+          result->Success(ProfileOutcome(hr == E_NOINTERFACE ? "unsupported" : "failed", "WebView2 did not accept profile deletion.")); return;
+        }
+        if (!WritePrivateProfileStringW(wide.c_str(), L"pending", L"1", registry.c_str())) {
+          result->Success(ProfileOutcome("pending", "WebView2 accepted deletion, but its pending state could not be saved. Wait for the browser process to exit before reopening this profile.")); return;
+        }
+        result->Success(ProfileOutcome("pending", "WebView2 accepted deletion. Its browser process must exit before the profile files and name can be reused."));
+      }, false, native_name, true);
 }
 
 std::optional<webview_all_windows::FlutterError>
@@ -1142,6 +1448,12 @@ WindowsHostApi::SetPointerButton(
   if (!bridge) {
     return InvalidIdError();
   }
+  // A view can move beneath a stationary pointer. Use the coordinates carried
+  // by this button event, rather than the last hover event's old local point.
+  if (const auto* point = button.position();
+      point && std::isfinite(point->x()) && std::isfinite(point->y())) {
+    bridge->SetCursorPos(point->x(), point->y());
+  }
   bridge->SetPointerButtonState(button.button(), button.is_down());
   return std::nullopt;
 }
@@ -1164,7 +1476,10 @@ WindowsHostApi::SetSize(int64_t texture_id,
     return InvalidIdError();
   }
   if (const auto error =
-          bridge->SetSize(size.width(), size.height(), size.scale_factor())) {
+          bridge->SetSize(size.width(), size.height(), size.scale_factor(),
+                          size.origin() ? std::optional<SurfaceOrigin>(
+                              SurfaceOrigin{size.origin()->x(), size.origin()->y()})
+                                        : std::nullopt)) {
     return CreateInitializationError(error->code, error->stage, error->message,
                                      error->hresult, webview_runtime_version_);
   }

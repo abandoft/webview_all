@@ -7,7 +7,7 @@ endif()
 set(PROJECT_NAME "webview_all_windows")
 
 set(WIL_VERSION "1.0.220914.1")
-set(WEBVIEW_VERSION "1.0.1418.22")
+set(WEBVIEW_VERSION "1.0.3650.58")
 
 message(VERBOSE "CMake system version is ${CMAKE_SYSTEM_VERSION} (using SDK ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION})")
 

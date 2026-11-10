@@ -31,11 +31,12 @@ private:
     std::optional<std::wstring> user_data_path;
     std::optional<std::wstring> browser_exe_path;
     std::optional<std::string> additional_arguments;
+    std::vector<std::string> custom_schemes;
 
     bool operator==(const EnvironmentConfiguration &other) const {
       return PathsEqual(user_data_path, other.user_data_path) &&
              PathsEqual(browser_exe_path, other.browser_exe_path) &&
-             additional_arguments == other.additional_arguments;
+             additional_arguments == other.additional_arguments && custom_schemes == other.custom_schemes;
     }
 
   private:
@@ -65,6 +66,10 @@ private:
   std::vector<EnvironmentInitializationCallback> pending_environment_callbacks_;
   std::unordered_map<int64_t, std::unique_ptr<WebviewBridge>> instances_;
 
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      browser_channel_;
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      data_channel_;
   flutter::TextureRegistrar *textures_;
   flutter::BinaryMessenger *messenger_;
   flutter::PluginRegistrarWindows *registrar_ = nullptr;
@@ -84,10 +89,16 @@ private:
                               WebviewHostCreationResult creation_result);
   void CreateWebViewForMode(
       std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result,
-      bool incognito);
+      bool incognito, std::optional<std::wstring> profile_name = std::nullopt);
   void CreateWebViewWithEnvironment(
       std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result,
-      bool incognito = false);
+      bool incognito = false, std::optional<std::wstring> profile_name = std::nullopt);
+  std::wstring ProfileRegistryPath();
+  bool ProfileDeletionPending(const std::string& name);
+  void HandleProfileMethod(const flutter::MethodCall<flutter::EncodableValue>& call,
+      std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+  void RequestProfileDeletion(const std::string& name,
+      std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
   void NotifyParentWindowPositionChanged();
   std::optional<LRESULT> HandleWindowMessage(HWND hwnd, UINT message,
                                              WPARAM wparam, LPARAM lparam);
@@ -108,6 +119,8 @@ private:
   void CreatePrivateWebView(
       std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result)
       override;
+  void CreateProfileWebView(const std::string& name, bool incognito,
+      std::function<void(ErrorOr<WindowsCreateWebViewResult> reply)> result) override;
   void IsIncognitoSupported(
       std::function<void(ErrorOr<bool> reply)> result) override;
   std::optional<FlutterError> DisposeWebView(int64_t texture_id) override;

@@ -25,41 +25,39 @@ using ::flutter::EncodableMap;
 using ::flutter::EncodableValue;
 
 FlutterError CreateConnectionError(const std::string channel_name) {
-  return FlutterError("channel-error",
-                      "Unable to establish connection on channel: '" +
-                          channel_name + "'.",
-                      EncodableValue(""));
+  return FlutterError(
+      "channel-error",
+      "Unable to establish connection on channel: '" + channel_name + "'.",
+      EncodableValue(""));
 }
 
 namespace {
-template <typename T> bool PigeonInternalDeepEquals(const T &a, const T &b);
+template<typename T>
+bool PigeonInternalDeepEquals(const T& a, const T& b);
 
-bool PigeonInternalDeepEquals(const double &a, const double &b);
+bool PigeonInternalDeepEquals(const double& a, const double& b);
 
-template <typename T>
-bool PigeonInternalDeepEquals(const std::vector<T> &a, const std::vector<T> &b);
+template<typename T>
+bool PigeonInternalDeepEquals(const std::vector<T>& a, const std::vector<T>& b);
 
-template <typename K, typename V>
-bool PigeonInternalDeepEquals(const std::map<K, V> &a, const std::map<K, V> &b);
+template<typename K, typename V>
+bool PigeonInternalDeepEquals(const std::map<K, V>& a, const std::map<K, V>& b);
 
-template <typename T>
-bool PigeonInternalDeepEquals(const std::optional<T> &a,
-                              const std::optional<T> &b);
+template<typename T>
+bool PigeonInternalDeepEquals(const std::optional<T>& a, const std::optional<T>& b);
 
-template <typename T>
-bool PigeonInternalDeepEquals(const std::unique_ptr<T> &a,
-                              const std::unique_ptr<T> &b);
+template<typename T>
+bool PigeonInternalDeepEquals(const std::unique_ptr<T>& a, const std::unique_ptr<T>& b);
 
-bool PigeonInternalDeepEquals(const ::flutter::EncodableValue &a,
-                              const ::flutter::EncodableValue &b);
+bool PigeonInternalDeepEquals(const ::flutter::EncodableValue& a, const ::flutter::EncodableValue& b);
 
-template <typename T> bool PigeonInternalDeepEquals(const T &a, const T &b) {
+template<typename T>
+bool PigeonInternalDeepEquals(const T& a, const T& b) {
   return a == b;
 }
 
-template <typename T>
-bool PigeonInternalDeepEquals(const std::vector<T> &a,
-                              const std::vector<T> &b) {
+template<typename T>
+bool PigeonInternalDeepEquals(const std::vector<T>& a, const std::vector<T>& b) {
   if (a.size() != b.size()) {
     return false;
   }
@@ -72,14 +70,13 @@ bool PigeonInternalDeepEquals(const std::vector<T> &a,
 }
 
 template <typename K, typename V>
-bool PigeonInternalDeepEquals(const std::map<K, V> &a,
-                              const std::map<K, V> &b) {
+bool PigeonInternalDeepEquals(const std::map<K, V>& a, const std::map<K, V>& b) {
   if (a.size() != b.size()) {
     return false;
   }
-  for (const auto &kv : a) {
+  for (const auto& kv : a) {
     bool found = false;
-    for (const auto &b_kv : b) {
+    for (const auto& b_kv : b) {
       if (PigeonInternalDeepEquals(kv.first, b_kv.first)) {
         if (PigeonInternalDeepEquals(kv.second, b_kv.second)) {
           found = true;
@@ -96,14 +93,13 @@ bool PigeonInternalDeepEquals(const std::map<K, V> &a,
   return true;
 }
 
-bool PigeonInternalDeepEquals(const double &a, const double &b) {
+bool PigeonInternalDeepEquals(const double& a, const double& b) {
   // Normalize -0.0 to 0.0 and handle NaN equality.
   return (a == b) || (std::isnan(a) && std::isnan(b));
 }
 
-template <typename T>
-bool PigeonInternalDeepEquals(const std::optional<T> &a,
-                              const std::optional<T> &b) {
+template<typename T>
+bool PigeonInternalDeepEquals(const std::optional<T>& a, const std::optional<T>& b) {
   if (!a && !b) {
     return true;
   }
@@ -113,9 +109,8 @@ bool PigeonInternalDeepEquals(const std::optional<T> &a,
   return PigeonInternalDeepEquals(*a, *b);
 }
 
-template <typename T>
-bool PigeonInternalDeepEquals(const std::unique_ptr<T> &a,
-                              const std::unique_ptr<T> &b) {
+template<typename T>
+bool PigeonInternalDeepEquals(const std::unique_ptr<T>& a, const std::unique_ptr<T>& b) {
   if (a.get() == b.get()) {
     return true;
   }
@@ -125,62 +120,63 @@ bool PigeonInternalDeepEquals(const std::unique_ptr<T> &a,
   return PigeonInternalDeepEquals(*a, *b);
 }
 
-bool PigeonInternalDeepEquals(const ::flutter::EncodableValue &a,
-                              const ::flutter::EncodableValue &b) {
+bool PigeonInternalDeepEquals(const ::flutter::EncodableValue& a, const ::flutter::EncodableValue& b) {
   if (a.index() != b.index()) {
     return false;
   }
-  if (const double *da = std::get_if<double>(&a)) {
+  if (const double* da = std::get_if<double>(&a)) {
     return PigeonInternalDeepEquals(*da, std::get<double>(b));
-  } else if (const ::flutter::EncodableList *la =
-                 std::get_if<::flutter::EncodableList>(&a)) {
+  } else if (const ::flutter::EncodableList* la = std::get_if<::flutter::EncodableList>(&a)) {
     return PigeonInternalDeepEquals(*la, std::get<::flutter::EncodableList>(b));
-  } else if (const ::flutter::EncodableMap *ma =
-                 std::get_if<::flutter::EncodableMap>(&a)) {
+  } else if (const ::flutter::EncodableMap* ma = std::get_if<::flutter::EncodableMap>(&a)) {
     return PigeonInternalDeepEquals(*ma, std::get<::flutter::EncodableMap>(b));
   }
   return a == b;
 }
 
-template <typename T> size_t PigeonInternalDeepHash(const T &v);
+template <typename T>
+size_t PigeonInternalDeepHash(const T& v);
 
-size_t PigeonInternalDeepHash(const double &v);
-
-template <typename T> size_t PigeonInternalDeepHash(const std::vector<T> &v);
-
-template <typename K, typename V>
-size_t PigeonInternalDeepHash(const std::map<K, V> &v);
-
-template <typename T> size_t PigeonInternalDeepHash(const std::optional<T> &v);
+size_t PigeonInternalDeepHash(const double& v);
 
 template <typename T>
-size_t PigeonInternalDeepHash(const std::unique_ptr<T> &v);
+size_t PigeonInternalDeepHash(const std::vector<T>& v);
 
-size_t PigeonInternalDeepHash(const ::flutter::EncodableValue &v);
+template <typename K, typename V>
+size_t PigeonInternalDeepHash(const std::map<K, V>& v);
 
-template <typename T> size_t PigeonInternalDeepHash(const T &v) {
+template <typename T>
+size_t PigeonInternalDeepHash(const std::optional<T>& v);
+
+template <typename T>
+size_t PigeonInternalDeepHash(const std::unique_ptr<T>& v);
+
+size_t PigeonInternalDeepHash(const ::flutter::EncodableValue& v);
+
+template <typename T>
+size_t PigeonInternalDeepHash(const T& v) {
   return std::hash<T>()(v);
 }
 
-template <typename T> size_t PigeonInternalDeepHash(const std::vector<T> &v) {
+template <typename T>
+size_t PigeonInternalDeepHash(const std::vector<T>& v) {
   size_t result = 1;
-  for (const auto &item : v) {
+  for (const auto& item : v) {
     result = result * 31 + PigeonInternalDeepHash(item);
   }
   return result;
 }
 
 template <typename K, typename V>
-size_t PigeonInternalDeepHash(const std::map<K, V> &v) {
+size_t PigeonInternalDeepHash(const std::map<K, V>& v) {
   size_t result = 0;
-  for (const auto &kv : v) {
-    result += ((PigeonInternalDeepHash(kv.first) * 31) ^
-               PigeonInternalDeepHash(kv.second));
+  for (const auto& kv : v) {
+    result += ((PigeonInternalDeepHash(kv.first) * 31) ^ PigeonInternalDeepHash(kv.second));
   }
   return result;
 }
 
-size_t PigeonInternalDeepHash(const double &v) {
+size_t PigeonInternalDeepHash(const double& v) {
   if (std::isnan(v)) {
     // Normalize NaN to a consistent hash.
     return std::hash<double>()(std::numeric_limits<double>::quiet_NaN());
@@ -192,28 +188,29 @@ size_t PigeonInternalDeepHash(const double &v) {
   return std::hash<double>()(v);
 }
 
-template <typename T> size_t PigeonInternalDeepHash(const std::optional<T> &v) {
+template <typename T>
+size_t PigeonInternalDeepHash(const std::optional<T>& v) {
   return v ? PigeonInternalDeepHash(*v) : 0;
 }
 
 template <typename T>
-size_t PigeonInternalDeepHash(const std::unique_ptr<T> &v) {
+size_t PigeonInternalDeepHash(const std::unique_ptr<T>& v) {
   return v ? PigeonInternalDeepHash(*v) : 0;
 }
 
-size_t PigeonInternalDeepHash(const ::flutter::EncodableValue &v) {
+size_t PigeonInternalDeepHash(const ::flutter::EncodableValue& v) {
   size_t result = v.index();
-  if (const double *dv = std::get_if<double>(&v)) {
+  if (const double* dv = std::get_if<double>(&v)) {
     result = result * 31 + PigeonInternalDeepHash(*dv);
-  } else if (const ::flutter::EncodableList *lv =
+  } else if (const ::flutter::EncodableList* lv =
                  std::get_if<::flutter::EncodableList>(&v)) {
     result = result * 31 + PigeonInternalDeepHash(*lv);
-  } else if (const ::flutter::EncodableMap *mv =
+  } else if (const ::flutter::EncodableMap* mv =
                  std::get_if<::flutter::EncodableMap>(&v)) {
     result = result * 31 + PigeonInternalDeepHash(*mv);
   } else {
     std::visit(
-        [&result](const auto &val) {
+        [&result](const auto& val) {
           using T = std::decay_t<decltype(val)>;
           if constexpr (!std::is_same_v<T, double> &&
                         !std::is_same_v<T, ::flutter::EncodableList> &&
@@ -228,25 +225,27 @@ size_t PigeonInternalDeepHash(const ::flutter::EncodableValue &v) {
   return result;
 }
 
-template <typename T> std::string PigeonInternalToString(const T &v);
+template <typename T>
+std::string PigeonInternalToString(const T& v);
 
-std::string PigeonInternalToString(const bool &v);
+std::string PigeonInternalToString(const bool& v);
 
 template <typename T>
-std::string PigeonInternalToString(const std::vector<T> &v);
+std::string PigeonInternalToString(const std::vector<T>& v);
 
 template <typename K, typename V>
-std::string PigeonInternalToString(const std::map<K, V> &v);
+std::string PigeonInternalToString(const std::map<K, V>& v);
 
 template <typename T>
-std::string PigeonInternalToString(const std::optional<T> &v);
+std::string PigeonInternalToString(const std::optional<T>& v);
 
 template <typename T>
-std::string PigeonInternalToString(const std::unique_ptr<T> &v);
+std::string PigeonInternalToString(const std::unique_ptr<T>& v);
 
-std::string PigeonInternalToString(const ::flutter::EncodableValue &v);
+std::string PigeonInternalToString(const ::flutter::EncodableValue& v);
 
-template <typename T> std::string PigeonInternalToString(const T &v) {
+template <typename T>
+std::string PigeonInternalToString(const T& v) {
   std::stringstream ss;
   if constexpr (std::is_enum_v<T>) {
     ss << static_cast<int>(v);
@@ -256,12 +255,12 @@ template <typename T> std::string PigeonInternalToString(const T &v) {
   return ss.str();
 }
 
-std::string PigeonInternalToString(const bool &v) {
+std::string PigeonInternalToString(const bool& v) {
   return v ? "true" : "false";
 }
 
 template <typename T>
-std::string PigeonInternalToString(const std::vector<T> &v) {
+std::string PigeonInternalToString(const std::vector<T>& v) {
   std::stringstream ss;
   ss << "[";
   for (size_t i = 0; i < v.size(); ++i) {
@@ -275,35 +274,34 @@ std::string PigeonInternalToString(const std::vector<T> &v) {
 }
 
 template <typename K, typename V>
-std::string PigeonInternalToString(const std::map<K, V> &v) {
+std::string PigeonInternalToString(const std::map<K, V>& v) {
   std::stringstream ss;
   ss << "{";
   bool first = true;
-  for (const auto &kv : v) {
+  for (const auto& kv : v) {
     if (!first) {
       ss << ", ";
     }
     first = false;
-    ss << PigeonInternalToString(kv.first) << ": "
-       << PigeonInternalToString(kv.second);
+    ss << PigeonInternalToString(kv.first) << ": " << PigeonInternalToString(kv.second);
   }
   ss << "}";
   return ss.str();
 }
 
 template <typename T>
-std::string PigeonInternalToString(const std::optional<T> &v) {
+std::string PigeonInternalToString(const std::optional<T>& v) {
   return v ? PigeonInternalToString(*v) : "null";
 }
 
 template <typename T>
-std::string PigeonInternalToString(const std::unique_ptr<T> &v) {
+std::string PigeonInternalToString(const std::unique_ptr<T>& v) {
   return v ? PigeonInternalToString(*v) : "null";
 }
 
-std::string PigeonInternalToString(const ::flutter::EncodableValue &v) {
+std::string PigeonInternalToString(const ::flutter::EncodableValue& v) {
   return std::visit(
-      [](const auto &val) {
+      [](const auto& val) {
         using T = std::decay_t<decltype(val)>;
         if constexpr (std::is_same_v<T, std::monostate>) {
           return std::string("null");
@@ -311,8 +309,7 @@ std::string PigeonInternalToString(const ::flutter::EncodableValue &v) {
           return val ? std::string("true") : std::string("false");
         } else if constexpr (std::is_same_v<T, std::string>) {
           return "\"" + val + "\"";
-        } else if constexpr (std::is_same_v<T,
-                                            ::flutter::CustomEncodableValue>) {
+        } else if constexpr (std::is_same_v<T, ::flutter::CustomEncodableValue>) {
           return std::string("[custom]");
         } else {
           return PigeonInternalToString(val);
@@ -321,110 +318,109 @@ std::string PigeonInternalToString(const ::flutter::EncodableValue &v) {
       v);
 }
 
-} // namespace
+}  // namespace
 // WindowsEnvironmentOptions
 
 WindowsEnvironmentOptions::WindowsEnvironmentOptions() {}
 
 WindowsEnvironmentOptions::WindowsEnvironmentOptions(
-    const std::string *user_data_path, const std::string *browser_exe_path,
-    const std::string *additional_arguments)
-    : user_data_path_(user_data_path
-                          ? std::optional<std::string>(*user_data_path)
-                          : std::nullopt),
-      browser_exe_path_(browser_exe_path
-                            ? std::optional<std::string>(*browser_exe_path)
-                            : std::nullopt),
-      additional_arguments_(additional_arguments ? std::optional<std::string>(
-                                                       *additional_arguments)
-                                                 : std::nullopt) {}
+  const std::string* user_data_path,
+  const std::string* browser_exe_path,
+  const std::string* additional_arguments,
+  const EncodableList* custom_schemes)
+ : user_data_path_(user_data_path ? std::optional<std::string>(*user_data_path) : std::nullopt),
+    browser_exe_path_(browser_exe_path ? std::optional<std::string>(*browser_exe_path) : std::nullopt),
+    additional_arguments_(additional_arguments ? std::optional<std::string>(*additional_arguments) : std::nullopt),
+    custom_schemes_(custom_schemes ? std::optional<EncodableList>(*custom_schemes) : std::nullopt) {}
 
-const std::string *WindowsEnvironmentOptions::user_data_path() const {
+const std::string* WindowsEnvironmentOptions::user_data_path() const {
   return user_data_path_ ? &(*user_data_path_) : nullptr;
 }
 
-void WindowsEnvironmentOptions::set_user_data_path(
-    const std::string_view *value_arg) {
-  user_data_path_ =
-      value_arg ? std::optional<std::string>(*value_arg) : std::nullopt;
+void WindowsEnvironmentOptions::set_user_data_path(const std::string_view* value_arg) {
+  user_data_path_ = value_arg ? std::optional<std::string>(*value_arg) : std::nullopt;
 }
 
 void WindowsEnvironmentOptions::set_user_data_path(std::string_view value_arg) {
   user_data_path_ = value_arg;
 }
 
-const std::string *WindowsEnvironmentOptions::browser_exe_path() const {
+
+const std::string* WindowsEnvironmentOptions::browser_exe_path() const {
   return browser_exe_path_ ? &(*browser_exe_path_) : nullptr;
 }
 
-void WindowsEnvironmentOptions::set_browser_exe_path(
-    const std::string_view *value_arg) {
-  browser_exe_path_ =
-      value_arg ? std::optional<std::string>(*value_arg) : std::nullopt;
+void WindowsEnvironmentOptions::set_browser_exe_path(const std::string_view* value_arg) {
+  browser_exe_path_ = value_arg ? std::optional<std::string>(*value_arg) : std::nullopt;
 }
 
-void WindowsEnvironmentOptions::set_browser_exe_path(
-    std::string_view value_arg) {
+void WindowsEnvironmentOptions::set_browser_exe_path(std::string_view value_arg) {
   browser_exe_path_ = value_arg;
 }
 
-const std::string *WindowsEnvironmentOptions::additional_arguments() const {
+
+const std::string* WindowsEnvironmentOptions::additional_arguments() const {
   return additional_arguments_ ? &(*additional_arguments_) : nullptr;
 }
 
-void WindowsEnvironmentOptions::set_additional_arguments(
-    const std::string_view *value_arg) {
-  additional_arguments_ =
-      value_arg ? std::optional<std::string>(*value_arg) : std::nullopt;
+void WindowsEnvironmentOptions::set_additional_arguments(const std::string_view* value_arg) {
+  additional_arguments_ = value_arg ? std::optional<std::string>(*value_arg) : std::nullopt;
 }
 
-void WindowsEnvironmentOptions::set_additional_arguments(
-    std::string_view value_arg) {
+void WindowsEnvironmentOptions::set_additional_arguments(std::string_view value_arg) {
   additional_arguments_ = value_arg;
 }
 
+
+const EncodableList* WindowsEnvironmentOptions::custom_schemes() const {
+  return custom_schemes_ ? &(*custom_schemes_) : nullptr;
+}
+
+void WindowsEnvironmentOptions::set_custom_schemes(const EncodableList* value_arg) {
+  custom_schemes_ = value_arg ? std::optional<EncodableList>(*value_arg) : std::nullopt;
+}
+
+void WindowsEnvironmentOptions::set_custom_schemes(const EncodableList& value_arg) {
+  custom_schemes_ = value_arg;
+}
+
+
 EncodableList WindowsEnvironmentOptions::ToEncodableList() const {
   EncodableList list;
-  list.reserve(3);
-  list.push_back(user_data_path_ ? EncodableValue(*user_data_path_)
-                                 : EncodableValue());
-  list.push_back(browser_exe_path_ ? EncodableValue(*browser_exe_path_)
-                                   : EncodableValue());
-  list.push_back(additional_arguments_ ? EncodableValue(*additional_arguments_)
-                                       : EncodableValue());
+  list.reserve(4);
+  list.push_back(user_data_path_ ? EncodableValue(*user_data_path_) : EncodableValue());
+  list.push_back(browser_exe_path_ ? EncodableValue(*browser_exe_path_) : EncodableValue());
+  list.push_back(additional_arguments_ ? EncodableValue(*additional_arguments_) : EncodableValue());
+  list.push_back(custom_schemes_ ? EncodableValue(*custom_schemes_) : EncodableValue());
   return list;
 }
 
-WindowsEnvironmentOptions
-WindowsEnvironmentOptions::FromEncodableList(const EncodableList &list) {
+WindowsEnvironmentOptions WindowsEnvironmentOptions::FromEncodableList(const EncodableList& list) {
   WindowsEnvironmentOptions decoded;
-  auto &encodable_user_data_path = list[0];
+  auto& encodable_user_data_path = list[0];
   if (!encodable_user_data_path.IsNull()) {
     decoded.set_user_data_path(std::get<std::string>(encodable_user_data_path));
   }
-  auto &encodable_browser_exe_path = list[1];
+  auto& encodable_browser_exe_path = list[1];
   if (!encodable_browser_exe_path.IsNull()) {
-    decoded.set_browser_exe_path(
-        std::get<std::string>(encodable_browser_exe_path));
+    decoded.set_browser_exe_path(std::get<std::string>(encodable_browser_exe_path));
   }
-  auto &encodable_additional_arguments = list[2];
+  auto& encodable_additional_arguments = list[2];
   if (!encodable_additional_arguments.IsNull()) {
-    decoded.set_additional_arguments(
-        std::get<std::string>(encodable_additional_arguments));
+    decoded.set_additional_arguments(std::get<std::string>(encodable_additional_arguments));
+  }
+  auto& encodable_custom_schemes = list[3];
+  if (!encodable_custom_schemes.IsNull()) {
+    decoded.set_custom_schemes(std::get<EncodableList>(encodable_custom_schemes));
   }
   return decoded;
 }
 
-bool WindowsEnvironmentOptions::operator==(
-    const WindowsEnvironmentOptions &other) const {
-  return PigeonInternalDeepEquals(user_data_path_, other.user_data_path_) &&
-         PigeonInternalDeepEquals(browser_exe_path_, other.browser_exe_path_) &&
-         PigeonInternalDeepEquals(additional_arguments_,
-                                  other.additional_arguments_);
+bool WindowsEnvironmentOptions::operator==(const WindowsEnvironmentOptions& other) const {
+  return PigeonInternalDeepEquals(user_data_path_, other.user_data_path_) && PigeonInternalDeepEquals(browser_exe_path_, other.browser_exe_path_) && PigeonInternalDeepEquals(additional_arguments_, other.additional_arguments_) && PigeonInternalDeepEquals(custom_schemes_, other.custom_schemes_);
 }
 
-bool WindowsEnvironmentOptions::operator!=(
-    const WindowsEnvironmentOptions &other) const {
+bool WindowsEnvironmentOptions::operator!=(const WindowsEnvironmentOptions& other) const {
   return !(*this == other);
 }
 
@@ -433,48 +429,63 @@ size_t WindowsEnvironmentOptions::Hash() const {
   result = result * 31 + PigeonInternalDeepHash(user_data_path_);
   result = result * 31 + PigeonInternalDeepHash(browser_exe_path_);
   result = result * 31 + PigeonInternalDeepHash(additional_arguments_);
+  result = result * 31 + PigeonInternalDeepHash(custom_schemes_);
   return result;
 }
 
-std::ostream &operator<<(std::ostream &os,
-                         const WindowsEnvironmentOptions &obj) {
+std::ostream& operator<<(
+  std::ostream& os,
+  const WindowsEnvironmentOptions& obj) {
   os << "WindowsEnvironmentOptions(";
   os << "user_data_path: ";
   if (obj.user_data_path_) {
     os << PigeonInternalToString(*obj.user_data_path_);
-  } else {
+  }
+  else {
     os << "null";
   }
   os << ", browser_exe_path: ";
   if (obj.browser_exe_path_) {
     os << PigeonInternalToString(*obj.browser_exe_path_);
-  } else {
+  }
+  else {
     os << "null";
   }
   os << ", additional_arguments: ";
   if (obj.additional_arguments_) {
     os << PigeonInternalToString(*obj.additional_arguments_);
-  } else {
+  }
+  else {
+    os << "null";
+  }
+  os << ", custom_schemes: ";
+  if (obj.custom_schemes_) {
+    os << PigeonInternalToString(*obj.custom_schemes_);
+  }
+  else {
     os << "null";
   }
   os << ")";
   return os;
 }
 
-size_t PigeonInternalDeepHash(const WindowsEnvironmentOptions &v) {
+size_t PigeonInternalDeepHash(const WindowsEnvironmentOptions& v) {
   return v.Hash();
 }
 
 // WindowsCreateWebViewResult
 
 WindowsCreateWebViewResult::WindowsCreateWebViewResult(int64_t texture_id)
-    : texture_id_(texture_id) {}
+ : texture_id_(texture_id) {}
 
-int64_t WindowsCreateWebViewResult::texture_id() const { return texture_id_; }
+int64_t WindowsCreateWebViewResult::texture_id() const {
+  return texture_id_;
+}
 
 void WindowsCreateWebViewResult::set_texture_id(int64_t value_arg) {
   texture_id_ = value_arg;
 }
+
 
 EncodableList WindowsCreateWebViewResult::ToEncodableList() const {
   EncodableList list;
@@ -483,19 +494,17 @@ EncodableList WindowsCreateWebViewResult::ToEncodableList() const {
   return list;
 }
 
-WindowsCreateWebViewResult
-WindowsCreateWebViewResult::FromEncodableList(const EncodableList &list) {
-  WindowsCreateWebViewResult decoded(std::get<int64_t>(list[0]));
+WindowsCreateWebViewResult WindowsCreateWebViewResult::FromEncodableList(const EncodableList& list) {
+  WindowsCreateWebViewResult decoded(
+    std::get<int64_t>(list[0]));
   return decoded;
 }
 
-bool WindowsCreateWebViewResult::operator==(
-    const WindowsCreateWebViewResult &other) const {
+bool WindowsCreateWebViewResult::operator==(const WindowsCreateWebViewResult& other) const {
   return PigeonInternalDeepEquals(texture_id_, other.texture_id_);
 }
 
-bool WindowsCreateWebViewResult::operator!=(
-    const WindowsCreateWebViewResult &other) const {
+bool WindowsCreateWebViewResult::operator!=(const WindowsCreateWebViewResult& other) const {
   return !(*this == other);
 }
 
@@ -505,8 +514,9 @@ size_t WindowsCreateWebViewResult::Hash() const {
   return result;
 }
 
-std::ostream &operator<<(std::ostream &os,
-                         const WindowsCreateWebViewResult &obj) {
+std::ostream& operator<<(
+  std::ostream& os,
+  const WindowsCreateWebViewResult& obj) {
   os << "WindowsCreateWebViewResult(";
   os << "texture_id: ";
   os << PigeonInternalToString(obj.texture_id_);
@@ -514,71 +524,96 @@ std::ostream &operator<<(std::ostream &os,
   return os;
 }
 
-size_t PigeonInternalDeepHash(const WindowsCreateWebViewResult &v) {
+size_t PigeonInternalDeepHash(const WindowsCreateWebViewResult& v) {
   return v.Hash();
 }
 
 // WindowsCookieData
 
-WindowsCookieData::WindowsCookieData(const std::string &name,
-                                     const std::string &value,
-                                     const std::string &domain,
-                                     const std::string &path)
-    : name_(name), value_(value), domain_(domain), path_(path) {}
+WindowsCookieData::WindowsCookieData(
+  const std::string& name,
+  const std::string& value,
+  const std::string& domain,
+  const std::string& path)
+ : name_(name),
+    value_(value),
+    domain_(domain),
+    path_(path) {}
 
 WindowsCookieData::WindowsCookieData(
-    const std::string &name, const std::string &value,
-    const std::string &domain, const std::string &path, const double *expires,
-    const bool *is_http_only, const bool *is_secure, const int64_t *same_site,
-    const bool *is_session)
-    : name_(name), value_(value), domain_(domain), path_(path),
-      expires_(expires ? std::optional<double>(*expires) : std::nullopt),
-      is_http_only_(is_http_only ? std::optional<bool>(*is_http_only)
-                                 : std::nullopt),
-      is_secure_(is_secure ? std::optional<bool>(*is_secure) : std::nullopt),
-      same_site_(same_site ? std::optional<int64_t>(*same_site) : std::nullopt),
-      is_session_(is_session ? std::optional<bool>(*is_session)
-                             : std::nullopt) {}
+  const std::string& name,
+  const std::string& value,
+  const std::string& domain,
+  const std::string& path,
+  const double* expires,
+  const bool* is_http_only,
+  const bool* is_secure,
+  const int64_t* same_site,
+  const bool* is_session)
+ : name_(name),
+    value_(value),
+    domain_(domain),
+    path_(path),
+    expires_(expires ? std::optional<double>(*expires) : std::nullopt),
+    is_http_only_(is_http_only ? std::optional<bool>(*is_http_only) : std::nullopt),
+    is_secure_(is_secure ? std::optional<bool>(*is_secure) : std::nullopt),
+    same_site_(same_site ? std::optional<int64_t>(*same_site) : std::nullopt),
+    is_session_(is_session ? std::optional<bool>(*is_session) : std::nullopt) {}
 
-const std::string &WindowsCookieData::name() const { return name_; }
+const std::string& WindowsCookieData::name() const {
+  return name_;
+}
 
 void WindowsCookieData::set_name(std::string_view value_arg) {
   name_ = value_arg;
 }
 
-const std::string &WindowsCookieData::value() const { return value_; }
+
+const std::string& WindowsCookieData::value() const {
+  return value_;
+}
 
 void WindowsCookieData::set_value(std::string_view value_arg) {
   value_ = value_arg;
 }
 
-const std::string &WindowsCookieData::domain() const { return domain_; }
+
+const std::string& WindowsCookieData::domain() const {
+  return domain_;
+}
 
 void WindowsCookieData::set_domain(std::string_view value_arg) {
   domain_ = value_arg;
 }
 
-const std::string &WindowsCookieData::path() const { return path_; }
+
+const std::string& WindowsCookieData::path() const {
+  return path_;
+}
 
 void WindowsCookieData::set_path(std::string_view value_arg) {
   path_ = value_arg;
 }
 
-const double *WindowsCookieData::expires() const {
+
+const double* WindowsCookieData::expires() const {
   return expires_ ? &(*expires_) : nullptr;
 }
 
-void WindowsCookieData::set_expires(const double *value_arg) {
+void WindowsCookieData::set_expires(const double* value_arg) {
   expires_ = value_arg ? std::optional<double>(*value_arg) : std::nullopt;
 }
 
-void WindowsCookieData::set_expires(double value_arg) { expires_ = value_arg; }
+void WindowsCookieData::set_expires(double value_arg) {
+  expires_ = value_arg;
+}
 
-const bool *WindowsCookieData::is_http_only() const {
+
+const bool* WindowsCookieData::is_http_only() const {
   return is_http_only_ ? &(*is_http_only_) : nullptr;
 }
 
-void WindowsCookieData::set_is_http_only(const bool *value_arg) {
+void WindowsCookieData::set_is_http_only(const bool* value_arg) {
   is_http_only_ = value_arg ? std::optional<bool>(*value_arg) : std::nullopt;
 }
 
@@ -586,11 +621,12 @@ void WindowsCookieData::set_is_http_only(bool value_arg) {
   is_http_only_ = value_arg;
 }
 
-const bool *WindowsCookieData::is_secure() const {
+
+const bool* WindowsCookieData::is_secure() const {
   return is_secure_ ? &(*is_secure_) : nullptr;
 }
 
-void WindowsCookieData::set_is_secure(const bool *value_arg) {
+void WindowsCookieData::set_is_secure(const bool* value_arg) {
   is_secure_ = value_arg ? std::optional<bool>(*value_arg) : std::nullopt;
 }
 
@@ -598,11 +634,12 @@ void WindowsCookieData::set_is_secure(bool value_arg) {
   is_secure_ = value_arg;
 }
 
-const int64_t *WindowsCookieData::same_site() const {
+
+const int64_t* WindowsCookieData::same_site() const {
   return same_site_ ? &(*same_site_) : nullptr;
 }
 
-void WindowsCookieData::set_same_site(const int64_t *value_arg) {
+void WindowsCookieData::set_same_site(const int64_t* value_arg) {
   same_site_ = value_arg ? std::optional<int64_t>(*value_arg) : std::nullopt;
 }
 
@@ -610,17 +647,19 @@ void WindowsCookieData::set_same_site(int64_t value_arg) {
   same_site_ = value_arg;
 }
 
-const bool *WindowsCookieData::is_session() const {
+
+const bool* WindowsCookieData::is_session() const {
   return is_session_ ? &(*is_session_) : nullptr;
 }
 
-void WindowsCookieData::set_is_session(const bool *value_arg) {
+void WindowsCookieData::set_is_session(const bool* value_arg) {
   is_session_ = value_arg ? std::optional<bool>(*value_arg) : std::nullopt;
 }
 
 void WindowsCookieData::set_is_session(bool value_arg) {
   is_session_ = value_arg;
 }
+
 
 EncodableList WindowsCookieData::ToEncodableList() const {
   EncodableList list;
@@ -630,55 +669,47 @@ EncodableList WindowsCookieData::ToEncodableList() const {
   list.push_back(EncodableValue(domain_));
   list.push_back(EncodableValue(path_));
   list.push_back(expires_ ? EncodableValue(*expires_) : EncodableValue());
-  list.push_back(is_http_only_ ? EncodableValue(*is_http_only_)
-                               : EncodableValue());
+  list.push_back(is_http_only_ ? EncodableValue(*is_http_only_) : EncodableValue());
   list.push_back(is_secure_ ? EncodableValue(*is_secure_) : EncodableValue());
   list.push_back(same_site_ ? EncodableValue(*same_site_) : EncodableValue());
   list.push_back(is_session_ ? EncodableValue(*is_session_) : EncodableValue());
   return list;
 }
 
-WindowsCookieData
-WindowsCookieData::FromEncodableList(const EncodableList &list) {
+WindowsCookieData WindowsCookieData::FromEncodableList(const EncodableList& list) {
   WindowsCookieData decoded(
-      std::get<std::string>(list[0]), std::get<std::string>(list[1]),
-      std::get<std::string>(list[2]), std::get<std::string>(list[3]));
-  auto &encodable_expires = list[4];
+    std::get<std::string>(list[0]),
+    std::get<std::string>(list[1]),
+    std::get<std::string>(list[2]),
+    std::get<std::string>(list[3]));
+  auto& encodable_expires = list[4];
   if (!encodable_expires.IsNull()) {
     decoded.set_expires(std::get<double>(encodable_expires));
   }
-  auto &encodable_is_http_only = list[5];
+  auto& encodable_is_http_only = list[5];
   if (!encodable_is_http_only.IsNull()) {
     decoded.set_is_http_only(std::get<bool>(encodable_is_http_only));
   }
-  auto &encodable_is_secure = list[6];
+  auto& encodable_is_secure = list[6];
   if (!encodable_is_secure.IsNull()) {
     decoded.set_is_secure(std::get<bool>(encodable_is_secure));
   }
-  auto &encodable_same_site = list[7];
+  auto& encodable_same_site = list[7];
   if (!encodable_same_site.IsNull()) {
     decoded.set_same_site(std::get<int64_t>(encodable_same_site));
   }
-  auto &encodable_is_session = list[8];
+  auto& encodable_is_session = list[8];
   if (!encodable_is_session.IsNull()) {
     decoded.set_is_session(std::get<bool>(encodable_is_session));
   }
   return decoded;
 }
 
-bool WindowsCookieData::operator==(const WindowsCookieData &other) const {
-  return PigeonInternalDeepEquals(name_, other.name_) &&
-         PigeonInternalDeepEquals(value_, other.value_) &&
-         PigeonInternalDeepEquals(domain_, other.domain_) &&
-         PigeonInternalDeepEquals(path_, other.path_) &&
-         PigeonInternalDeepEquals(expires_, other.expires_) &&
-         PigeonInternalDeepEquals(is_http_only_, other.is_http_only_) &&
-         PigeonInternalDeepEquals(is_secure_, other.is_secure_) &&
-         PigeonInternalDeepEquals(same_site_, other.same_site_) &&
-         PigeonInternalDeepEquals(is_session_, other.is_session_);
+bool WindowsCookieData::operator==(const WindowsCookieData& other) const {
+  return PigeonInternalDeepEquals(name_, other.name_) && PigeonInternalDeepEquals(value_, other.value_) && PigeonInternalDeepEquals(domain_, other.domain_) && PigeonInternalDeepEquals(path_, other.path_) && PigeonInternalDeepEquals(expires_, other.expires_) && PigeonInternalDeepEquals(is_http_only_, other.is_http_only_) && PigeonInternalDeepEquals(is_secure_, other.is_secure_) && PigeonInternalDeepEquals(same_site_, other.same_site_) && PigeonInternalDeepEquals(is_session_, other.is_session_);
 }
 
-bool WindowsCookieData::operator!=(const WindowsCookieData &other) const {
+bool WindowsCookieData::operator!=(const WindowsCookieData& other) const {
   return !(*this == other);
 }
 
@@ -696,7 +727,9 @@ size_t WindowsCookieData::Hash() const {
   return result;
 }
 
-std::ostream &operator<<(std::ostream &os, const WindowsCookieData &obj) {
+std::ostream& operator<<(
+  std::ostream& os,
+  const WindowsCookieData& obj) {
   os << "WindowsCookieData(";
   os << "name: ";
   os << PigeonInternalToString(obj.name_);
@@ -709,50 +742,71 @@ std::ostream &operator<<(std::ostream &os, const WindowsCookieData &obj) {
   os << ", expires: ";
   if (obj.expires_) {
     os << PigeonInternalToString(*obj.expires_);
-  } else {
+  }
+  else {
     os << "null";
   }
   os << ", is_http_only: ";
   if (obj.is_http_only_) {
     os << PigeonInternalToString(*obj.is_http_only_);
-  } else {
+  }
+  else {
     os << "null";
   }
   os << ", is_secure: ";
   if (obj.is_secure_) {
     os << PigeonInternalToString(*obj.is_secure_);
-  } else {
+  }
+  else {
     os << "null";
   }
   os << ", same_site: ";
   if (obj.same_site_) {
     os << PigeonInternalToString(*obj.same_site_);
-  } else {
+  }
+  else {
     os << "null";
   }
   os << ", is_session: ";
   if (obj.is_session_) {
     os << PigeonInternalToString(*obj.is_session_);
-  } else {
+  }
+  else {
     os << "null";
   }
   os << ")";
   return os;
 }
 
-size_t PigeonInternalDeepHash(const WindowsCookieData &v) { return v.Hash(); }
+size_t PigeonInternalDeepHash(const WindowsCookieData& v) {
+  return v.Hash();
+}
 
 // WindowsPointData
 
-WindowsPointData::WindowsPointData(double x, double y) : x_(x), y_(y) {}
+WindowsPointData::WindowsPointData(
+  double x,
+  double y)
+ : x_(x),
+    y_(y) {}
 
-double WindowsPointData::x() const { return x_; }
+double WindowsPointData::x() const {
+  return x_;
+}
 
-void WindowsPointData::set_x(double value_arg) { x_ = value_arg; }
+void WindowsPointData::set_x(double value_arg) {
+  x_ = value_arg;
+}
 
-double WindowsPointData::y() const { return y_; }
 
-void WindowsPointData::set_y(double value_arg) { y_ = value_arg; }
+double WindowsPointData::y() const {
+  return y_;
+}
+
+void WindowsPointData::set_y(double value_arg) {
+  y_ = value_arg;
+}
+
 
 EncodableList WindowsPointData::ToEncodableList() const {
   EncodableList list;
@@ -762,19 +816,18 @@ EncodableList WindowsPointData::ToEncodableList() const {
   return list;
 }
 
-WindowsPointData
-WindowsPointData::FromEncodableList(const EncodableList &list) {
-  WindowsPointData decoded(std::get<double>(list[0]),
-                           std::get<double>(list[1]));
+WindowsPointData WindowsPointData::FromEncodableList(const EncodableList& list) {
+  WindowsPointData decoded(
+    std::get<double>(list[0]),
+    std::get<double>(list[1]));
   return decoded;
 }
 
-bool WindowsPointData::operator==(const WindowsPointData &other) const {
-  return PigeonInternalDeepEquals(x_, other.x_) &&
-         PigeonInternalDeepEquals(y_, other.y_);
+bool WindowsPointData::operator==(const WindowsPointData& other) const {
+  return PigeonInternalDeepEquals(x_, other.x_) && PigeonInternalDeepEquals(y_, other.y_);
 }
 
-bool WindowsPointData::operator!=(const WindowsPointData &other) const {
+bool WindowsPointData::operator!=(const WindowsPointData& other) const {
   return !(*this == other);
 }
 
@@ -785,7 +838,9 @@ size_t WindowsPointData::Hash() const {
   return result;
 }
 
-std::ostream &operator<<(std::ostream &os, const WindowsPointData &obj) {
+std::ostream& operator<<(
+  std::ostream& os,
+  const WindowsPointData& obj) {
   os << "WindowsPointData(";
   os << "x: ";
   os << PigeonInternalToString(obj.x_);
@@ -795,50 +850,111 @@ std::ostream &operator<<(std::ostream &os, const WindowsPointData &obj) {
   return os;
 }
 
-size_t PigeonInternalDeepHash(const WindowsPointData &v) { return v.Hash(); }
+size_t PigeonInternalDeepHash(const WindowsPointData& v) {
+  return v.Hash();
+}
 
 // WindowsSizeData
 
-WindowsSizeData::WindowsSizeData(double width, double height,
-                                 double scale_factor)
-    : width_(width), height_(height), scale_factor_(scale_factor) {}
+WindowsSizeData::WindowsSizeData(
+  double width,
+  double height,
+  double scale_factor)
+ : width_(width),
+    height_(height),
+    scale_factor_(scale_factor) {}
 
-double WindowsSizeData::width() const { return width_; }
+WindowsSizeData::WindowsSizeData(
+  double width,
+  double height,
+  double scale_factor,
+  const WindowsPointData* origin)
+ : width_(width),
+    height_(height),
+    scale_factor_(scale_factor),
+    origin_(origin ? std::make_unique<WindowsPointData>(*origin) : nullptr) {}
 
-void WindowsSizeData::set_width(double value_arg) { width_ = value_arg; }
+WindowsSizeData::WindowsSizeData(const WindowsSizeData& other)
+ : width_(other.width_),
+    height_(other.height_),
+    scale_factor_(other.scale_factor_),
+    origin_(other.origin_ ? std::make_unique<WindowsPointData>(*other.origin_) : nullptr) {}
 
-double WindowsSizeData::height() const { return height_; }
+WindowsSizeData& WindowsSizeData::operator=(const WindowsSizeData& other) {
+  width_ = other.width_;
+  height_ = other.height_;
+  scale_factor_ = other.scale_factor_;
+  origin_ = other.origin_ ? std::make_unique<WindowsPointData>(*other.origin_) : nullptr;
+  return *this;
+}
 
-void WindowsSizeData::set_height(double value_arg) { height_ = value_arg; }
+double WindowsSizeData::width() const {
+  return width_;
+}
 
-double WindowsSizeData::scale_factor() const { return scale_factor_; }
+void WindowsSizeData::set_width(double value_arg) {
+  width_ = value_arg;
+}
+
+
+double WindowsSizeData::height() const {
+  return height_;
+}
+
+void WindowsSizeData::set_height(double value_arg) {
+  height_ = value_arg;
+}
+
+
+double WindowsSizeData::scale_factor() const {
+  return scale_factor_;
+}
 
 void WindowsSizeData::set_scale_factor(double value_arg) {
   scale_factor_ = value_arg;
 }
 
+
+const WindowsPointData* WindowsSizeData::origin() const {
+  return origin_.get();
+}
+
+void WindowsSizeData::set_origin(const WindowsPointData* value_arg) {
+  origin_ = value_arg ? std::make_unique<WindowsPointData>(*value_arg) : nullptr;
+}
+
+void WindowsSizeData::set_origin(const WindowsPointData& value_arg) {
+  origin_ = std::make_unique<WindowsPointData>(value_arg);
+}
+
+
 EncodableList WindowsSizeData::ToEncodableList() const {
   EncodableList list;
-  list.reserve(3);
+  list.reserve(4);
   list.push_back(EncodableValue(width_));
   list.push_back(EncodableValue(height_));
   list.push_back(EncodableValue(scale_factor_));
+  list.push_back(origin_ ? CustomEncodableValue(*origin_) : EncodableValue());
   return list;
 }
 
-WindowsSizeData WindowsSizeData::FromEncodableList(const EncodableList &list) {
-  WindowsSizeData decoded(std::get<double>(list[0]), std::get<double>(list[1]),
-                          std::get<double>(list[2]));
+WindowsSizeData WindowsSizeData::FromEncodableList(const EncodableList& list) {
+  WindowsSizeData decoded(
+    std::get<double>(list[0]),
+    std::get<double>(list[1]),
+    std::get<double>(list[2]));
+  auto& encodable_origin = list[3];
+  if (!encodable_origin.IsNull()) {
+    decoded.set_origin(std::any_cast<const WindowsPointData&>(std::get<CustomEncodableValue>(encodable_origin)));
+  }
   return decoded;
 }
 
-bool WindowsSizeData::operator==(const WindowsSizeData &other) const {
-  return PigeonInternalDeepEquals(width_, other.width_) &&
-         PigeonInternalDeepEquals(height_, other.height_) &&
-         PigeonInternalDeepEquals(scale_factor_, other.scale_factor_);
+bool WindowsSizeData::operator==(const WindowsSizeData& other) const {
+  return PigeonInternalDeepEquals(width_, other.width_) && PigeonInternalDeepEquals(height_, other.height_) && PigeonInternalDeepEquals(scale_factor_, other.scale_factor_) && PigeonInternalDeepEquals(origin_, other.origin_);
 }
 
-bool WindowsSizeData::operator!=(const WindowsSizeData &other) const {
+bool WindowsSizeData::operator!=(const WindowsSizeData& other) const {
   return !(*this == other);
 }
 
@@ -847,10 +963,13 @@ size_t WindowsSizeData::Hash() const {
   result = result * 31 + PigeonInternalDeepHash(width_);
   result = result * 31 + PigeonInternalDeepHash(height_);
   result = result * 31 + PigeonInternalDeepHash(scale_factor_);
+  result = result * 31 + PigeonInternalDeepHash(origin_);
   return result;
 }
 
-std::ostream &operator<<(std::ostream &os, const WindowsSizeData &obj) {
+std::ostream& operator<<(
+  std::ostream& os,
+  const WindowsSizeData& obj) {
   os << "WindowsSizeData(";
   os << "width: ";
   os << PigeonInternalToString(obj.width_);
@@ -858,50 +977,90 @@ std::ostream &operator<<(std::ostream &os, const WindowsSizeData &obj) {
   os << PigeonInternalToString(obj.height_);
   os << ", scale_factor: ";
   os << PigeonInternalToString(obj.scale_factor_);
+  os << ", origin: ";
+  if (obj.origin_) {
+    os << *obj.origin_;
+  }
+  else {
+    os << "null";
+  }
   os << ")";
   return os;
 }
 
-size_t PigeonInternalDeepHash(const WindowsSizeData &v) { return v.Hash(); }
+size_t PigeonInternalDeepHash(const WindowsSizeData& v) {
+  return v.Hash();
+}
 
 // WindowsPointerUpdateData
 
-WindowsPointerUpdateData::WindowsPointerUpdateData(int64_t pointer,
-                                                   int64_t event, double x,
-                                                   double y, double size,
-                                                   double pressure)
-    : pointer_(pointer), event_(event), x_(x), y_(y), size_(size),
-      pressure_(pressure) {}
+WindowsPointerUpdateData::WindowsPointerUpdateData(
+  int64_t pointer,
+  int64_t event,
+  double x,
+  double y,
+  double size,
+  double pressure)
+ : pointer_(pointer),
+    event_(event),
+    x_(x),
+    y_(y),
+    size_(size),
+    pressure_(pressure) {}
 
-int64_t WindowsPointerUpdateData::pointer() const { return pointer_; }
+int64_t WindowsPointerUpdateData::pointer() const {
+  return pointer_;
+}
 
 void WindowsPointerUpdateData::set_pointer(int64_t value_arg) {
   pointer_ = value_arg;
 }
 
-int64_t WindowsPointerUpdateData::event() const { return event_; }
+
+int64_t WindowsPointerUpdateData::event() const {
+  return event_;
+}
 
 void WindowsPointerUpdateData::set_event(int64_t value_arg) {
   event_ = value_arg;
 }
 
-double WindowsPointerUpdateData::x() const { return x_; }
 
-void WindowsPointerUpdateData::set_x(double value_arg) { x_ = value_arg; }
+double WindowsPointerUpdateData::x() const {
+  return x_;
+}
 
-double WindowsPointerUpdateData::y() const { return y_; }
+void WindowsPointerUpdateData::set_x(double value_arg) {
+  x_ = value_arg;
+}
 
-void WindowsPointerUpdateData::set_y(double value_arg) { y_ = value_arg; }
 
-double WindowsPointerUpdateData::size() const { return size_; }
+double WindowsPointerUpdateData::y() const {
+  return y_;
+}
 
-void WindowsPointerUpdateData::set_size(double value_arg) { size_ = value_arg; }
+void WindowsPointerUpdateData::set_y(double value_arg) {
+  y_ = value_arg;
+}
 
-double WindowsPointerUpdateData::pressure() const { return pressure_; }
+
+double WindowsPointerUpdateData::size() const {
+  return size_;
+}
+
+void WindowsPointerUpdateData::set_size(double value_arg) {
+  size_ = value_arg;
+}
+
+
+double WindowsPointerUpdateData::pressure() const {
+  return pressure_;
+}
 
 void WindowsPointerUpdateData::set_pressure(double value_arg) {
   pressure_ = value_arg;
 }
+
 
 EncodableList WindowsPointerUpdateData::ToEncodableList() const {
   EncodableList list;
@@ -915,27 +1074,22 @@ EncodableList WindowsPointerUpdateData::ToEncodableList() const {
   return list;
 }
 
-WindowsPointerUpdateData
-WindowsPointerUpdateData::FromEncodableList(const EncodableList &list) {
+WindowsPointerUpdateData WindowsPointerUpdateData::FromEncodableList(const EncodableList& list) {
   WindowsPointerUpdateData decoded(
-      std::get<int64_t>(list[0]), std::get<int64_t>(list[1]),
-      std::get<double>(list[2]), std::get<double>(list[3]),
-      std::get<double>(list[4]), std::get<double>(list[5]));
+    std::get<int64_t>(list[0]),
+    std::get<int64_t>(list[1]),
+    std::get<double>(list[2]),
+    std::get<double>(list[3]),
+    std::get<double>(list[4]),
+    std::get<double>(list[5]));
   return decoded;
 }
 
-bool WindowsPointerUpdateData::operator==(
-    const WindowsPointerUpdateData &other) const {
-  return PigeonInternalDeepEquals(pointer_, other.pointer_) &&
-         PigeonInternalDeepEquals(event_, other.event_) &&
-         PigeonInternalDeepEquals(x_, other.x_) &&
-         PigeonInternalDeepEquals(y_, other.y_) &&
-         PigeonInternalDeepEquals(size_, other.size_) &&
-         PigeonInternalDeepEquals(pressure_, other.pressure_);
+bool WindowsPointerUpdateData::operator==(const WindowsPointerUpdateData& other) const {
+  return PigeonInternalDeepEquals(pointer_, other.pointer_) && PigeonInternalDeepEquals(event_, other.event_) && PigeonInternalDeepEquals(x_, other.x_) && PigeonInternalDeepEquals(y_, other.y_) && PigeonInternalDeepEquals(size_, other.size_) && PigeonInternalDeepEquals(pressure_, other.pressure_);
 }
 
-bool WindowsPointerUpdateData::operator!=(
-    const WindowsPointerUpdateData &other) const {
+bool WindowsPointerUpdateData::operator!=(const WindowsPointerUpdateData& other) const {
   return !(*this == other);
 }
 
@@ -950,8 +1104,9 @@ size_t WindowsPointerUpdateData::Hash() const {
   return result;
 }
 
-std::ostream &operator<<(std::ostream &os,
-                         const WindowsPointerUpdateData &obj) {
+std::ostream& operator<<(
+  std::ostream& os,
+  const WindowsPointerUpdateData& obj) {
   os << "WindowsPointerUpdateData(";
   os << "pointer: ";
   os << PigeonInternalToString(obj.pointer_);
@@ -969,50 +1124,94 @@ std::ostream &operator<<(std::ostream &os,
   return os;
 }
 
-size_t PigeonInternalDeepHash(const WindowsPointerUpdateData &v) {
+size_t PigeonInternalDeepHash(const WindowsPointerUpdateData& v) {
   return v.Hash();
 }
 
 // WindowsPointerButtonData
 
-WindowsPointerButtonData::WindowsPointerButtonData(int64_t button, bool is_down)
-    : button_(button), is_down_(is_down) {}
+WindowsPointerButtonData::WindowsPointerButtonData(
+  int64_t button,
+  bool is_down)
+ : button_(button),
+    is_down_(is_down) {}
 
-int64_t WindowsPointerButtonData::button() const { return button_; }
+WindowsPointerButtonData::WindowsPointerButtonData(
+  int64_t button,
+  bool is_down,
+  const WindowsPointData* position)
+ : button_(button),
+    is_down_(is_down),
+    position_(position ? std::make_unique<WindowsPointData>(*position) : nullptr) {}
+
+WindowsPointerButtonData::WindowsPointerButtonData(const WindowsPointerButtonData& other)
+ : button_(other.button_),
+    is_down_(other.is_down_),
+    position_(other.position_ ? std::make_unique<WindowsPointData>(*other.position_) : nullptr) {}
+
+WindowsPointerButtonData& WindowsPointerButtonData::operator=(const WindowsPointerButtonData& other) {
+  button_ = other.button_;
+  is_down_ = other.is_down_;
+  position_ = other.position_ ? std::make_unique<WindowsPointData>(*other.position_) : nullptr;
+  return *this;
+}
+
+int64_t WindowsPointerButtonData::button() const {
+  return button_;
+}
 
 void WindowsPointerButtonData::set_button(int64_t value_arg) {
   button_ = value_arg;
 }
 
-bool WindowsPointerButtonData::is_down() const { return is_down_; }
+
+bool WindowsPointerButtonData::is_down() const {
+  return is_down_;
+}
 
 void WindowsPointerButtonData::set_is_down(bool value_arg) {
   is_down_ = value_arg;
 }
 
+
+const WindowsPointData* WindowsPointerButtonData::position() const {
+  return position_.get();
+}
+
+void WindowsPointerButtonData::set_position(const WindowsPointData* value_arg) {
+  position_ = value_arg ? std::make_unique<WindowsPointData>(*value_arg) : nullptr;
+}
+
+void WindowsPointerButtonData::set_position(const WindowsPointData& value_arg) {
+  position_ = std::make_unique<WindowsPointData>(value_arg);
+}
+
+
 EncodableList WindowsPointerButtonData::ToEncodableList() const {
   EncodableList list;
-  list.reserve(2);
+  list.reserve(3);
   list.push_back(EncodableValue(button_));
   list.push_back(EncodableValue(is_down_));
+  list.push_back(position_ ? CustomEncodableValue(*position_) : EncodableValue());
   return list;
 }
 
-WindowsPointerButtonData
-WindowsPointerButtonData::FromEncodableList(const EncodableList &list) {
-  WindowsPointerButtonData decoded(std::get<int64_t>(list[0]),
-                                   std::get<bool>(list[1]));
+WindowsPointerButtonData WindowsPointerButtonData::FromEncodableList(const EncodableList& list) {
+  WindowsPointerButtonData decoded(
+    std::get<int64_t>(list[0]),
+    std::get<bool>(list[1]));
+  auto& encodable_position = list[2];
+  if (!encodable_position.IsNull()) {
+    decoded.set_position(std::any_cast<const WindowsPointData&>(std::get<CustomEncodableValue>(encodable_position)));
+  }
   return decoded;
 }
 
-bool WindowsPointerButtonData::operator==(
-    const WindowsPointerButtonData &other) const {
-  return PigeonInternalDeepEquals(button_, other.button_) &&
-         PigeonInternalDeepEquals(is_down_, other.is_down_);
+bool WindowsPointerButtonData::operator==(const WindowsPointerButtonData& other) const {
+  return PigeonInternalDeepEquals(button_, other.button_) && PigeonInternalDeepEquals(is_down_, other.is_down_) && PigeonInternalDeepEquals(position_, other.position_);
 }
 
-bool WindowsPointerButtonData::operator!=(
-    const WindowsPointerButtonData &other) const {
+bool WindowsPointerButtonData::operator!=(const WindowsPointerButtonData& other) const {
   return !(*this == other);
 }
 
@@ -1020,31 +1219,44 @@ size_t WindowsPointerButtonData::Hash() const {
   size_t result = 1;
   result = result * 31 + PigeonInternalDeepHash(button_);
   result = result * 31 + PigeonInternalDeepHash(is_down_);
+  result = result * 31 + PigeonInternalDeepHash(position_);
   return result;
 }
 
-std::ostream &operator<<(std::ostream &os,
-                         const WindowsPointerButtonData &obj) {
+std::ostream& operator<<(
+  std::ostream& os,
+  const WindowsPointerButtonData& obj) {
   os << "WindowsPointerButtonData(";
   os << "button: ";
   os << PigeonInternalToString(obj.button_);
   os << ", is_down: ";
   os << PigeonInternalToString(obj.is_down_);
+  os << ", position: ";
+  if (obj.position_) {
+    os << *obj.position_;
+  }
+  else {
+    os << "null";
+  }
   os << ")";
   return os;
 }
 
-size_t PigeonInternalDeepHash(const WindowsPointerButtonData &v) {
+size_t PigeonInternalDeepHash(const WindowsPointerButtonData& v) {
   return v.Hash();
 }
 
 // WindowsVirtualHostMappingData
 
 WindowsVirtualHostMappingData::WindowsVirtualHostMappingData(
-    const std::string &host_name, const std::string &path, int64_t access_kind)
-    : host_name_(host_name), path_(path), access_kind_(access_kind) {}
+  const std::string& host_name,
+  const std::string& path,
+  int64_t access_kind)
+ : host_name_(host_name),
+    path_(path),
+    access_kind_(access_kind) {}
 
-const std::string &WindowsVirtualHostMappingData::host_name() const {
+const std::string& WindowsVirtualHostMappingData::host_name() const {
   return host_name_;
 }
 
@@ -1052,11 +1264,15 @@ void WindowsVirtualHostMappingData::set_host_name(std::string_view value_arg) {
   host_name_ = value_arg;
 }
 
-const std::string &WindowsVirtualHostMappingData::path() const { return path_; }
+
+const std::string& WindowsVirtualHostMappingData::path() const {
+  return path_;
+}
 
 void WindowsVirtualHostMappingData::set_path(std::string_view value_arg) {
   path_ = value_arg;
 }
+
 
 int64_t WindowsVirtualHostMappingData::access_kind() const {
   return access_kind_;
@@ -1065,6 +1281,7 @@ int64_t WindowsVirtualHostMappingData::access_kind() const {
 void WindowsVirtualHostMappingData::set_access_kind(int64_t value_arg) {
   access_kind_ = value_arg;
 }
+
 
 EncodableList WindowsVirtualHostMappingData::ToEncodableList() const {
   EncodableList list;
@@ -1075,23 +1292,19 @@ EncodableList WindowsVirtualHostMappingData::ToEncodableList() const {
   return list;
 }
 
-WindowsVirtualHostMappingData
-WindowsVirtualHostMappingData::FromEncodableList(const EncodableList &list) {
-  WindowsVirtualHostMappingData decoded(std::get<std::string>(list[0]),
-                                        std::get<std::string>(list[1]),
-                                        std::get<int64_t>(list[2]));
+WindowsVirtualHostMappingData WindowsVirtualHostMappingData::FromEncodableList(const EncodableList& list) {
+  WindowsVirtualHostMappingData decoded(
+    std::get<std::string>(list[0]),
+    std::get<std::string>(list[1]),
+    std::get<int64_t>(list[2]));
   return decoded;
 }
 
-bool WindowsVirtualHostMappingData::operator==(
-    const WindowsVirtualHostMappingData &other) const {
-  return PigeonInternalDeepEquals(host_name_, other.host_name_) &&
-         PigeonInternalDeepEquals(path_, other.path_) &&
-         PigeonInternalDeepEquals(access_kind_, other.access_kind_);
+bool WindowsVirtualHostMappingData::operator==(const WindowsVirtualHostMappingData& other) const {
+  return PigeonInternalDeepEquals(host_name_, other.host_name_) && PigeonInternalDeepEquals(path_, other.path_) && PigeonInternalDeepEquals(access_kind_, other.access_kind_);
 }
 
-bool WindowsVirtualHostMappingData::operator!=(
-    const WindowsVirtualHostMappingData &other) const {
+bool WindowsVirtualHostMappingData::operator!=(const WindowsVirtualHostMappingData& other) const {
   return !(*this == other);
 }
 
@@ -1103,8 +1316,9 @@ size_t WindowsVirtualHostMappingData::Hash() const {
   return result;
 }
 
-std::ostream &operator<<(std::ostream &os,
-                         const WindowsVirtualHostMappingData &obj) {
+std::ostream& operator<<(
+  std::ostream& os,
+  const WindowsVirtualHostMappingData& obj) {
   os << "WindowsVirtualHostMappingData(";
   os << "host_name: ";
   os << PigeonInternalToString(obj.host_name_);
@@ -1116,54 +1330,69 @@ std::ostream &operator<<(std::ostream &os,
   return os;
 }
 
-size_t PigeonInternalDeepHash(const WindowsVirtualHostMappingData &v) {
+size_t PigeonInternalDeepHash(const WindowsVirtualHostMappingData& v) {
   return v.Hash();
 }
 
 // WindowsLoadRequestData
 
-WindowsLoadRequestData::WindowsLoadRequestData(const std::string &url,
-                                               const std::string &method,
-                                               const std::string &headers)
-    : url_(url), method_(method), headers_(headers) {}
+WindowsLoadRequestData::WindowsLoadRequestData(
+  const std::string& url,
+  const std::string& method,
+  const std::string& headers)
+ : url_(url),
+    method_(method),
+    headers_(headers) {}
 
-WindowsLoadRequestData::WindowsLoadRequestData(const std::string &url,
-                                               const std::string &method,
-                                               const std::string &headers,
-                                               const std::vector<uint8_t> *body)
-    : url_(url), method_(method), headers_(headers),
-      body_(body ? std::optional<std::vector<uint8_t>>(*body) : std::nullopt) {}
+WindowsLoadRequestData::WindowsLoadRequestData(
+  const std::string& url,
+  const std::string& method,
+  const std::string& headers,
+  const std::vector<uint8_t>* body)
+ : url_(url),
+    method_(method),
+    headers_(headers),
+    body_(body ? std::optional<std::vector<uint8_t>>(*body) : std::nullopt) {}
 
-const std::string &WindowsLoadRequestData::url() const { return url_; }
+const std::string& WindowsLoadRequestData::url() const {
+  return url_;
+}
 
 void WindowsLoadRequestData::set_url(std::string_view value_arg) {
   url_ = value_arg;
 }
 
-const std::string &WindowsLoadRequestData::method() const { return method_; }
+
+const std::string& WindowsLoadRequestData::method() const {
+  return method_;
+}
 
 void WindowsLoadRequestData::set_method(std::string_view value_arg) {
   method_ = value_arg;
 }
 
-const std::string &WindowsLoadRequestData::headers() const { return headers_; }
+
+const std::string& WindowsLoadRequestData::headers() const {
+  return headers_;
+}
 
 void WindowsLoadRequestData::set_headers(std::string_view value_arg) {
   headers_ = value_arg;
 }
 
-const std::vector<uint8_t> *WindowsLoadRequestData::body() const {
+
+const std::vector<uint8_t>* WindowsLoadRequestData::body() const {
   return body_ ? &(*body_) : nullptr;
 }
 
-void WindowsLoadRequestData::set_body(const std::vector<uint8_t> *value_arg) {
-  body_ = value_arg ? std::optional<std::vector<uint8_t>>(*value_arg)
-                    : std::nullopt;
+void WindowsLoadRequestData::set_body(const std::vector<uint8_t>* value_arg) {
+  body_ = value_arg ? std::optional<std::vector<uint8_t>>(*value_arg) : std::nullopt;
 }
 
-void WindowsLoadRequestData::set_body(const std::vector<uint8_t> &value_arg) {
+void WindowsLoadRequestData::set_body(const std::vector<uint8_t>& value_arg) {
   body_ = value_arg;
 }
+
 
 EncodableList WindowsLoadRequestData::ToEncodableList() const {
   EncodableList list;
@@ -1175,28 +1404,23 @@ EncodableList WindowsLoadRequestData::ToEncodableList() const {
   return list;
 }
 
-WindowsLoadRequestData
-WindowsLoadRequestData::FromEncodableList(const EncodableList &list) {
-  WindowsLoadRequestData decoded(std::get<std::string>(list[0]),
-                                 std::get<std::string>(list[1]),
-                                 std::get<std::string>(list[2]));
-  auto &encodable_body = list[3];
+WindowsLoadRequestData WindowsLoadRequestData::FromEncodableList(const EncodableList& list) {
+  WindowsLoadRequestData decoded(
+    std::get<std::string>(list[0]),
+    std::get<std::string>(list[1]),
+    std::get<std::string>(list[2]));
+  auto& encodable_body = list[3];
   if (!encodable_body.IsNull()) {
     decoded.set_body(std::get<std::vector<uint8_t>>(encodable_body));
   }
   return decoded;
 }
 
-bool WindowsLoadRequestData::operator==(
-    const WindowsLoadRequestData &other) const {
-  return PigeonInternalDeepEquals(url_, other.url_) &&
-         PigeonInternalDeepEquals(method_, other.method_) &&
-         PigeonInternalDeepEquals(headers_, other.headers_) &&
-         PigeonInternalDeepEquals(body_, other.body_);
+bool WindowsLoadRequestData::operator==(const WindowsLoadRequestData& other) const {
+  return PigeonInternalDeepEquals(url_, other.url_) && PigeonInternalDeepEquals(method_, other.method_) && PigeonInternalDeepEquals(headers_, other.headers_) && PigeonInternalDeepEquals(body_, other.body_);
 }
 
-bool WindowsLoadRequestData::operator!=(
-    const WindowsLoadRequestData &other) const {
+bool WindowsLoadRequestData::operator!=(const WindowsLoadRequestData& other) const {
   return !(*this == other);
 }
 
@@ -1209,7 +1433,9 @@ size_t WindowsLoadRequestData::Hash() const {
   return result;
 }
 
-std::ostream &operator<<(std::ostream &os, const WindowsLoadRequestData &obj) {
+std::ostream& operator<<(
+  std::ostream& os,
+  const WindowsLoadRequestData& obj) {
   os << "WindowsLoadRequestData(";
   os << "url: ";
   os << PigeonInternalToString(obj.url_);
@@ -1220,137 +1446,104 @@ std::ostream &operator<<(std::ostream &os, const WindowsLoadRequestData &obj) {
   os << ", body: ";
   if (obj.body_) {
     os << PigeonInternalToString(*obj.body_);
-  } else {
+  }
+  else {
     os << "null";
   }
   os << ")";
   return os;
 }
 
-size_t PigeonInternalDeepHash(const WindowsLoadRequestData &v) {
+size_t PigeonInternalDeepHash(const WindowsLoadRequestData& v) {
   return v.Hash();
 }
+
 
 PigeonInternalCodecSerializer::PigeonInternalCodecSerializer() {}
 
 EncodableValue PigeonInternalCodecSerializer::ReadValueOfType(
-    uint8_t type, ::flutter::ByteStreamReader *stream) const {
+  uint8_t type,
+  ::flutter::ByteStreamReader* stream) const {
   switch (type) {
-  case 129: {
-    return CustomEncodableValue(WindowsEnvironmentOptions::FromEncodableList(
-        std::get<EncodableList>(ReadValue(stream))));
-  }
-  case 130: {
-    return CustomEncodableValue(WindowsCreateWebViewResult::FromEncodableList(
-        std::get<EncodableList>(ReadValue(stream))));
-  }
-  case 131: {
-    return CustomEncodableValue(WindowsCookieData::FromEncodableList(
-        std::get<EncodableList>(ReadValue(stream))));
-  }
-  case 132: {
-    return CustomEncodableValue(WindowsPointData::FromEncodableList(
-        std::get<EncodableList>(ReadValue(stream))));
-  }
-  case 133: {
-    return CustomEncodableValue(WindowsSizeData::FromEncodableList(
-        std::get<EncodableList>(ReadValue(stream))));
-  }
-  case 134: {
-    return CustomEncodableValue(WindowsPointerUpdateData::FromEncodableList(
-        std::get<EncodableList>(ReadValue(stream))));
-  }
-  case 135: {
-    return CustomEncodableValue(WindowsPointerButtonData::FromEncodableList(
-        std::get<EncodableList>(ReadValue(stream))));
-  }
-  case 136: {
-    return CustomEncodableValue(
-        WindowsVirtualHostMappingData::FromEncodableList(
-            std::get<EncodableList>(ReadValue(stream))));
-  }
-  case 137: {
-    return CustomEncodableValue(WindowsLoadRequestData::FromEncodableList(
-        std::get<EncodableList>(ReadValue(stream))));
-  }
-  default:
-    return ::flutter::StandardCodecSerializer::ReadValueOfType(type, stream);
-  }
+    case 129: {
+        return CustomEncodableValue(WindowsEnvironmentOptions::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+      }
+    case 130: {
+        return CustomEncodableValue(WindowsCreateWebViewResult::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+      }
+    case 131: {
+        return CustomEncodableValue(WindowsCookieData::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+      }
+    case 132: {
+        return CustomEncodableValue(WindowsPointData::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+      }
+    case 133: {
+        return CustomEncodableValue(WindowsSizeData::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+      }
+    case 134: {
+        return CustomEncodableValue(WindowsPointerUpdateData::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+      }
+    case 135: {
+        return CustomEncodableValue(WindowsPointerButtonData::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+      }
+    case 136: {
+        return CustomEncodableValue(WindowsVirtualHostMappingData::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+      }
+    case 137: {
+        return CustomEncodableValue(WindowsLoadRequestData::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+      }
+    default:
+      return ::flutter::StandardCodecSerializer::ReadValueOfType(type, stream);
+    }
 }
 
 void PigeonInternalCodecSerializer::WriteValue(
-    const EncodableValue &value, ::flutter::ByteStreamWriter *stream) const {
-  if (const CustomEncodableValue *custom_value =
-          std::get_if<CustomEncodableValue>(&value)) {
+  const EncodableValue& value,
+  ::flutter::ByteStreamWriter* stream) const {
+  if (const CustomEncodableValue* custom_value = std::get_if<CustomEncodableValue>(&value)) {
     if (custom_value->type() == typeid(WindowsEnvironmentOptions)) {
       stream->WriteByte(129);
-      WriteValue(
-          EncodableValue(std::any_cast<WindowsEnvironmentOptions>(*custom_value)
-                             .ToEncodableList()),
-          stream);
+      WriteValue(EncodableValue(std::any_cast<WindowsEnvironmentOptions>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(WindowsCreateWebViewResult)) {
       stream->WriteByte(130);
-      WriteValue(EncodableValue(
-                     std::any_cast<WindowsCreateWebViewResult>(*custom_value)
-                         .ToEncodableList()),
-                 stream);
+      WriteValue(EncodableValue(std::any_cast<WindowsCreateWebViewResult>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(WindowsCookieData)) {
       stream->WriteByte(131);
-      WriteValue(EncodableValue(std::any_cast<WindowsCookieData>(*custom_value)
-                                    .ToEncodableList()),
-                 stream);
+      WriteValue(EncodableValue(std::any_cast<WindowsCookieData>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(WindowsPointData)) {
       stream->WriteByte(132);
-      WriteValue(
-          EncodableValue(
-              std::any_cast<WindowsPointData>(*custom_value).ToEncodableList()),
-          stream);
+      WriteValue(EncodableValue(std::any_cast<WindowsPointData>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(WindowsSizeData)) {
       stream->WriteByte(133);
-      WriteValue(
-          EncodableValue(
-              std::any_cast<WindowsSizeData>(*custom_value).ToEncodableList()),
-          stream);
+      WriteValue(EncodableValue(std::any_cast<WindowsSizeData>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(WindowsPointerUpdateData)) {
       stream->WriteByte(134);
-      WriteValue(
-          EncodableValue(std::any_cast<WindowsPointerUpdateData>(*custom_value)
-                             .ToEncodableList()),
-          stream);
+      WriteValue(EncodableValue(std::any_cast<WindowsPointerUpdateData>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(WindowsPointerButtonData)) {
       stream->WriteByte(135);
-      WriteValue(
-          EncodableValue(std::any_cast<WindowsPointerButtonData>(*custom_value)
-                             .ToEncodableList()),
-          stream);
+      WriteValue(EncodableValue(std::any_cast<WindowsPointerButtonData>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(WindowsVirtualHostMappingData)) {
       stream->WriteByte(136);
-      WriteValue(EncodableValue(
-                     std::any_cast<WindowsVirtualHostMappingData>(*custom_value)
-                         .ToEncodableList()),
-                 stream);
+      WriteValue(EncodableValue(std::any_cast<WindowsVirtualHostMappingData>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(WindowsLoadRequestData)) {
       stream->WriteByte(137);
-      WriteValue(
-          EncodableValue(std::any_cast<WindowsLoadRequestData>(*custom_value)
-                             .ToEncodableList()),
-          stream);
+      WriteValue(EncodableValue(std::any_cast<WindowsLoadRequestData>(*custom_value).ToEncodableList()), stream);
       return;
     }
   }
@@ -1358,2285 +1551,1834 @@ void PigeonInternalCodecSerializer::WriteValue(
 }
 
 /// The codec used by WindowsWebViewHostApi.
-const ::flutter::StandardMessageCodec &WindowsWebViewHostApi::GetCodec() {
-  return ::flutter::StandardMessageCodec::GetInstance(
-      &PigeonInternalCodecSerializer::GetInstance());
+const ::flutter::StandardMessageCodec& WindowsWebViewHostApi::GetCodec() {
+  return ::flutter::StandardMessageCodec::GetInstance(&PigeonInternalCodecSerializer::GetInstance());
 }
 
-// Sets up an instance of `WindowsWebViewHostApi` to handle messages through the
-// `binary_messenger`.
-void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
-                                  WindowsWebViewHostApi *api) {
+// Sets up an instance of `WindowsWebViewHostApi` to handle messages through the `binary_messenger`.
+void WindowsWebViewHostApi::SetUp(
+  ::flutter::BinaryMessenger* binary_messenger,
+  WindowsWebViewHostApi* api) {
   WindowsWebViewHostApi::SetUp(binary_messenger, api, "");
 }
 
-void WindowsWebViewHostApi::SetUp(::flutter::BinaryMessenger *binary_messenger,
-                                  WindowsWebViewHostApi *api,
-                                  const std::string &message_channel_suffix) {
-  const std::string prepended_suffix =
-      message_channel_suffix.length() > 0
-          ? std::string(".") + message_channel_suffix
-          : "";
+void WindowsWebViewHostApi::SetUp(
+  ::flutter::BinaryMessenger* binary_messenger,
+  WindowsWebViewHostApi* api,
+  const std::string& message_channel_suffix) {
+  const std::string prepended_suffix = message_channel_suffix.length() > 0 ? std::string(".") + message_channel_suffix : "";
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
-        "initializeEnvironment" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.initializeEnvironment" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_options_arg = args.at(0);
-              if (encodable_options_arg.IsNull()) {
-                reply(WrapError("options_arg unexpectedly null."));
-                return;
-              }
-              const auto &options_arg =
-                  std::any_cast<const WindowsEnvironmentOptions &>(
-                      std::get<CustomEncodableValue>(encodable_options_arg));
-              api->InitializeEnvironment(
-                  options_arg, [reply](std::optional<FlutterError> &&output) {
-                    if (output.has_value()) {
-                      reply(WrapError(output.value()));
-                      return;
-                    }
-                    EncodableList wrapped;
-                    wrapped.push_back(EncodableValue());
-                    reply(EncodableValue(std::move(wrapped)));
-                  });
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_options_arg = args.at(0);
+          if (encodable_options_arg.IsNull()) {
+            reply(WrapError("options_arg unexpectedly null."));
+            return;
+          }
+          const auto& options_arg = std::any_cast<const WindowsEnvironmentOptions&>(std::get<CustomEncodableValue>(encodable_options_arg));
+          api->InitializeEnvironment(options_arg, [reply](std::optional<FlutterError>&& output) {
+            if (output.has_value()) {
+              reply(WrapError(output.value()));
+              return;
             }
+            EncodableList wrapped;
+            wrapped.push_back(EncodableValue());
+            reply(EncodableValue(std::move(wrapped)));
           });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.ensureEnvironment" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.ensureEnvironment" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_options_arg = args.at(0);
-              if (encodable_options_arg.IsNull()) {
-                reply(WrapError("options_arg unexpectedly null."));
-                return;
-              }
-              const auto &options_arg =
-                  std::any_cast<const WindowsEnvironmentOptions &>(
-                      std::get<CustomEncodableValue>(encodable_options_arg));
-              api->EnsureEnvironment(
-                  options_arg, [reply](std::optional<FlutterError> &&output) {
-                    if (output.has_value()) {
-                      reply(WrapError(output.value()));
-                      return;
-                    }
-                    EncodableList wrapped;
-                    wrapped.push_back(EncodableValue());
-                    reply(EncodableValue(std::move(wrapped)));
-                  });
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_options_arg = args.at(0);
+          if (encodable_options_arg.IsNull()) {
+            reply(WrapError("options_arg unexpectedly null."));
+            return;
+          }
+          const auto& options_arg = std::any_cast<const WindowsEnvironmentOptions&>(std::get<CustomEncodableValue>(encodable_options_arg));
+          api->EnsureEnvironment(options_arg, [reply](std::optional<FlutterError>&& output) {
+            if (output.has_value()) {
+              reply(WrapError(output.value()));
+              return;
             }
+            EncodableList wrapped;
+            wrapped.push_back(EncodableValue());
+            reply(EncodableValue(std::move(wrapped)));
           });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.getWebViewVersion" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.getWebViewVersion" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              ErrorOr<std::optional<std::string>> output =
-                  api->GetWebViewVersion();
-              if (output.has_error()) {
-                reply(WrapError(output.error()));
-                return;
-              }
-              EncodableList wrapped;
-              auto output_optional = std::move(output).TakeValue();
-              if (output_optional) {
-                wrapped.push_back(
-                    EncodableValue(std::move(output_optional).value()));
-              } else {
-                wrapped.push_back(EncodableValue());
-              }
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          ErrorOr<std::optional<std::string>> output = api->GetWebViewVersion();
+          if (output.has_error()) {
+            reply(WrapError(output.error()));
+            return;
+          }
+          EncodableList wrapped;
+          auto output_optional = std::move(output).TakeValue();
+          if (output_optional) {
+            wrapped.push_back(EncodableValue(std::move(output_optional).value()));
+          } else {
+            wrapped.push_back(EncodableValue());
+          }
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
-        "openWebView2DownloadPage" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.openWebView2DownloadPage" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              std::optional<FlutterError> output =
-                  api->OpenWebView2DownloadPage();
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          std::optional<FlutterError> output = api->OpenWebView2DownloadPage();
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.clearAllWebsiteDataForEnvironment" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          api->ClearAllWebsiteDataForEnvironment([reply](ErrorOr<bool>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
+            }
+            EncodableList wrapped;
+            wrapped.push_back(EncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
+          });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.createWebView" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          api->CreateWebView([reply](ErrorOr<WindowsCreateWebViewResult>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
+            }
+            EncodableList wrapped;
+            wrapped.push_back(CustomEncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
+          });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.createPrivateWebView" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          api->CreatePrivateWebView([reply](ErrorOr<WindowsCreateWebViewResult>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
+            }
+            EncodableList wrapped;
+            wrapped.push_back(CustomEncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
+          });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.createProfileWebView" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_name_arg = args.at(0);
+          if (encodable_name_arg.IsNull()) {
+            reply(WrapError("name_arg unexpectedly null."));
+            return;
+          }
+          const auto& name_arg = std::get<std::string>(encodable_name_arg);
+          const auto& encodable_incognito_arg = args.at(1);
+          if (encodable_incognito_arg.IsNull()) {
+            reply(WrapError("incognito_arg unexpectedly null."));
+            return;
+          }
+          const auto& incognito_arg = std::get<bool>(encodable_incognito_arg);
+          api->CreateProfileWebView(name_arg, incognito_arg, [reply](ErrorOr<WindowsCreateWebViewResult>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
+            }
+            EncodableList wrapped;
+            wrapped.push_back(CustomEncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
+          });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.isIncognitoSupported" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          api->IsIncognitoSupported([reply](ErrorOr<bool>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
+            }
+            EncodableList wrapped;
+            wrapped.push_back(EncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
+          });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.disposeWebView" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          std::optional<FlutterError> output = api->DisposeWebView(texture_id_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.loadUrl" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_url_arg = args.at(1);
+          if (encodable_url_arg.IsNull()) {
+            reply(WrapError("url_arg unexpectedly null."));
+            return;
+          }
+          const auto& url_arg = std::get<std::string>(encodable_url_arg);
+          std::optional<FlutterError> output = api->LoadUrl(texture_id_arg, url_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.loadRequest" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_request_arg = args.at(1);
+          if (encodable_request_arg.IsNull()) {
+            reply(WrapError("request_arg unexpectedly null."));
+            return;
+          }
+          const auto& request_arg = std::any_cast<const WindowsLoadRequestData&>(std::get<CustomEncodableValue>(encodable_request_arg));
+          std::optional<FlutterError> output = api->LoadRequest(texture_id_arg, request_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.loadStringContent" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_content_arg = args.at(1);
+          if (encodable_content_arg.IsNull()) {
+            reply(WrapError("content_arg unexpectedly null."));
+            return;
+          }
+          const auto& content_arg = std::get<std::string>(encodable_content_arg);
+          std::optional<FlutterError> output = api->LoadStringContent(texture_id_arg, content_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.reload" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          std::optional<FlutterError> output = api->Reload(texture_id_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.stop" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          std::optional<FlutterError> output = api->Stop(texture_id_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.goBack" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          std::optional<FlutterError> output = api->GoBack(texture_id_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.goForward" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          std::optional<FlutterError> output = api->GoForward(texture_id_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.addScriptToExecuteOnDocumentCreated" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_script_arg = args.at(1);
+          if (encodable_script_arg.IsNull()) {
+            reply(WrapError("script_arg unexpectedly null."));
+            return;
+          }
+          const auto& script_arg = std::get<std::string>(encodable_script_arg);
+          api->AddScriptToExecuteOnDocumentCreated(texture_id_arg, script_arg, [reply](ErrorOr<std::optional<std::string>>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
+            }
+            EncodableList wrapped;
+            auto output_optional = std::move(output).TakeValue();
+            if (output_optional) {
+              wrapped.push_back(EncodableValue(std::move(output_optional).value()));
+            } else {
               wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
             }
+            reply(EncodableValue(std::move(wrapped)));
           });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
-        "clearAllWebsiteDataForEnvironment" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.removeScriptToExecuteOnDocumentCreated" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              api->ClearAllWebsiteDataForEnvironment(
-                  [reply](ErrorOr<bool> &&output) {
-                    if (output.has_error()) {
-                      reply(WrapError(output.error()));
-                      return;
-                    }
-                    EncodableList wrapped;
-                    wrapped.push_back(
-                        EncodableValue(std::move(output).TakeValue()));
-                    reply(EncodableValue(std::move(wrapped)));
-                  });
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_script_id_arg = args.at(1);
+          if (encodable_script_id_arg.IsNull()) {
+            reply(WrapError("script_id_arg unexpectedly null."));
+            return;
+          }
+          const auto& script_id_arg = std::get<std::string>(encodable_script_id_arg);
+          std::optional<FlutterError> output = api->RemoveScriptToExecuteOnDocumentCreated(texture_id_arg, script_id_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.createWebView" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.executeScript" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              api->CreateWebView(
-                  [reply](ErrorOr<WindowsCreateWebViewResult> &&output) {
-                    if (output.has_error()) {
-                      reply(WrapError(output.error()));
-                      return;
-                    }
-                    EncodableList wrapped;
-                    wrapped.push_back(
-                        CustomEncodableValue(std::move(output).TakeValue()));
-                    reply(EncodableValue(std::move(wrapped)));
-                  });
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_script_arg = args.at(1);
+          if (encodable_script_arg.IsNull()) {
+            reply(WrapError("script_arg unexpectedly null."));
+            return;
+          }
+          const auto& script_arg = std::get<std::string>(encodable_script_arg);
+          api->ExecuteScript(texture_id_arg, script_arg, [reply](ErrorOr<std::string>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
             }
+            EncodableList wrapped;
+            wrapped.push_back(EncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
           });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.createPrivateWebView" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.postWebMessage" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              api->CreatePrivateWebView(
-                  [reply](ErrorOr<WindowsCreateWebViewResult> &&output) {
-                    if (output.has_error()) {
-                      reply(WrapError(output.error()));
-                      return;
-                    }
-                    EncodableList wrapped;
-                    wrapped.push_back(
-                        CustomEncodableValue(std::move(output).TakeValue()));
-                    reply(EncodableValue(std::move(wrapped)));
-                  });
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_message_arg = args.at(1);
+          if (encodable_message_arg.IsNull()) {
+            reply(WrapError("message_arg unexpectedly null."));
+            return;
+          }
+          const auto& message_arg = std::get<std::string>(encodable_message_arg);
+          std::optional<FlutterError> output = api->PostWebMessage(texture_id_arg, message_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.isIncognitoSupported" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setUserAgent" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              api->IsIncognitoSupported([reply](ErrorOr<bool> &&output) {
-                if (output.has_error()) {
-                  reply(WrapError(output.error()));
-                  return;
-                }
-                EncodableList wrapped;
-                wrapped.push_back(
-                    EncodableValue(std::move(output).TakeValue()));
-                reply(EncodableValue(std::move(wrapped)));
-              });
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_user_agent_arg = args.at(1);
+          const auto* user_agent_arg = std::get_if<std::string>(&encodable_user_agent_arg);
+          std::optional<FlutterError> output = api->SetUserAgent(texture_id_arg, user_agent_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.disposeWebView" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.getUserAgent" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              std::optional<FlutterError> output =
-                  api->DisposeWebView(texture_id_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          ErrorOr<std::optional<std::string>> output = api->GetUserAgent(texture_id_arg);
+          if (output.has_error()) {
+            reply(WrapError(output.error()));
+            return;
+          }
+          EncodableList wrapped;
+          auto output_optional = std::move(output).TakeValue();
+          if (output_optional) {
+            wrapped.push_back(EncodableValue(std::move(output_optional).value()));
+          } else {
+            wrapped.push_back(EncodableValue());
+          }
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.loadUrl" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setJavaScriptEnabled" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_url_arg = args.at(1);
-              if (encodable_url_arg.IsNull()) {
-                reply(WrapError("url_arg unexpectedly null."));
-                return;
-              }
-              const auto &url_arg = std::get<std::string>(encodable_url_arg);
-              std::optional<FlutterError> output =
-                  api->LoadUrl(texture_id_arg, url_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_enabled_arg = args.at(1);
+          if (encodable_enabled_arg.IsNull()) {
+            reply(WrapError("enabled_arg unexpectedly null."));
+            return;
+          }
+          const auto& enabled_arg = std::get<bool>(encodable_enabled_arg);
+          std::optional<FlutterError> output = api->SetJavaScriptEnabled(texture_id_arg, enabled_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.loadRequest" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.clearCookies" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_request_arg = args.at(1);
-              if (encodable_request_arg.IsNull()) {
-                reply(WrapError("request_arg unexpectedly null."));
-                return;
-              }
-              const auto &request_arg =
-                  std::any_cast<const WindowsLoadRequestData &>(
-                      std::get<CustomEncodableValue>(encodable_request_arg));
-              std::optional<FlutterError> output =
-                  api->LoadRequest(texture_id_arg, request_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          api->ClearCookies(texture_id_arg, [reply](ErrorOr<bool>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
             }
+            EncodableList wrapped;
+            wrapped.push_back(EncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
           });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.loadStringContent" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setCookie" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_content_arg = args.at(1);
-              if (encodable_content_arg.IsNull()) {
-                reply(WrapError("content_arg unexpectedly null."));
-                return;
-              }
-              const auto &content_arg =
-                  std::get<std::string>(encodable_content_arg);
-              std::optional<FlutterError> output =
-                  api->LoadStringContent(texture_id_arg, content_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_cookie_arg = args.at(1);
+          if (encodable_cookie_arg.IsNull()) {
+            reply(WrapError("cookie_arg unexpectedly null."));
+            return;
+          }
+          const auto& cookie_arg = std::any_cast<const WindowsCookieData&>(std::get<CustomEncodableValue>(encodable_cookie_arg));
+          std::optional<FlutterError> output = api->SetCookie(texture_id_arg, cookie_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.reload" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.getCookies" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              std::optional<FlutterError> output = api->Reload(texture_id_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_url_arg = args.at(1);
+          if (encodable_url_arg.IsNull()) {
+            reply(WrapError("url_arg unexpectedly null."));
+            return;
+          }
+          const auto& url_arg = std::get<std::string>(encodable_url_arg);
+          api->GetCookies(texture_id_arg, url_arg, [reply](ErrorOr<EncodableList>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
             }
+            EncodableList wrapped;
+            wrapped.push_back(EncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
           });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.stop" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.deleteCookie" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              std::optional<FlutterError> output = api->Stop(texture_id_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_cookie_arg = args.at(1);
+          if (encodable_cookie_arg.IsNull()) {
+            reply(WrapError("cookie_arg unexpectedly null."));
+            return;
+          }
+          const auto& cookie_arg = std::any_cast<const WindowsCookieData&>(std::get<CustomEncodableValue>(encodable_cookie_arg));
+          std::optional<FlutterError> output = api->DeleteCookie(texture_id_arg, cookie_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.goBack" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.deleteCookiesWithNameAndUrl" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              std::optional<FlutterError> output = api->GoBack(texture_id_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_name_arg = args.at(1);
+          if (encodable_name_arg.IsNull()) {
+            reply(WrapError("name_arg unexpectedly null."));
+            return;
+          }
+          const auto& name_arg = std::get<std::string>(encodable_name_arg);
+          const auto& encodable_url_arg = args.at(2);
+          if (encodable_url_arg.IsNull()) {
+            reply(WrapError("url_arg unexpectedly null."));
+            return;
+          }
+          const auto& url_arg = std::get<std::string>(encodable_url_arg);
+          std::optional<FlutterError> output = api->DeleteCookiesWithNameAndUrl(texture_id_arg, name_arg, url_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.goForward" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.deleteCookiesWithNameDomainAndPath" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              std::optional<FlutterError> output =
-                  api->GoForward(texture_id_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_name_arg = args.at(1);
+          if (encodable_name_arg.IsNull()) {
+            reply(WrapError("name_arg unexpectedly null."));
+            return;
+          }
+          const auto& name_arg = std::get<std::string>(encodable_name_arg);
+          const auto& encodable_domain_arg = args.at(2);
+          if (encodable_domain_arg.IsNull()) {
+            reply(WrapError("domain_arg unexpectedly null."));
+            return;
+          }
+          const auto& domain_arg = std::get<std::string>(encodable_domain_arg);
+          const auto& encodable_path_arg = args.at(3);
+          if (encodable_path_arg.IsNull()) {
+            reply(WrapError("path_arg unexpectedly null."));
+            return;
+          }
+          const auto& path_arg = std::get<std::string>(encodable_path_arg);
+          std::optional<FlutterError> output = api->DeleteCookiesWithNameDomainAndPath(texture_id_arg, name_arg, domain_arg, path_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
-        "addScriptToExecuteOnDocumentCreated" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.clearCache" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_script_arg = args.at(1);
-              if (encodable_script_arg.IsNull()) {
-                reply(WrapError("script_arg unexpectedly null."));
-                return;
-              }
-              const auto &script_arg =
-                  std::get<std::string>(encodable_script_arg);
-              api->AddScriptToExecuteOnDocumentCreated(
-                  texture_id_arg, script_arg,
-                  [reply](ErrorOr<std::optional<std::string>> &&output) {
-                    if (output.has_error()) {
-                      reply(WrapError(output.error()));
-                      return;
-                    }
-                    EncodableList wrapped;
-                    auto output_optional = std::move(output).TakeValue();
-                    if (output_optional) {
-                      wrapped.push_back(
-                          EncodableValue(std::move(output_optional).value()));
-                    } else {
-                      wrapped.push_back(EncodableValue());
-                    }
-                    reply(EncodableValue(std::move(wrapped)));
-                  });
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          std::optional<FlutterError> output = api->ClearCache(texture_id_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
-        "removeScriptToExecuteOnDocumentCreated" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.clearLocalStorage" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_script_id_arg = args.at(1);
-              if (encodable_script_id_arg.IsNull()) {
-                reply(WrapError("script_id_arg unexpectedly null."));
-                return;
-              }
-              const auto &script_id_arg =
-                  std::get<std::string>(encodable_script_id_arg);
-              std::optional<FlutterError> output =
-                  api->RemoveScriptToExecuteOnDocumentCreated(texture_id_arg,
-                                                              script_id_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          api->ClearLocalStorage(texture_id_arg, [reply](std::optional<FlutterError>&& output) {
+            if (output.has_value()) {
+              reply(WrapError(output.value()));
+              return;
             }
+            EncodableList wrapped;
+            wrapped.push_back(EncodableValue());
+            reply(EncodableValue(std::move(wrapped)));
           });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.executeScript" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.clearAllWebsiteData" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_script_arg = args.at(1);
-              if (encodable_script_arg.IsNull()) {
-                reply(WrapError("script_arg unexpectedly null."));
-                return;
-              }
-              const auto &script_arg =
-                  std::get<std::string>(encodable_script_arg);
-              api->ExecuteScript(texture_id_arg, script_arg,
-                                 [reply](ErrorOr<std::string> &&output) {
-                                   if (output.has_error()) {
-                                     reply(WrapError(output.error()));
-                                     return;
-                                   }
-                                   EncodableList wrapped;
-                                   wrapped.push_back(EncodableValue(
-                                       std::move(output).TakeValue()));
-                                   reply(EncodableValue(std::move(wrapped)));
-                                 });
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          api->ClearAllWebsiteData(texture_id_arg, [reply](ErrorOr<bool>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
             }
+            EncodableList wrapped;
+            wrapped.push_back(EncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
           });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.postWebMessage" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setCacheDisabled" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_message_arg = args.at(1);
-              if (encodable_message_arg.IsNull()) {
-                reply(WrapError("message_arg unexpectedly null."));
-                return;
-              }
-              const auto &message_arg =
-                  std::get<std::string>(encodable_message_arg);
-              std::optional<FlutterError> output =
-                  api->PostWebMessage(texture_id_arg, message_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_disabled_arg = args.at(1);
+          if (encodable_disabled_arg.IsNull()) {
+            reply(WrapError("disabled_arg unexpectedly null."));
+            return;
+          }
+          const auto& disabled_arg = std::get<bool>(encodable_disabled_arg);
+          std::optional<FlutterError> output = api->SetCacheDisabled(texture_id_arg, disabled_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setUserAgent" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.openDevTools" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_user_agent_arg = args.at(1);
-              const auto *user_agent_arg =
-                  std::get_if<std::string>(&encodable_user_agent_arg);
-              std::optional<FlutterError> output =
-                  api->SetUserAgent(texture_id_arg, user_agent_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          std::optional<FlutterError> output = api->OpenDevTools(texture_id_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.getUserAgent" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setBackgroundColor" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              ErrorOr<std::optional<std::string>> output =
-                  api->GetUserAgent(texture_id_arg);
-              if (output.has_error()) {
-                reply(WrapError(output.error()));
-                return;
-              }
-              EncodableList wrapped;
-              auto output_optional = std::move(output).TakeValue();
-              if (output_optional) {
-                wrapped.push_back(
-                    EncodableValue(std::move(output_optional).value()));
-              } else {
-                wrapped.push_back(EncodableValue());
-              }
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_color_arg = args.at(1);
+          if (encodable_color_arg.IsNull()) {
+            reply(WrapError("color_arg unexpectedly null."));
+            return;
+          }
+          const int64_t color_arg = encodable_color_arg.LongValue();
+          std::optional<FlutterError> output = api->SetBackgroundColor(texture_id_arg, color_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setJavaScriptEnabled" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setZoomControlEnabled" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_enabled_arg = args.at(1);
-              if (encodable_enabled_arg.IsNull()) {
-                reply(WrapError("enabled_arg unexpectedly null."));
-                return;
-              }
-              const auto &enabled_arg = std::get<bool>(encodable_enabled_arg);
-              std::optional<FlutterError> output =
-                  api->SetJavaScriptEnabled(texture_id_arg, enabled_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_enabled_arg = args.at(1);
+          if (encodable_enabled_arg.IsNull()) {
+            reply(WrapError("enabled_arg unexpectedly null."));
+            return;
+          }
+          const auto& enabled_arg = std::get<bool>(encodable_enabled_arg);
+          std::optional<FlutterError> output = api->SetZoomControlEnabled(texture_id_arg, enabled_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.clearCookies" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setDevToolsEnabled" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              api->ClearCookies(
-                  texture_id_arg, [reply](ErrorOr<bool> &&output) {
-                    if (output.has_error()) {
-                      reply(WrapError(output.error()));
-                      return;
-                    }
-                    EncodableList wrapped;
-                    wrapped.push_back(
-                        EncodableValue(std::move(output).TakeValue()));
-                    reply(EncodableValue(std::move(wrapped)));
-                  });
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_enabled_arg = args.at(1);
+          if (encodable_enabled_arg.IsNull()) {
+            reply(WrapError("enabled_arg unexpectedly null."));
+            return;
+          }
+          const auto& enabled_arg = std::get<bool>(encodable_enabled_arg);
+          std::optional<FlutterError> output = api->SetDevToolsEnabled(texture_id_arg, enabled_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setCookie" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setBrowserAcceleratorKeysEnabled" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_cookie_arg = args.at(1);
-              if (encodable_cookie_arg.IsNull()) {
-                reply(WrapError("cookie_arg unexpectedly null."));
-                return;
-              }
-              const auto &cookie_arg = std::any_cast<const WindowsCookieData &>(
-                  std::get<CustomEncodableValue>(encodable_cookie_arg));
-              std::optional<FlutterError> output =
-                  api->SetCookie(texture_id_arg, cookie_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_enabled_arg = args.at(1);
+          if (encodable_enabled_arg.IsNull()) {
+            reply(WrapError("enabled_arg unexpectedly null."));
+            return;
+          }
+          const auto& enabled_arg = std::get<bool>(encodable_enabled_arg);
+          std::optional<FlutterError> output = api->SetBrowserAcceleratorKeysEnabled(texture_id_arg, enabled_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.getCookies" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setDownloadsEnabled" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_url_arg = args.at(1);
-              if (encodable_url_arg.IsNull()) {
-                reply(WrapError("url_arg unexpectedly null."));
-                return;
-              }
-              const auto &url_arg = std::get<std::string>(encodable_url_arg);
-              api->GetCookies(texture_id_arg, url_arg,
-                              [reply](ErrorOr<EncodableList> &&output) {
-                                if (output.has_error()) {
-                                  reply(WrapError(output.error()));
-                                  return;
-                                }
-                                EncodableList wrapped;
-                                wrapped.push_back(EncodableValue(
-                                    std::move(output).TakeValue()));
-                                reply(EncodableValue(std::move(wrapped)));
-                              });
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_enabled_arg = args.at(1);
+          if (encodable_enabled_arg.IsNull()) {
+            reply(WrapError("enabled_arg unexpectedly null."));
+            return;
+          }
+          const auto& enabled_arg = std::get<bool>(encodable_enabled_arg);
+          std::optional<FlutterError> output = api->SetDownloadsEnabled(texture_id_arg, enabled_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.deleteCookie" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setZoomFactor" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_cookie_arg = args.at(1);
-              if (encodable_cookie_arg.IsNull()) {
-                reply(WrapError("cookie_arg unexpectedly null."));
-                return;
-              }
-              const auto &cookie_arg = std::any_cast<const WindowsCookieData &>(
-                  std::get<CustomEncodableValue>(encodable_cookie_arg));
-              std::optional<FlutterError> output =
-                  api->DeleteCookie(texture_id_arg, cookie_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_zoom_factor_arg = args.at(1);
+          if (encodable_zoom_factor_arg.IsNull()) {
+            reply(WrapError("zoom_factor_arg unexpectedly null."));
+            return;
+          }
+          const auto& zoom_factor_arg = std::get<double>(encodable_zoom_factor_arg);
+          std::optional<FlutterError> output = api->SetZoomFactor(texture_id_arg, zoom_factor_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
-        "deleteCookiesWithNameAndUrl" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setPopupWindowPolicy" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_name_arg = args.at(1);
-              if (encodable_name_arg.IsNull()) {
-                reply(WrapError("name_arg unexpectedly null."));
-                return;
-              }
-              const auto &name_arg = std::get<std::string>(encodable_name_arg);
-              const auto &encodable_url_arg = args.at(2);
-              if (encodable_url_arg.IsNull()) {
-                reply(WrapError("url_arg unexpectedly null."));
-                return;
-              }
-              const auto &url_arg = std::get<std::string>(encodable_url_arg);
-              std::optional<FlutterError> output =
-                  api->DeleteCookiesWithNameAndUrl(texture_id_arg, name_arg,
-                                                   url_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_policy_arg = args.at(1);
+          if (encodable_policy_arg.IsNull()) {
+            reply(WrapError("policy_arg unexpectedly null."));
+            return;
+          }
+          const int64_t policy_arg = encodable_policy_arg.LongValue();
+          std::optional<FlutterError> output = api->SetPopupWindowPolicy(texture_id_arg, policy_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
-        "deleteCookiesWithNameDomainAndPath" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setNavigationRequestCallbacksEnabled" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_name_arg = args.at(1);
-              if (encodable_name_arg.IsNull()) {
-                reply(WrapError("name_arg unexpectedly null."));
-                return;
-              }
-              const auto &name_arg = std::get<std::string>(encodable_name_arg);
-              const auto &encodable_domain_arg = args.at(2);
-              if (encodable_domain_arg.IsNull()) {
-                reply(WrapError("domain_arg unexpectedly null."));
-                return;
-              }
-              const auto &domain_arg =
-                  std::get<std::string>(encodable_domain_arg);
-              const auto &encodable_path_arg = args.at(3);
-              if (encodable_path_arg.IsNull()) {
-                reply(WrapError("path_arg unexpectedly null."));
-                return;
-              }
-              const auto &path_arg = std::get<std::string>(encodable_path_arg);
-              std::optional<FlutterError> output =
-                  api->DeleteCookiesWithNameDomainAndPath(
-                      texture_id_arg, name_arg, domain_arg, path_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_enabled_arg = args.at(1);
+          if (encodable_enabled_arg.IsNull()) {
+            reply(WrapError("enabled_arg unexpectedly null."));
+            return;
+          }
+          const auto& enabled_arg = std::get<bool>(encodable_enabled_arg);
+          std::optional<FlutterError> output = api->SetNavigationRequestCallbacksEnabled(texture_id_arg, enabled_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.clearCache" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setJavaScriptDialogCallbacksEnabled" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              std::optional<FlutterError> output =
-                  api->ClearCache(texture_id_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_alert_arg = args.at(1);
+          if (encodable_alert_arg.IsNull()) {
+            reply(WrapError("alert_arg unexpectedly null."));
+            return;
+          }
+          const auto& alert_arg = std::get<bool>(encodable_alert_arg);
+          const auto& encodable_confirm_arg = args.at(2);
+          if (encodable_confirm_arg.IsNull()) {
+            reply(WrapError("confirm_arg unexpectedly null."));
+            return;
+          }
+          const auto& confirm_arg = std::get<bool>(encodable_confirm_arg);
+          const auto& encodable_prompt_arg = args.at(3);
+          if (encodable_prompt_arg.IsNull()) {
+            reply(WrapError("prompt_arg unexpectedly null."));
+            return;
+          }
+          const auto& prompt_arg = std::get<bool>(encodable_prompt_arg);
+          std::optional<FlutterError> output = api->SetJavaScriptDialogCallbacksEnabled(texture_id_arg, alert_arg, confirm_arg, prompt_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.clearLocalStorage" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.suspend" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              api->ClearLocalStorage(
-                  texture_id_arg,
-                  [reply](std::optional<FlutterError> &&output) {
-                    if (output.has_value()) {
-                      reply(WrapError(output.value()));
-                      return;
-                    }
-                    EncodableList wrapped;
-                    wrapped.push_back(EncodableValue());
-                    reply(EncodableValue(std::move(wrapped)));
-                  });
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          std::optional<FlutterError> output = api->Suspend(texture_id_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.clearAllWebsiteData" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.resume" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              api->ClearAllWebsiteData(
-                  texture_id_arg, [reply](ErrorOr<bool> &&output) {
-                    if (output.has_error()) {
-                      reply(WrapError(output.error()));
-                      return;
-                    }
-                    EncodableList wrapped;
-                    wrapped.push_back(
-                        EncodableValue(std::move(output).TakeValue()));
-                    reply(EncodableValue(std::move(wrapped)));
-                  });
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          std::optional<FlutterError> output = api->Resume(texture_id_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setCacheDisabled" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setVirtualHostNameMapping" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_disabled_arg = args.at(1);
-              if (encodable_disabled_arg.IsNull()) {
-                reply(WrapError("disabled_arg unexpectedly null."));
-                return;
-              }
-              const auto &disabled_arg = std::get<bool>(encodable_disabled_arg);
-              std::optional<FlutterError> output =
-                  api->SetCacheDisabled(texture_id_arg, disabled_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_mapping_arg = args.at(1);
+          if (encodable_mapping_arg.IsNull()) {
+            reply(WrapError("mapping_arg unexpectedly null."));
+            return;
+          }
+          const auto& mapping_arg = std::any_cast<const WindowsVirtualHostMappingData&>(std::get<CustomEncodableValue>(encodable_mapping_arg));
+          std::optional<FlutterError> output = api->SetVirtualHostNameMapping(texture_id_arg, mapping_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.openDevTools" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.clearVirtualHostNameMapping" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              std::optional<FlutterError> output =
-                  api->OpenDevTools(texture_id_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_host_name_arg = args.at(1);
+          if (encodable_host_name_arg.IsNull()) {
+            reply(WrapError("host_name_arg unexpectedly null."));
+            return;
+          }
+          const auto& host_name_arg = std::get<std::string>(encodable_host_name_arg);
+          std::optional<FlutterError> output = api->ClearVirtualHostNameMapping(texture_id_arg, host_name_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setBackgroundColor" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setFpsLimit" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_color_arg = args.at(1);
-              if (encodable_color_arg.IsNull()) {
-                reply(WrapError("color_arg unexpectedly null."));
-                return;
-              }
-              const int64_t color_arg = encodable_color_arg.LongValue();
-              std::optional<FlutterError> output =
-                  api->SetBackgroundColor(texture_id_arg, color_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_max_fps_arg = args.at(1);
+          if (encodable_max_fps_arg.IsNull()) {
+            reply(WrapError("max_fps_arg unexpectedly null."));
+            return;
+          }
+          const int64_t max_fps_arg = encodable_max_fps_arg.LongValue();
+          std::optional<FlutterError> output = api->SetFpsLimit(texture_id_arg, max_fps_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
-        "setZoomControlEnabled" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setPointerUpdate" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_enabled_arg = args.at(1);
-              if (encodable_enabled_arg.IsNull()) {
-                reply(WrapError("enabled_arg unexpectedly null."));
-                return;
-              }
-              const auto &enabled_arg = std::get<bool>(encodable_enabled_arg);
-              std::optional<FlutterError> output =
-                  api->SetZoomControlEnabled(texture_id_arg, enabled_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_update_arg = args.at(1);
+          if (encodable_update_arg.IsNull()) {
+            reply(WrapError("update_arg unexpectedly null."));
+            return;
+          }
+          const auto& update_arg = std::any_cast<const WindowsPointerUpdateData&>(std::get<CustomEncodableValue>(encodable_update_arg));
+          std::optional<FlutterError> output = api->SetPointerUpdate(texture_id_arg, update_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setDevToolsEnabled" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setCursorPos" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_enabled_arg = args.at(1);
-              if (encodable_enabled_arg.IsNull()) {
-                reply(WrapError("enabled_arg unexpectedly null."));
-                return;
-              }
-              const auto &enabled_arg = std::get<bool>(encodable_enabled_arg);
-              std::optional<FlutterError> output =
-                  api->SetDevToolsEnabled(texture_id_arg, enabled_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_position_arg = args.at(1);
+          if (encodable_position_arg.IsNull()) {
+            reply(WrapError("position_arg unexpectedly null."));
+            return;
+          }
+          const auto& position_arg = std::any_cast<const WindowsPointData&>(std::get<CustomEncodableValue>(encodable_position_arg));
+          std::optional<FlutterError> output = api->SetCursorPos(texture_id_arg, position_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
-        "setBrowserAcceleratorKeysEnabled" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setPointerButton" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_enabled_arg = args.at(1);
-              if (encodable_enabled_arg.IsNull()) {
-                reply(WrapError("enabled_arg unexpectedly null."));
-                return;
-              }
-              const auto &enabled_arg = std::get<bool>(encodable_enabled_arg);
-              std::optional<FlutterError> output =
-                  api->SetBrowserAcceleratorKeysEnabled(texture_id_arg,
-                                                        enabled_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_button_arg = args.at(1);
+          if (encodable_button_arg.IsNull()) {
+            reply(WrapError("button_arg unexpectedly null."));
+            return;
+          }
+          const auto& button_arg = std::any_cast<const WindowsPointerButtonData&>(std::get<CustomEncodableValue>(encodable_button_arg));
+          std::optional<FlutterError> output = api->SetPointerButton(texture_id_arg, button_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setDownloadsEnabled" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setScrollDelta" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_enabled_arg = args.at(1);
-              if (encodable_enabled_arg.IsNull()) {
-                reply(WrapError("enabled_arg unexpectedly null."));
-                return;
-              }
-              const auto &enabled_arg = std::get<bool>(encodable_enabled_arg);
-              std::optional<FlutterError> output =
-                  api->SetDownloadsEnabled(texture_id_arg, enabled_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_delta_arg = args.at(1);
+          if (encodable_delta_arg.IsNull()) {
+            reply(WrapError("delta_arg unexpectedly null."));
+            return;
+          }
+          const auto& delta_arg = std::any_cast<const WindowsPointData&>(std::get<CustomEncodableValue>(encodable_delta_arg));
+          std::optional<FlutterError> output = api->SetScrollDelta(texture_id_arg, delta_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setZoomFactor" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setSize" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_zoom_factor_arg = args.at(1);
-              if (encodable_zoom_factor_arg.IsNull()) {
-                reply(WrapError("zoom_factor_arg unexpectedly null."));
-                return;
-              }
-              const auto &zoom_factor_arg =
-                  std::get<double>(encodable_zoom_factor_arg);
-              std::optional<FlutterError> output =
-                  api->SetZoomFactor(texture_id_arg, zoom_factor_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_size_arg = args.at(1);
+          if (encodable_size_arg.IsNull()) {
+            reply(WrapError("size_arg unexpectedly null."));
+            return;
+          }
+          const auto& size_arg = std::any_cast<const WindowsSizeData&>(std::get<CustomEncodableValue>(encodable_size_arg));
+          std::optional<FlutterError> output = api->SetSize(texture_id_arg, size_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setPopupWindowPolicy" +
-                                      prepended_suffix,
-                                  &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setSurfaceAttached" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_policy_arg = args.at(1);
-              if (encodable_policy_arg.IsNull()) {
-                reply(WrapError("policy_arg unexpectedly null."));
-                return;
-              }
-              const int64_t policy_arg = encodable_policy_arg.LongValue();
-              std::optional<FlutterError> output =
-                  api->SetPopupWindowPolicy(texture_id_arg, policy_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_attached_arg = args.at(1);
+          if (encodable_attached_arg.IsNull()) {
+            reply(WrapError("attached_arg unexpectedly null."));
+            return;
+          }
+          const auto& attached_arg = std::get<bool>(encodable_attached_arg);
+          std::optional<FlutterError> output = api->SetSurfaceAttached(texture_id_arg, attached_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
   {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
-        "setNavigationRequestCallbacksEnabled" +
-            prepended_suffix,
-        &GetCodec());
+    BasicMessageChannel<> channel(binary_messenger, "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.setFocus" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_enabled_arg = args.at(1);
-              if (encodable_enabled_arg.IsNull()) {
-                reply(WrapError("enabled_arg unexpectedly null."));
-                return;
-              }
-              const auto &enabled_arg = std::get<bool>(encodable_enabled_arg);
-              std::optional<FlutterError> output =
-                  api->SetNavigationRequestCallbacksEnabled(texture_id_arg,
-                                                            enabled_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
-    } else {
-      channel.SetMessageHandler(nullptr);
-    }
-  }
-  {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
-        "setJavaScriptDialogCallbacksEnabled" +
-            prepended_suffix,
-        &GetCodec());
-    if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_alert_arg = args.at(1);
-              if (encodable_alert_arg.IsNull()) {
-                reply(WrapError("alert_arg unexpectedly null."));
-                return;
-              }
-              const auto &alert_arg = std::get<bool>(encodable_alert_arg);
-              const auto &encodable_confirm_arg = args.at(2);
-              if (encodable_confirm_arg.IsNull()) {
-                reply(WrapError("confirm_arg unexpectedly null."));
-                return;
-              }
-              const auto &confirm_arg = std::get<bool>(encodable_confirm_arg);
-              const auto &encodable_prompt_arg = args.at(3);
-              if (encodable_prompt_arg.IsNull()) {
-                reply(WrapError("prompt_arg unexpectedly null."));
-                return;
-              }
-              const auto &prompt_arg = std::get<bool>(encodable_prompt_arg);
-              std::optional<FlutterError> output =
-                  api->SetJavaScriptDialogCallbacksEnabled(
-                      texture_id_arg, alert_arg, confirm_arg, prompt_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
-    } else {
-      channel.SetMessageHandler(nullptr);
-    }
-  }
-  {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.suspend" +
-                                      prepended_suffix,
-                                  &GetCodec());
-    if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              std::optional<FlutterError> output = api->Suspend(texture_id_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
-    } else {
-      channel.SetMessageHandler(nullptr);
-    }
-  }
-  {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi.resume" +
-            prepended_suffix,
-        &GetCodec());
-    if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              std::optional<FlutterError> output = api->Resume(texture_id_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
-    } else {
-      channel.SetMessageHandler(nullptr);
-    }
-  }
-  {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
-        "setVirtualHostNameMapping" +
-            prepended_suffix,
-        &GetCodec());
-    if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_mapping_arg = args.at(1);
-              if (encodable_mapping_arg.IsNull()) {
-                reply(WrapError("mapping_arg unexpectedly null."));
-                return;
-              }
-              const auto &mapping_arg =
-                  std::any_cast<const WindowsVirtualHostMappingData &>(
-                      std::get<CustomEncodableValue>(encodable_mapping_arg));
-              std::optional<FlutterError> output =
-                  api->SetVirtualHostNameMapping(texture_id_arg, mapping_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
-    } else {
-      channel.SetMessageHandler(nullptr);
-    }
-  }
-  {
-    BasicMessageChannel<> channel(
-        binary_messenger,
-        "com.abandoft.pigeon.webview_all_windows.WindowsWebViewHostApi."
-        "clearVirtualHostNameMapping" +
-            prepended_suffix,
-        &GetCodec());
-    if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_host_name_arg = args.at(1);
-              if (encodable_host_name_arg.IsNull()) {
-                reply(WrapError("host_name_arg unexpectedly null."));
-                return;
-              }
-              const auto &host_name_arg =
-                  std::get<std::string>(encodable_host_name_arg);
-              std::optional<FlutterError> output =
-                  api->ClearVirtualHostNameMapping(texture_id_arg,
-                                                   host_name_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
-    } else {
-      channel.SetMessageHandler(nullptr);
-    }
-  }
-  {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setFpsLimit" +
-                                      prepended_suffix,
-                                  &GetCodec());
-    if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_max_fps_arg = args.at(1);
-              if (encodable_max_fps_arg.IsNull()) {
-                reply(WrapError("max_fps_arg unexpectedly null."));
-                return;
-              }
-              const int64_t max_fps_arg = encodable_max_fps_arg.LongValue();
-              std::optional<FlutterError> output =
-                  api->SetFpsLimit(texture_id_arg, max_fps_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
-    } else {
-      channel.SetMessageHandler(nullptr);
-    }
-  }
-  {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setPointerUpdate" +
-                                      prepended_suffix,
-                                  &GetCodec());
-    if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_update_arg = args.at(1);
-              if (encodable_update_arg.IsNull()) {
-                reply(WrapError("update_arg unexpectedly null."));
-                return;
-              }
-              const auto &update_arg =
-                  std::any_cast<const WindowsPointerUpdateData &>(
-                      std::get<CustomEncodableValue>(encodable_update_arg));
-              std::optional<FlutterError> output =
-                  api->SetPointerUpdate(texture_id_arg, update_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
-    } else {
-      channel.SetMessageHandler(nullptr);
-    }
-  }
-  {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setCursorPos" +
-                                      prepended_suffix,
-                                  &GetCodec());
-    if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_position_arg = args.at(1);
-              if (encodable_position_arg.IsNull()) {
-                reply(WrapError("position_arg unexpectedly null."));
-                return;
-              }
-              const auto &position_arg =
-                  std::any_cast<const WindowsPointData &>(
-                      std::get<CustomEncodableValue>(encodable_position_arg));
-              std::optional<FlutterError> output =
-                  api->SetCursorPos(texture_id_arg, position_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
-    } else {
-      channel.SetMessageHandler(nullptr);
-    }
-  }
-  {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setPointerButton" +
-                                      prepended_suffix,
-                                  &GetCodec());
-    if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_button_arg = args.at(1);
-              if (encodable_button_arg.IsNull()) {
-                reply(WrapError("button_arg unexpectedly null."));
-                return;
-              }
-              const auto &button_arg =
-                  std::any_cast<const WindowsPointerButtonData &>(
-                      std::get<CustomEncodableValue>(encodable_button_arg));
-              std::optional<FlutterError> output =
-                  api->SetPointerButton(texture_id_arg, button_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
-    } else {
-      channel.SetMessageHandler(nullptr);
-    }
-  }
-  {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setScrollDelta" +
-                                      prepended_suffix,
-                                  &GetCodec());
-    if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_delta_arg = args.at(1);
-              if (encodable_delta_arg.IsNull()) {
-                reply(WrapError("delta_arg unexpectedly null."));
-                return;
-              }
-              const auto &delta_arg = std::any_cast<const WindowsPointData &>(
-                  std::get<CustomEncodableValue>(encodable_delta_arg));
-              std::optional<FlutterError> output =
-                  api->SetScrollDelta(texture_id_arg, delta_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
-    } else {
-      channel.SetMessageHandler(nullptr);
-    }
-  }
-  {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setSize" +
-                                      prepended_suffix,
-                                  &GetCodec());
-    if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_size_arg = args.at(1);
-              if (encodable_size_arg.IsNull()) {
-                reply(WrapError("size_arg unexpectedly null."));
-                return;
-              }
-              const auto &size_arg = std::any_cast<const WindowsSizeData &>(
-                  std::get<CustomEncodableValue>(encodable_size_arg));
-              std::optional<FlutterError> output =
-                  api->SetSize(texture_id_arg, size_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
-    } else {
-      channel.SetMessageHandler(nullptr);
-    }
-  }
-  {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setSurfaceAttached" +
-                                      prepended_suffix,
-                                  &GetCodec());
-    if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_attached_arg = args.at(1);
-              if (encodable_attached_arg.IsNull()) {
-                reply(WrapError("attached_arg unexpectedly null."));
-                return;
-              }
-              const auto &attached_arg = std::get<bool>(encodable_attached_arg);
-              std::optional<FlutterError> output =
-                  api->SetSurfaceAttached(texture_id_arg, attached_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
-    } else {
-      channel.SetMessageHandler(nullptr);
-    }
-  }
-  {
-    BasicMessageChannel<> channel(binary_messenger,
-                                  "com.abandoft.pigeon.webview_all_windows."
-                                  "WindowsWebViewHostApi.setFocus" +
-                                      prepended_suffix,
-                                  &GetCodec());
-    if (api != nullptr) {
-      channel.SetMessageHandler(
-          [api](const EncodableValue &message,
-                const ::flutter::MessageReply<EncodableValue> &reply) {
-            try {
-              const auto &args = std::get<EncodableList>(message);
-              const auto &encodable_texture_id_arg = args.at(0);
-              if (encodable_texture_id_arg.IsNull()) {
-                reply(WrapError("texture_id_arg unexpectedly null."));
-                return;
-              }
-              const int64_t texture_id_arg =
-                  encodable_texture_id_arg.LongValue();
-              const auto &encodable_focused_arg = args.at(1);
-              if (encodable_focused_arg.IsNull()) {
-                reply(WrapError("focused_arg unexpectedly null."));
-                return;
-              }
-              const auto &focused_arg = std::get<bool>(encodable_focused_arg);
-              const auto &encodable_reason_arg = args.at(2);
-              if (encodable_reason_arg.IsNull()) {
-                reply(WrapError("reason_arg unexpectedly null."));
-                return;
-              }
-              const int64_t reason_arg = encodable_reason_arg.LongValue();
-              std::optional<FlutterError> output =
-                  api->SetFocus(texture_id_arg, focused_arg, reason_arg);
-              if (output.has_value()) {
-                reply(WrapError(output.value()));
-                return;
-              }
-              EncodableList wrapped;
-              wrapped.push_back(EncodableValue());
-              reply(EncodableValue(std::move(wrapped)));
-            } catch (const std::exception &exception) {
-              reply(WrapError(exception.what()));
-            }
-          });
+      channel.SetMessageHandler([api](const EncodableValue& message, const ::flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_texture_id_arg = args.at(0);
+          if (encodable_texture_id_arg.IsNull()) {
+            reply(WrapError("texture_id_arg unexpectedly null."));
+            return;
+          }
+          const int64_t texture_id_arg = encodable_texture_id_arg.LongValue();
+          const auto& encodable_focused_arg = args.at(1);
+          if (encodable_focused_arg.IsNull()) {
+            reply(WrapError("focused_arg unexpectedly null."));
+            return;
+          }
+          const auto& focused_arg = std::get<bool>(encodable_focused_arg);
+          const auto& encodable_reason_arg = args.at(2);
+          if (encodable_reason_arg.IsNull()) {
+            reply(WrapError("reason_arg unexpectedly null."));
+            return;
+          }
+          const int64_t reason_arg = encodable_reason_arg.LongValue();
+          std::optional<FlutterError> output = api->SetFocus(texture_id_arg, focused_arg, reason_arg);
+          if (output.has_value()) {
+            reply(WrapError(output.value()));
+            return;
+          }
+          EncodableList wrapped;
+          wrapped.push_back(EncodableValue());
+          reply(EncodableValue(std::move(wrapped)));
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
     } else {
       channel.SetMessageHandler(nullptr);
     }
   }
 }
 
-EncodableValue
-WindowsWebViewHostApi::WrapError(std::string_view error_message) {
-  return EncodableValue(
-      EncodableList{EncodableValue(std::string(error_message)),
-                    EncodableValue("Error"), EncodableValue()});
+EncodableValue WindowsWebViewHostApi::WrapError(std::string_view error_message) {
+  return EncodableValue(EncodableList{
+    EncodableValue(std::string(error_message)),
+    EncodableValue("Error"),
+    EncodableValue()
+  });
 }
 
-EncodableValue WindowsWebViewHostApi::WrapError(const FlutterError &error) {
-  return EncodableValue(EncodableList{EncodableValue(error.code()),
-                                      EncodableValue(error.message()),
-                                      error.details()});
+EncodableValue WindowsWebViewHostApi::WrapError(const FlutterError& error) {
+  return EncodableValue(EncodableList{
+    EncodableValue(error.code()),
+    EncodableValue(error.message()),
+    error.details()
+  });
 }
 
-} // namespace webview_all_windows
+}  // namespace webview_all_windows
