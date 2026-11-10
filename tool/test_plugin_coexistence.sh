@@ -60,6 +60,13 @@ for platform, setting, minimum in (
     target.write_text(re.sub(rf'({setting} = )([0-9.]+)', raise_minimum, target.read_text()))
     shutil.copyfile(repository / 'webview_all/example' / platform / 'Podfile',
                     project / platform / 'Podfile')
+    for mode in ('Debug', 'Release'):
+        name = f'Flutter-{mode}.xcconfig' if platform == 'macos' else f'{mode}.xcconfig'
+        config = project / platform / 'Flutter' / name
+        content = config.read_text()
+        if 'Pods/Target Support Files/' not in content:
+            include = f'#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.{mode.lower()}.xcconfig"\n'
+            config.write_text(include + content)
 PY
 fi
 
