@@ -1,6 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="WebView All">
-  <rect width="64" height="64" rx="12" fill="#111827"/>
-  <rect x="10" y="14" width="44" height="34" rx="5" fill="#f8fafc"/>
-  <path d="M16 24h32M16 32h22M16 40h28" stroke="#0f766e" stroke-width="4" stroke-linecap="round"/>
-  <circle cx="48" cy="18" r="2" fill="#14b8a6"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="WebView All">
+  <defs>
+    <linearGradient id="gold" x1="34" y1="24" x2="95" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F3DDA8"/>
+      <stop offset=".58" stop-color="#D8B56C"/>
+      <stop offset="1" stop-color="#AC8036"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="124" height="124" rx="29" fill="#141518"/>
+  <rect x="2.5" y="2.5" width="123" height="123" rx="28.5" fill="none" stroke="#FFFFFF" stroke-opacity=".12"/>
+  <path d="M52 24H94a12 12 0 0 1 12 12v58a12 12 0 0 1-12 12H36a12 12 0 0 1-12-12V52" fill="none" stroke="#F5F5F7" stroke-width="6" stroke-linecap="round"/>
+  <path d="M28 59 63 24H85L39 70Z" fill="url(#gold)"/>
+  <path d="M44 81 66 59H88L55 92Z" fill="url(#gold)"/>
+  <path d="M55 92 66 103H88L66 81Z" fill="#C69B51"/>
+  <path d="m55 70 11 11-11 11-11-11Z" fill="#F3DDA8"/>
 </svg>
