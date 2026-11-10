@@ -7,8 +7,8 @@
 |     系统     | **支持情况** | **技术实现** |
 |-------------|--------------|--------------|
 |Android|API 24+|[WebView](https://developer.android.com/reference/android/webkit/WebView)|
-|iOS|13.0+|[WKWebView](https://developer.apple.com/documentation/webkit/wkwebview)|
-|macOS|10.15+|[WKWebView](https://developer.apple.com/documentation/webkit/wkwebview)|
+|iOS|14.0+|[WKWebView](https://developer.apple.com/documentation/webkit/wkwebview)|
+|macOS|11.0+|[WKWebView](https://developer.apple.com/documentation/webkit/wkwebview)|
 |Windows|Win10 1809+|[WebView2](https://developer.microsoft.com/microsoft-edge/webview2)|
 |Linux|webkit2gtk-4.1|[WebKitGTK](https://webkitgtk.org)|
 |OHOS|API 22+|[ArkWeb](https://developer.huawei.com/consumer/cn/doc/harmonyos-references-V5/ts-basic-components-web-V5)|
@@ -20,8 +20,9 @@
 - 全面兼容 `webview_flutter` 接口
 - 在成熟的商业级软件中被广泛采用
 - 更多特性支持！
-  - Promise 异步 JavaScript 调用
-  - 页面脚本执行前的自定义 JavaScript 注入
+  - 双向异步 JavaScript 通信
+  - 自定义脚本注入与独立 JavaScript 环境
+  - 历史记录、页内查找与 Cookie 管理
   - 桌面端下载控制及 Windows 调试与快捷键设置
   - 更丰富的 Web 端交互与 iframe 配置
   - 无需 controller 的网站数据清理
