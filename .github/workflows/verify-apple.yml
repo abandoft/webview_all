@@ -48,6 +48,7 @@ jobs:
         run: flutter pub get
 
       - name: Build iOS example
+        if: matrix.flutter != '3.47.x'
         working-directory: webview_all/example
         run: flutter build ios --simulator --debug
 
@@ -141,14 +142,48 @@ jobs:
         working-directory: examples/platform
         run: flutter test integration_test/webview_session_test.dart -d macos
 
+  ios:
+    name: iOS ${{ matrix.suite }} integration tests
+    runs-on: macos-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - native
+          - flutter
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.x
+          channel: stable
+          cache: true
+
+      # XCTest and Flutter's VM-service discovery use separate simulator hosts.
+      - name: Resolve and build native example
+        if: matrix.suite == 'native'
+        working-directory: webview_all/example
+        run: |
+          flutter pub get
+          flutter build ios --simulator --debug
+
+      - name: Resolve Flutter integration example
+        if: matrix.suite == 'flutter'
+        working-directory: examples/platform
+        run: flutter pub get
+
       - name: Prepare iOS test simulator
-        if: matrix.flutter == '3.47.x'
         timeout-minutes: 10
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY' > "$RUNNER_TEMP/webview-ios-simulator"
           import json
+          import re
           import subprocess
           devices = json.loads(subprocess.check_output(
               ['xcrun', 'simctl', 'list', 'devices', 'available', '-j']))['devices']
@@ -157,7 +192,7 @@ jobs:
           if not iphones:
               raise SystemExit('No available iOS simulator')
           runtime, device = max(iphones, key=lambda item:
-              tuple(map(int, item[0].rsplit('.iOS-', 1)[1].split('-'))))
+              tuple(map(int, re.search(r'\.iOS-(\d+(?:-\d+)*)', item[0])[1].split('-'))))
           simulator = subprocess.check_output([
               'xcrun', 'simctl', 'create', 'webview_all_gesture_tests',
               device['deviceTypeIdentifier'], runtime], text=True).strip()
@@ -168,7 +203,7 @@ jobs:
           xcrun simctl bootstatus "$simulator_id" -b
 
       - name: Run iOS native Swift tests
-        if: matrix.flutter == '3.47.x'
+        if: matrix.suite == 'native'
         timeout-minutes: 15
         run: |
           simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
@@ -185,7 +220,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO -quiet
 
       - name: Test iOS gestures
-        if: matrix.flutter == '3.47.x'
+        if: matrix.suite == 'native'
         timeout-minutes: 20
         run: |
           simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
@@ -205,34 +240,49 @@ jobs:
             CODE_SIGNING_ALLOWED=NO -quiet
 
       - name: Test iOS application resources
-        if: matrix.flutter == '3.47.x'
+        if: matrix.suite == 'flutter'
         timeout-minutes: 15
         working-directory: examples/platform
         run: |
           simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
-          # Start Flutter's log reader after XCTest has released the simulator.
-          xcrun simctl shutdown "$simulator_id" || true
-          xcrun simctl boot "$simulator_id"
-          xcrun simctl bootstatus "$simulator_id" -b
-          flutter test integration_test/webview_resource_test.dart -d "$simulator_id"
+          flutter test integration_test/webview_resource_test.dart -d "$simulator_id" --reporter expanded
 
       - name: Test iOS JavaScript, browser operations and session stores
-        if: matrix.flutter == '3.47.x'
-        timeout-minutes: 15
+        if: matrix.suite == 'flutter'
+        timeout-minutes: 30
         working-directory: examples/platform
         run: |
           simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
-          flutter test integration_test/webview_javascript_test.dart -d "$simulator_id"
-          flutter test integration_test/webview_browser_test.dart -d "$simulator_id"
-          flutter test integration_test/webview_capture_data_test.dart -d "$simulator_id"
-          flutter test integration_test/webview_advanced_browser_test.dart -d "$simulator_id"
-          flutter test integration_test/webview_profile_management_test.dart -d "$simulator_id"
-          flutter test integration_test/webview_network_test.dart -d "$simulator_id"
-          flutter test integration_test/webview_session_test.dart -d "$simulator_id"
-          flutter test integration_test/webview_new_window_test.dart -d "$simulator_id"
+          flutter test integration_test/webview_javascript_test.dart -d "$simulator_id" --reporter expanded
+          flutter test integration_test/webview_browser_test.dart -d "$simulator_id" --reporter expanded
+          flutter test integration_test/webview_capture_data_test.dart -d "$simulator_id" --reporter expanded
+          flutter test integration_test/webview_advanced_browser_test.dart -d "$simulator_id" --reporter expanded
+          flutter test integration_test/webview_profile_management_test.dart -d "$simulator_id" --reporter expanded
+          flutter test integration_test/webview_network_test.dart -d "$simulator_id" --reporter expanded
+          flutter test integration_test/webview_session_test.dart -d "$simulator_id" --reporter expanded
+          flutter test integration_test/webview_new_window_test.dart -d "$simulator_id" --reporter expanded
+
+      - name: Collect iOS simulator diagnostics
+        if: failure()
+        timeout-minutes: 2
+        run: |
+          if [[ -s "$RUNNER_TEMP/webview-ios-simulator" ]]; then
+            simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
+            xcrun simctl spawn "$simulator_id" log show --last 5m --style compact \
+              --predicate 'process == "Runner" OR process == "SpringBoard"' \
+              > "$RUNNER_TEMP/webview-ios-simulator.log" 2>&1 || true
+          fi
+
+      - name: Upload iOS simulator diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-${{ matrix.suite }}-simulator-log
+          path: ${{ runner.temp }}/webview-ios-simulator.log
+          if-no-files-found: ignore
 
       - name: Clean up iOS test simulator
-        if: always() && matrix.flutter == '3.47.x'
+        if: always()
         timeout-minutes: 3
         run: |
           if [[ -s "$RUNNER_TEMP/webview-ios-simulator" ]]; then
