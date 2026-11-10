@@ -6,7 +6,7 @@
 * Add named profile management and related private pages with shared session data.
 * Add configurable screenshots and PDFs, page archives, and system printing.
 * Add native content rules, request delegates, and declared custom schemes.
-* Extend cookie attributes and add individual cookie deletion and scoped website-data management.
+* Extend cookie attributes and add scoped website-data management.
 * Fix Windows session cookies disappearing before the first page loads.
 * Fix Windows website data queries ignoring custom data directories.
 * Fix misplaced IME candidate windows and incorrect clicks after moving Windows WebViews.
