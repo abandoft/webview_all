@@ -1,3 +1,19 @@
+## 1.5.0
+
+* Add asynchronous JavaScript communication, user script injection, and isolated execution worlds.
+* Add load controls, navigation history and state, text search, and renderer failure notifications.
+* Add unified file selection, fullscreen and media controls, and native child-window handling.
+* Add named profile management and related private pages with shared session data.
+* Add configurable screenshots and PDFs, page archives, and system printing, with full-document screenshots on Windows and Linux.
+* Add native content rules, request delegates, and declared custom schemes.
+* Extend cookie attributes and add individual cookie deletion and scoped website-data management.
+* Fix Windows session cookies disappearing before the first page loads.
+* Fix Windows website data queries ignoring custom data directories.
+* Fix misplaced IME candidate windows and incorrect clicks after moving Windows WebViews.
+* Fix Linux reporting errors for scripts that return Promises when no result is requested.
+* Require iOS 14 or macOS 11 and later.
+* Add documentation for 1.5.x and a black, white, and gold theme.
+
 ## 1.4.12
 
 * Fix Linux WebViews unexpectedly disappearing inside rectangular, rounded, or oval clipping containers.
