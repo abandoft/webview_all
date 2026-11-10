@@ -512,6 +512,19 @@ ResourceBridgeWindows::~ResourceBridgeWindows() {
         filter.c_str(), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
   registry_.reset();
 }
+HRESULT ResourceBridgeWindows::Reattach() {
+  // WebView2 requires WebResourceRequested registration after put_NewWindow.
+  // Some Runtimes retain the earlier registration; remove it before adding a
+  // new one so the same request cannot be answered twice.
+  if (registered_) view_->remove_WebResourceRequested(token_);
+  registered_ = false;
+  for (const auto& filter : filters_)
+    view_->RemoveWebResourceRequestedFilter(
+        filter.c_str(), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
+  filters_.clear();
+  const HRESULT result = EnsureHandler();
+  return SUCCEEDED(result) ? UpdateFilters() : result;
+}
 HRESULT ResourceBridgeWindows::EnsureHandler() {
   if (registered_) return S_OK;
   wil::com_ptr<ICoreWebView2_2> view2;

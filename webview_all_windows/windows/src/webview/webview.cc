@@ -2073,8 +2073,7 @@ bool Webview::CompleteNewWindow(const std::string &id, Webview *child) {
   pending_windows_.erase(item);
   CancelWebviewTimeout(pending->timeout);
   bool attached = false;
-  // Private views use independent profiles; never attach a controller from
-  // another store.
+  // Only fresh targets from the same profile and privacy mode can be attached.
   if (new_window_delegate_enabled_ &&
       popup_window_policy_ != WebviewPopupWindowPolicy::Deny && child &&
       child != this && child->IsValid() && child->host_ == host_ &&
@@ -2096,7 +2095,16 @@ bool Webview::CompleteNewWindow(const std::string &id, Webview *child) {
         SUCCEEDED(child_profile->get_IsInPrivateModeEnabled(&child_private)) &&
         parent_private == child_private) {
       attached = SUCCEEDED(pending->args->put_NewWindow(child->webview_.get()));
-      if (attached) child->window_target_available_ = false;
+      if (attached) {
+        child->window_target_available_ = false;
+        // Scripts and settings belong before NewWindow; resource events and
+        // filters belong after it and before releasing the navigation deferral.
+        if (child->resource_bridge_ &&
+            FAILED(child->resource_bridge_->Reattach())) {
+          pending->args->put_NewWindow(nullptr);
+          attached = false;
+        }
+      }
     }
   }
   pending->args->put_Handled(TRUE);

@@ -18,6 +18,9 @@ public:
   HRESULT ConfigureNetwork(flutter::BinaryMessenger* messenger,
                            const flutter::EncodableMap& configuration);
   HRESULT ConfigureRules(const flutter::EncodableList& rules);
+  // NewWindow replaces the target's web contents. Keep the configured Dart
+  // delegates, but register native request handling against the new contents.
+  HRESULT Reattach();
 
 private:
   struct State;

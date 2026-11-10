@@ -315,7 +315,7 @@ class WindowsWebViewController extends PlatformWebViewController
     await _ensureInitialized();
     if (delegate != null && !await _webviewController.supportsNewWindows()) {
       debugPrint(
-        'webview_all_windows: native child-window attachment requires compatible shared WebView2 profiles; private profiles are unavailable through this API.',
+        'webview_all_windows: native child-window attachment requires a Runtime with profile APIs; the requested delegate was not installed.',
       );
       return;
     }

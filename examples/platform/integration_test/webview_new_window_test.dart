@@ -191,11 +191,16 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 300));
       Future<void> waitTitle(WebViewController target, String title) async {
         final until = DateTime.now().add(const Duration(seconds: 20));
+        String? actual;
         while (DateTime.now().isBefore(until)) {
-          if (await target.getTitle() == title) return;
+          actual = await target.getTitle();
+          if (actual == title) return;
           await Future<void>.delayed(const Duration(milliseconds: 100));
         }
-        fail('Related controllers did not retain separate resource delegates.');
+        fail(
+          'Expected related controller title "$title", received "$actual" '
+          'at ${await target.currentUrl()}.',
+        );
       }
 
       await child.setJavaScriptMode(JavaScriptMode.disabled);
