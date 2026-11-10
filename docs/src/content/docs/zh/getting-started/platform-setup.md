@@ -20,7 +20,7 @@ description: Android、Apple、Windows、Linux、OHOS 和 Web 的必要配置。
 
 ## iOS
 
-最低 iOS 14.0。页面需要访问摄像头、麦克风或定位时，在 `Info.plist` 添加说明：
+最低 iOS 14.0。使用 CocoaPods 时，还需在 `ios/Podfile` 中设置 `platform :ios, '14.0'`。页面需要访问摄像头、麦克风或定位时，在 `Info.plist` 添加说明：
 
 ```xml
 <key>NSCameraUsageDescription</key>
@@ -35,7 +35,7 @@ App-Bound Domains 需要宿主应用配置域名，并用 `WebKitWebViewControll
 
 ## macOS
 
-最低 macOS 11.0。沙盒应用如需联网，需要启用 outgoing network entitlement：
+最低 macOS 11.0。使用 CocoaPods 时，还需在 `macos/Podfile` 中设置 `platform :osx, '11.0'`。沙盒应用如需联网，需要启用 outgoing network entitlement：
 
 ```xml
 <key>com.apple.security.network.client</key>
