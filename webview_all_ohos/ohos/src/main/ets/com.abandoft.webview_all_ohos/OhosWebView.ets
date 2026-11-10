@@ -71,6 +71,9 @@ export struct OhosWebView {
       if (!this.disposed) {
         Web({ src: this.webView.getUrl(), controller: this.controller, incognitoMode: this.webView.isIncognito() })
           .runJavaScriptOnDocumentStart(this.documentStartScriptsForBuild())
+          .runJavaScriptOnDocumentEnd(this.documentStartScripts.endSources.map((source: string): ScriptItem => {
+            return { script: source, scriptRules: ['*'] };
+          }))
           .keyboardAvoidMode(WebKeyboardAvoidMode.RESIZE_VISUAL)
           .backgroundColor(this.settings.backgroundColor)
           .domStorageAccess(this.settings.domStorageEnabled)
@@ -88,6 +91,7 @@ export struct OhosWebView {
           .mixedMode(this.settings.mixedContentMode)
           .onControllerAttached(this.webView.onControllerAttached)
           .onDownloadStart(this.webView.onDownloadStart)
+          .onSearchResultReceive(this.webView.onSearchResultReceive)
           .onPageBegin(this.webView.onPageBegin)
           .onPageEnd(this.webView.onPageEnd)
           .onErrorReceive(this.webView.onErrorReceive)
@@ -110,6 +114,7 @@ export struct OhosWebView {
           .onOverrideUrlLoading(this.webView.onOverrideUrlLoading)
           .onFullScreenEnter(this.webView.onFullScreenEnter)
           .onFullScreenExit(this.webView.onFullScreenExit)
+          .onRenderExited(this.webView.onRenderExited)
           .onScroll(this.webView.onScroll)
       }
     }

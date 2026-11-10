@@ -157,6 +157,7 @@ class WebView extends OhosObject {
   /// https://github.com/flutter/flutter/issues/108106
   WebView({
     this.incognito = false,
+    this.customSchemes = const [],
     this.onScrollChanged,
     @visibleForTesting super.binaryMessenger,
     @visibleForTesting super.instanceManager,
@@ -171,6 +172,7 @@ class WebView extends OhosObject {
   @protected
   WebView.detached({
     this.incognito = false,
+    this.customSchemes = const [],
     this.onScrollChanged,
     super.binaryMessenger,
     super.instanceManager,
@@ -179,6 +181,7 @@ class WebView extends OhosObject {
   }
 
   final bool incognito;
+  final List<String> customSchemes;
   late final Future<void> _creation;
   Future<void> get creation => _creation;
 
@@ -368,8 +371,15 @@ class WebView extends OhosObject {
   ///
   /// Before attachment, the native view retains the snapshot for its first
   /// document. Once attached, completion waits for the component to apply it.
-  Future<void> setDocumentStartScripts(List<String> scripts) {
-    return api.setDocumentStartScriptsFromInstance(this, scripts);
+  Future<void> setDocumentStartScripts(
+    List<String> scripts, {
+    List<String> documentEndScripts = const [],
+  }) {
+    return api.setDocumentStartScriptsFromInstance(
+      this,
+      scripts,
+      documentEndScripts: documentEndScripts,
+    );
   }
 
   /// Gets the title for the current page.
@@ -480,6 +490,7 @@ class WebView extends OhosObject {
   WebView copy() {
     return WebView.detached(
       incognito: incognito,
+      customSchemes: customSchemes,
       onScrollChanged: onScrollChanged,
       binaryMessenger: _api.binaryMessenger,
       instanceManager: _api.instanceManager,

@@ -1,13 +1,15 @@
 // This state machine has no ArkUI dependencies so lifecycle ordering can be
 // verified independently of a device. The component acknowledges a revision
-// only after its synchronous document-start modifier has been applied.
+// only after both synchronous script injection modifiers have been applied.
 export class DocumentStartScriptSnapshot {
   readonly revision: number;
   readonly sources: Array<string>;
+  readonly endSources: Array<string>;
 
-  constructor(revision: number, sources: Array<string>) {
+  constructor(revision: number, sources: Array<string>, endSources: Array<string> = []) {
     this.revision = revision;
     this.sources = sources.slice();
+    this.endSources = endSources.slice();
   }
 }
 
@@ -60,9 +62,9 @@ export class DocumentStartScriptState {
     listener(this.current);
   }
 
-  setScripts(sources: Array<string>): Promise<void> {
+  setScripts(sources: Array<string>, endSources: Array<string> = []): Promise<void> {
     this.ensureOpen();
-    this.current = new DocumentStartScriptSnapshot(this.current.revision + 1, sources);
+    this.current = new DocumentStartScriptSnapshot(this.current.revision + 1, sources, endSources);
     if (this.listener) {
       this.listener(this.current);
     }

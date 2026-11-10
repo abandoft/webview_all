@@ -27,6 +27,7 @@ class OhosWebViewProxy {
   /// Constructs a [ohos_webview.WebView].
   final ohos_webview.WebView Function({
     bool incognito,
+    List<String> customSchemes,
     void Function(int left, int top, int oldLeft, int oldTop)? onScrollChanged,
   })
   createOhosWebView;

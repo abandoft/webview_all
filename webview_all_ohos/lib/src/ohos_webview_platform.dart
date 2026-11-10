@@ -26,6 +26,7 @@ class OhosWebViewPlatform extends WebViewPlatform {
         'ArkWeb supports native incognito mode, but private WebViews share the same private store.',
     scopedCookies: true,
     scopedWebsiteData: true,
+    relatedControllers: true,
   );
 
   /// Registers this class as the default instance of [WebViewPlatform].

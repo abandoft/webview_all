@@ -21,11 +21,20 @@ import 'ohos_webview_cookie_manager.dart';
 import 'ohos_webview_data_manager.dart';
 import 'ohos_website_data_store.dart';
 import 'ohos_webview_native.dart' as ohos_webview;
+import 'channels/browser_events.dart';
 import 'channels/api_implementations.dart';
+import 'channels/host_api.dart' show WebViewHostApi;
 import 'channels/constants.dart';
 import 'core/instance_manager.dart';
 import 'ohos_platform_views.dart';
 import 'core/weak_reference.dart';
+
+final Expando<int> _ohosNavigationPolicyEpoch = Expando<int>();
+
+void _invalidateOhosNavigationPolicy(LoadRequestCallback request) {
+  _ohosNavigationPolicyEpoch[request] =
+      (_ohosNavigationPolicyEpoch[request] ?? 0) + 1;
+}
 
 final Expando<Set<PageEventCallback>> _ohosControllerPageStartedCallbacks =
     Expando<Set<PageEventCallback>>();
@@ -93,6 +102,8 @@ class OhosWebViewControllerCreationParams
   /// Creates a new [OhosWebViewControllerCreationParams] instance.
   OhosWebViewControllerCreationParams({
     super.sessionMode,
+    super.mediaPlaybackPolicy,
+    super.customSchemes,
     this.isAllowFullScreenRotate = false,
     this.domStorageEnabled = true,
     this.javaScriptCanOpenWindowsAutomatically = true,
@@ -144,6 +155,8 @@ class OhosWebViewControllerCreationParams
   }) {
     return OhosWebViewControllerCreationParams(
       sessionMode: params.sessionMode,
+      mediaPlaybackPolicy: params.mediaPlaybackPolicy,
+      customSchemes: params.customSchemes,
       isAllowFullScreenRotate: isAllowFullScreenRotate,
       domStorageEnabled: domStorageEnabled,
       javaScriptCanOpenWindowsAutomatically:
@@ -238,7 +251,381 @@ class OhosWebViewPermissionResourceType extends WebViewPermissionResourceType {
 
 /// Implementation of the [PlatformWebViewController] with the Ohos WebView API.
 class OhosWebViewController extends PlatformWebViewController
-    with WebViewResourceControllerMixin {
+    with WebViewResourceControllerMixin, WebViewNetworkControllerMixin {
+  @override
+  Future<bool> clearNavigationHistory() => browserOperation(
+    'clearNavigationHistory',
+    false,
+    () => WebViewHostApi().clearNavigationHistory(_browserInstanceId),
+  );
+
+  @override
+  Future<WebViewNavigationState?> saveNavigationState() =>
+      browserOperation<WebViewNavigationState?>(
+        'saveNavigationState',
+        null,
+        () async {
+          if (_sessionClose != null) return null;
+          await _webView.creation;
+          final id = await WebViewHostApi().saveNavigationState(
+            _browserInstanceId,
+          );
+          return id == null
+              ? null
+              : WebViewNavigationState(
+                  platform: 'ohos',
+                  identifier: id,
+                  onDispose: () => WebViewHostApi().releaseNavigationState(id),
+                );
+        },
+      );
+
+  @override
+  Future<bool> restoreNavigationState(WebViewNavigationState state) =>
+      browserOperation('restoreNavigationState', false, () async {
+        if (_sessionClose != null || !acceptsNavigationState(state, 'ohos')) {
+          return false;
+        }
+        await _webView.creation;
+        _beginNavigation();
+        return WebViewHostApi().restoreNavigationState(
+          _browserInstanceId,
+          state.identifier,
+        );
+      });
+  void _observeBrowserEvents() {
+    final owner = WeakReference(this);
+    OhosBrowserEvents.observe(webViewIdentifier, this, (event) async {
+      final controller = owner.target;
+      if (controller == null || controller._sessionClose != null) return;
+      if (event['type'] == 'fullscreenChanged') {
+        if (event['active'] == true) {
+          await controller.notifyFullscreenEntered();
+        } else {
+          await controller.notifyFullscreenExited();
+        }
+      } else if (event['type'] == 'processFailed') {
+        controller._beginNavigation();
+        await controller.notifyProcessFailed(
+          WebViewProcessFailure(
+            kind: WebViewProcessFailureKind.rendererExited,
+            recovery: WebViewProcessRecovery.reload,
+            nativeCode: (event['nativeCode'] as num?)?.toInt(),
+            didCrash: event['didCrash'] as bool?,
+            description:
+                'The ArkWeb renderer process exited. Reload the page to recover.',
+          ),
+        );
+      }
+    });
+  }
+
+  @override
+  Future<void> setFullscreenDelegate(
+    WebViewFullscreenDelegate? delegate,
+  ) async {
+    if (_sessionClose != null) return;
+    await _webView.creation;
+    _observeBrowserEvents();
+    await updateFullscreenDelegate(delegate);
+    await WebViewHostApi().setFullscreenDelegateEnabled(
+      _browserInstanceId,
+      delegate != null,
+    );
+  }
+
+  @override
+  Future<bool> exitFullscreen() async {
+    try {
+      return await WebViewHostApi().exitFullscreen(_browserInstanceId);
+    } catch (error) {
+      debugPrint('webview_all_ohos: exiting fullscreen failed: $error');
+      return false;
+    }
+  }
+
+  @override
+  Future<void> setOnProcessFailed(
+    FutureOr<void> Function(WebViewProcessFailure)? callback,
+  ) async {
+    if (_sessionClose != null) return;
+    await _webView.creation;
+    _observeBrowserEvents();
+    updateProcessFailureCallback(callback);
+  }
+
+  late final LoadRequestCallback _navigationLoadRequest = loadRequest;
+
+  @override
+  Future<PlatformWebViewController?> createRelatedController() =>
+      browserOperation<PlatformWebViewController?>(
+        'createRelatedController',
+        null,
+        () async {
+          if (_sessionClose != null) return null;
+          final child = OhosWebViewController(params);
+          try {
+            await child.prepareSession();
+            return child;
+          } catch (_) {
+            await child.closeWebViewSession();
+            rethrow;
+          }
+        },
+      );
+
+  @override
+  Future<WebViewNetworkCapabilities> getNetworkCapabilities() async {
+    bool custom = params.customSchemes.isEmpty;
+    if (_sessionClose == null && !custom) {
+      await _webView.creation;
+      try {
+        custom =
+            await WebViewHostApi().invokeBrowserOperation(
+              _browserInstanceId,
+              'supportsCustomSchemes',
+              {'schemes': params.customSchemes},
+            ) ==
+            true;
+      } catch (_) {}
+    }
+    return WebViewNetworkCapabilities(
+      contentRules: true,
+      customSchemes: custom,
+      customSchemeFetch: custom,
+      customSchemeRequestBodies: true,
+      streamingResponses: true,
+      limitation:
+          'ArkWeb custom schemes must be declared before WebEngine initialization (up to 10 per process). Chunked or oversized request bodies are unavailable. HTTP(S) can be blocked statically; asynchronous Dart decisions cannot resume an already claimed native request.',
+    );
+  }
+
+  @override
+  Future<bool> configureContentRules(List<Map<String, Object?>> rules) async {
+    if (_sessionClose != null) return false;
+    await _webView.creation;
+    return await WebViewHostApi().invokeBrowserOperation(
+          _browserInstanceId,
+          'setContentRules',
+          {'rules': rules},
+        ) ==
+        true;
+  }
+
+  @override
+  Future<bool> configureNetworkBridge(
+    Map<String, Object?> configuration,
+  ) async {
+    if (_sessionClose != null || configuration['kind'] != 'schemes') {
+      return false;
+    }
+    await _webView.creation;
+    return await WebViewHostApi().invokeBrowserOperation(
+          _browserInstanceId,
+          'configureNetworkBridge',
+          configuration,
+        ) ==
+        true;
+  }
+
+  @override
+  Future<Uint8List?> takeScreenshot({
+    WebViewScreenshotOptions options = const WebViewScreenshotOptions(),
+  }) => captureScreenshot(options, () async {
+    if (_sessionClose != null) return null;
+    await _webView.creation;
+    return await WebViewHostApi().invokeBrowserOperation(
+          _browserInstanceId,
+          'takeScreenshot',
+          const {},
+        )
+        as Uint8List?;
+  });
+
+  @override
+  Future<Uint8List?> createPdf({WebViewPdfOptions? options}) =>
+      capturePageData('PDF export', () async {
+        if (_sessionClose != null) return null;
+        final layout = options ?? const WebViewPdfOptions();
+        if (!layout.isValid) {
+          throw ArgumentError('Invalid PDF paper size or margins.');
+        }
+        await _webView.creation;
+        return await WebViewHostApi().invokeBrowserOperation(
+              _browserInstanceId,
+              'createPdf',
+              {'options': layout.toMap()},
+            )
+            as Uint8List?;
+      });
+  @override
+  Future<Uint8List?> createArchive({required WebViewArchiveFormat format}) {
+    if (format != WebViewArchiveFormat.mhtml) {
+      return super.createArchive(format: format);
+    }
+    return capturePageData('Page archive', () async {
+      if (_sessionClose != null) return null;
+      await _webView.creation;
+      return await WebViewHostApi().invokeBrowserOperation(
+            _browserInstanceId,
+            'createArchive',
+            {},
+          )
+          as Uint8List?;
+    });
+  }
+
+  @override
+  Future<bool> setAudioMuted(bool muted) =>
+      browserOperation('setAudioMuted', false, () async {
+        if (_sessionClose != null) return false;
+        await _webView.creation;
+        return await WebViewHostApi().invokeBrowserOperation(
+              _browserInstanceId,
+              'setAudioMuted',
+              {'muted': muted},
+            ) ==
+            true;
+      });
+  @override
+  Future<bool> pauseMedia() => browserOperation('pauseMedia', false, () async {
+    if (_sessionClose != null) return false;
+    await _webView.creation;
+    return await WebViewHostApi().invokeBrowserOperation(
+          _browserInstanceId,
+          'pauseMedia',
+          {},
+        ) ==
+        true;
+  });
+
+  @override
+  Future<WebViewPrintJob?> printPage({String jobName = 'Web page'}) async {
+    if (_sessionClose != null) return null;
+    await _webView.creation;
+    return startNativePrint(
+      jobName,
+      (method, args) => WebViewHostApi().invokeBrowserOperation(
+        _browserInstanceId,
+        method,
+        args,
+      ),
+    );
+  }
+
+  @override
+  Future<WebViewBrowserCapabilities>
+  getBrowserCapabilities() async => const WebViewBrowserCapabilities(
+    fullscreenEvents: true,
+    processFailureEvents: true,
+    clearHistory: true,
+    navigationState: true,
+    viewportScreenshot: true,
+    screenshotRegion: true,
+    screenshotScale: true,
+    pdfExport: true,
+    pdfPageLayout: true,
+    archiveFormats: {WebViewArchiveFormat.mhtml},
+    audioMuting: true,
+    pauseMedia: true,
+    printing: true,
+    printJobState: true,
+    stopLoading: true,
+    mediaPlaybackPolicyAtCreation: true,
+    navigationHistory: true,
+    historyNavigation: true,
+    findText: true,
+    findMatchCount: true,
+    fileSelector: true,
+    mediaPlaybackRequiresUserGesture: true,
+    popupWindowPolicies: {
+      WebViewPopupWindowPolicy.platformDefault,
+      WebViewPopupWindowPolicy.deny,
+    },
+    limitation:
+        'ArkWeb text search is case-insensitive and wraps around. Opening popups in the current view is unavailable.',
+  );
+
+  int get _browserInstanceId => webViewIdentifier;
+
+  @override
+  Future<void> stopLoading() {
+    _invalidateOhosNavigationPolicy(_navigationLoadRequest);
+    return WebViewHostApi().stopLoading(_browserInstanceId);
+  }
+
+  @override
+  Future<WebViewNavigationHistory> getNavigationHistory() async =>
+      WebViewNavigationHistory.fromMap(
+        await WebViewHostApi().getNavigationHistory(_browserInstanceId),
+      );
+
+  @override
+  Future<bool> goToHistoryIndex(int index) =>
+      WebViewHostApi().goToHistoryIndex(_browserInstanceId, index);
+
+  @override
+  Future<WebViewFindResult?> findText(
+    String text, {
+    bool forward = true,
+    bool caseSensitive = false,
+    bool wrapAround = true,
+  }) async {
+    if (caseSensitive || !wrapAround) {
+      debugPrint(
+        'webview_all_ohos: native text search supports case-insensitive matching with wrapping only; the requested search was skipped.',
+      );
+      return null;
+    }
+    if (text.isEmpty) {
+      await clearFindMatches();
+      return const WebViewFindResult(matchFound: false, matchCount: 0);
+    }
+    return serializeTextSearch(() async {
+      final result = await WebViewHostApi().findText(
+        _browserInstanceId,
+        text,
+        forward,
+      );
+      return result == null ? null : WebViewFindResult.fromMap(result);
+    });
+  }
+
+  @override
+  Future<void> clearFindMatches() => serializeTextSearch(
+    () => WebViewHostApi().clearFindMatches(_browserInstanceId),
+  );
+
+  @override
+  Future<void> setPopupPolicy(WebViewPopupWindowPolicy policy) async {
+    if (policy == WebViewPopupWindowPolicy.sameView) {
+      debugPrint(
+        'webview_all_ohos: opening popups in the current view is unavailable; the current policy was retained.',
+      );
+      return;
+    }
+    await WebViewHostApi().setPopupWindowPolicy(
+      _browserInstanceId,
+      policy.index,
+    );
+  }
+
+  @override
+  Future<void> setFileSelector(WebViewFileSelector? selector) =>
+      setOnShowFileSelector(
+        selector == null
+            ? null
+            : (params) => invokeWebViewFileSelector(
+                selector,
+                WebViewFileSelectorParams(
+                  mode: WebViewFileSelectorMode.values[params.mode.index],
+                  acceptTypes: params.acceptTypes,
+                  isCaptureEnabled: params.isCaptureEnabled,
+                  filenameHint: params.filenameHint,
+                ),
+              ),
+      );
+
   @override
   String get resourceUrlScheme => 'https';
 
@@ -282,6 +669,14 @@ class OhosWebViewController extends PlatformWebViewController
   Future<void> closeWebViewSession() => _sessionClose ??= _closeSession();
 
   Future<void> _closeSession() async {
+    if (isFullscreenActive) {
+      await exitFullscreen();
+    }
+    disposeBrowserLifecycleCallbacks();
+    OhosBrowserEvents.remove(webViewIdentifier);
+    disposeJavaScriptHandlers();
+    final networkDisposal = disposeNetworkBridges();
+    if (networkDisposal != null) await networkDisposal;
     final resourceDisposal = disposeResourceBridge();
     if (resourceDisposal != null) await resourceDisposal;
     await _handleDownloadCall(const MethodCall('disposed'));
@@ -477,7 +872,11 @@ class OhosWebViewController extends PlatformWebViewController
       _webView.settings.setAllowFileAccess(enabled);
     }
     _webView.settings.setMixedContentMode(creationParams.mixedContentMode.name);
-    if (creationParams.mediaPlaybackRequiresUserGesture
+    if ((creationParams.mediaPlaybackRequiresUserGesture ??
+            (creationParams.mediaPlaybackPolicy == null
+                ? null
+                : creationParams.mediaPlaybackPolicy ==
+                      WebViewMediaPlaybackPolicy.requireUserGesture))
         case final bool require) {
       _webView.settings.setMediaPlaybackRequiresUserGesture(require);
     }
@@ -497,6 +896,7 @@ class OhosWebViewController extends PlatformWebViewController
   /// The native [ohos_webview.WebView] being controlled.
   late final ohos_webview.WebView _webView = _ohosWebViewParams.ohosWebViewProxy
       .createOhosWebView(
+        customSchemes: params.customSchemes,
         incognito: params.sessionMode == WebViewSessionMode.incognito,
         onScrollChanged: withWeakReferenceTo(this, (
           WeakReference<OhosWebViewController> weakReference,
@@ -802,12 +1202,14 @@ class OhosWebViewController extends PlatformWebViewController
   bool _horizontalScrollBarEnabled = true;
   WebViewOverScrollMode _overScrollMode = WebViewOverScrollMode.always;
   int _nextAsyncJavaScriptInvocationIdentifier = 0;
-  final Map<String, String> _documentStartScripts = <String, String>{};
+  final Map<String, WebViewUserScript> _documentStartScripts = {};
   Future<void> _userScriptUpdates = Future<void>.value();
   int _navigationGeneration = 0;
   final Set<Completer<void>> _pendingAsyncJavaScript = <Completer<void>>{};
 
   void _beginNavigation() {
+    _invalidateOhosNavigationPolicy(_navigationLoadRequest);
+    prepareJavaScriptForNavigation();
     _navigationGeneration += 1;
     final List<Completer<void>> pending = _pendingAsyncJavaScript.toList();
     _pendingAsyncJavaScript.clear();
@@ -824,6 +1226,7 @@ class OhosWebViewController extends PlatformWebViewController
           final OhosWebViewController? controller = weakReference.target;
           if (controller != null) {
             controller._beginNavigation();
+            controller.cancelJavaScriptHandlerCalls();
           }
         };
       });
@@ -985,6 +1388,7 @@ class OhosWebViewController extends PlatformWebViewController
   Future<void> setPlatformNavigationDelegate(
     covariant OhosNavigationDelegate handler,
   ) async {
+    _invalidateOhosNavigationPolicy(_navigationLoadRequest);
     final OhosNavigationDelegate? previousDelegate = _currentNavigationDelegate;
     if (previousDelegate != null) {
       _ohosControllerPageStartedCallbacks[previousDelegate]?.remove(
@@ -1000,7 +1404,7 @@ class OhosWebViewController extends PlatformWebViewController
     (_ohosControllerPageFinishedCallbacks[handler] ??= <PageEventCallback>{})
         .add(_controllerPageFinishedCallback);
     await Future.wait(<Future<void>>[
-      handler.setOnLoadRequest(loadRequest),
+      handler.setOnLoadRequest(_navigationLoadRequest),
       _webView.setWebViewClient(handler.ohosWebViewClient),
       _webView.setDownloadListener(handler.ohosDownloadListener),
     ]);
@@ -1037,6 +1441,7 @@ class OhosWebViewController extends PlatformWebViewController
 
   @override
   Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
+    if (!params.world.isPage) return invokeAsyncJavaScriptInWorld(params);
     final int generation = _navigationGeneration;
     final Completer<void> navigation = Completer<void>();
     _pendingAsyncJavaScript.add(navigation);
@@ -1114,7 +1519,7 @@ class OhosWebViewController extends PlatformWebViewController
           slot.result = result;
         };
         setTimeout(release, $timeoutMilliseconds);
-        const args = ${jsonEncode(params.arguments)};
+        const args = JSON.parse(${jsonEncode(jsonEncode(params.arguments))});
         const postError = (error) => {
           settle({
             state: 'rejected',
@@ -1240,7 +1645,7 @@ ${params.functionBody}
   @override
   Future<bool> isUserScriptInjectionSupported(
     WebViewUserScriptInjectionTime injectionTime,
-  ) async => injectionTime == WebViewUserScriptInjectionTime.documentStart;
+  ) async => true;
 
   Future<T> _updateUserScripts<T>(Future<T> Function() update) {
     final Future<T> result = _userScriptUpdates.then((_) => update());
@@ -1253,48 +1658,71 @@ ${params.functionBody}
   }
 
   @override
+  Future<WebViewJavaScriptCapabilities> getJavaScriptCapabilities({
+    WebViewJavaScriptWorld world = WebViewJavaScriptWorld.page,
+  }) async => const WebViewJavaScriptCapabilities(
+    supportsPromiseHandlers: true,
+    userScriptInjectionTimes: {
+      WebViewUserScriptInjectionTime.documentStart,
+      WebViewUserScriptInjectionTime.documentEnd,
+    },
+    limitation:
+        'OHOS supports main-document handlers, but cannot verify security origins or frames and does not expose isolated JavaScript worlds.',
+  );
+
+  Future<void> _applyUserScripts(Map<String, WebViewUserScript> scripts) {
+    List<String> sources(WebViewUserScriptInjectionTime time) => scripts.entries
+        .where((entry) => entry.value.injectionTime == time)
+        .map(
+          (entry) =>
+              '// ${entry.key}\n${buildUserScriptSource(entry.value, platformHandlesMainFrameOnly: false)}',
+        )
+        .toList();
+    return _webView.setDocumentStartScripts(
+      sources(WebViewUserScriptInjectionTime.documentStart),
+      documentEndScripts: sources(WebViewUserScriptInjectionTime.documentEnd),
+    );
+  }
+
+  @override
   Future<String> addUserScript(WebViewUserScript userScript) {
-    final String identifier = _createOhosOpaqueIdentifier('webview_all_script');
-    final String source =
-        '// $identifier\n'
-        '${buildUserScriptSource(userScript, platformHandlesMainFrameOnly: false)}';
+    if (!userScript.world.isPage) {
+      throw UnsupportedError(
+        'Isolated user scripts are unavailable on this platform. Use tryAddUserScript to skip unsupported scripts with a warning.',
+      );
+    }
+
+    final identifier = _createOhosOpaqueIdentifier('webview_all_script');
     return _updateUserScripts(() async {
-      final Map<String, String> updated = <String, String>{
-        ..._documentStartScripts,
-        identifier: source,
-      };
-      await _webView.setDocumentStartScripts(updated.values.toList());
+      final updated = {..._documentStartScripts, identifier: userScript};
+      await _applyUserScripts(updated);
       _documentStartScripts.addAll(updated);
       return identifier;
     });
   }
 
   @override
-  Future<void> removeUserScript(String identifier) {
-    return _updateUserScripts(() async {
-      if (!_documentStartScripts.containsKey(identifier)) {
-        return;
-      }
-      final Map<String, String> updated = Map<String, String>.of(
-        _documentStartScripts,
-      )..remove(identifier);
-      await _webView.setDocumentStartScripts(updated.values.toList());
-      _documentStartScripts
-        ..clear()
-        ..addAll(updated);
-    });
-  }
+  Future<void> removeUserScript(String identifier) =>
+      _updateUserScripts(() async {
+        if (!_documentStartScripts.containsKey(identifier)) return;
+        final updated = Map<String, WebViewUserScript>.of(_documentStartScripts)
+          ..remove(identifier);
+        await _applyUserScripts(updated);
+        _documentStartScripts
+          ..clear()
+          ..addAll(updated);
+      });
 
   @override
-  Future<void> removeAllUserScripts() {
-    return _updateUserScripts(() async {
-      if (_documentStartScripts.isEmpty) {
-        return;
-      }
-      await _webView.setDocumentStartScripts(<String>[]);
-      _documentStartScripts.clear();
-    });
-  }
+  Future<void> removeAllUserScripts() => _updateUserScripts(() async {
+    final updated = Map<String, WebViewUserScript>.of(_documentStartScripts)
+      ..removeWhere((identifier, _) => !isJavaScriptBridgeScript(identifier));
+    if (updated.length == _documentStartScripts.length) return;
+    await _applyUserScripts(updated);
+    _documentStartScripts
+      ..clear()
+      ..addAll(updated);
+  });
 
   @override
   Future<void> addJavaScriptChannel(
@@ -1462,6 +1890,7 @@ ${params.functionBody}
   }
 
   /// Sets the restrictions that apply on automatic media playback.
+  @override
   Future<void> setMediaPlaybackRequiresUserGesture(bool require) {
     return _webView.settings.setMediaPlaybackRequiresUserGesture(require);
   }
@@ -2263,6 +2692,10 @@ class OhosNavigationDelegate extends PlatformNavigationDelegate {
             }
           },
           onPageStarted: (ohos_webview.WebView webView, String url) {
+            final loadRequest = weakThis.target?._onLoadRequest;
+            if (loadRequest != null) {
+              _invalidateOhosNavigationPolicy(loadRequest);
+            }
             final OhosNavigationDelegate? target = weakThis.target;
             if (target != null) {
               for (final PageEventCallback controllerCallback
@@ -2557,6 +2990,12 @@ class OhosNavigationDelegate extends PlatformNavigationDelegate {
       return;
     }
 
+    final policyEpoch =
+        (_ohosNavigationPolicyEpoch[onLoadRequest] ?? 0) +
+        (isForMainFrame ? 1 : 0);
+    if (isForMainFrame) {
+      _ohosNavigationPolicyEpoch[onLoadRequest] = policyEpoch;
+    }
     FutureOr<NavigationDecision> returnValue;
     try {
       returnValue = onNavigationRequest(
@@ -2568,6 +3007,9 @@ class OhosNavigationDelegate extends PlatformNavigationDelegate {
     }
 
     void handleDecision(NavigationDecision decision) {
+      if (policyEpoch != (_ohosNavigationPolicyEpoch[onLoadRequest] ?? 0)) {
+        return;
+      }
       if (decision == NavigationDecision.navigate && isForMainFrame) {
         _runOhosAsyncCallbackSafely(
           'approved navigation load',

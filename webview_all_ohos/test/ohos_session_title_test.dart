@@ -32,6 +32,34 @@ void main() {
   });
 
   test(
+    'cookie expiration preserves host/domain scope and secure prefixes',
+    () async {
+      final manager = OhosWebViewCookieManager(
+        const PlatformWebViewCookieManagerCreationParams(),
+        incognito: true,
+      );
+      await manager.deleteCookie(name: 'host', domain: 'example.test');
+      await manager.deleteCookie(name: 'domain', domain: '.example.test');
+      await manager.deleteCookie(
+        name: '__Host-Http-auth',
+        domain: 'example.test',
+      );
+      final writes = calls
+          .where((call) => call.method == 'CookieManager.setCookie')
+          .map((call) => call.arguments as Map)
+          .toList();
+      expect(writes, hasLength(3));
+      expect(writes.every((args) => args['incognito'] == true), isTrue);
+      final headers = writes.map((args) => args['value'] as String).toList();
+      expect(headers[0], isNot(contains('domain=')));
+      expect(headers[1], contains('domain=.example.test'));
+      expect(headers[2], isNot(contains('domain=')));
+      expect(headers[2], contains('; Secure'));
+      expect(headers[2], contains('; HttpOnly'));
+    },
+  );
+
+  test(
     'private data operations select private stores and leave global cache untouched',
     () async {
       final cookies = OhosWebViewCookieManager(

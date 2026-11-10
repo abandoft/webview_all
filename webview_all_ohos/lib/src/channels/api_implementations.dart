@@ -275,6 +275,7 @@ class WebViewHostApiImpl extends WebViewHostApi {
     return create(
       instanceManager.addDartCreatedInstance(instance),
       incognito: instance.incognito,
+      customSchemes: instance.customSchemes,
     );
   }
 
@@ -363,13 +364,18 @@ class WebViewHostApiImpl extends WebViewHostApi {
   /// Replaces the scripts installed in future documents of [instance].
   Future<void> setDocumentStartScriptsFromInstance(
     WebView instance,
-    List<String> scripts,
-  ) {
+    List<String> scripts, {
+    List<String> documentEndScripts = const [],
+  }) {
     final int? identifier = instanceManager.getIdentifier(instance);
     if (identifier == null) {
       throw StateError('The WebView has been released.');
     }
-    return setDocumentStartScripts(identifier, scripts);
+    return setDocumentStartScripts(
+      identifier,
+      scripts,
+      documentEndScripts: documentEndScripts,
+    );
   }
 
   /// Helper method to convert instances ids to objects.

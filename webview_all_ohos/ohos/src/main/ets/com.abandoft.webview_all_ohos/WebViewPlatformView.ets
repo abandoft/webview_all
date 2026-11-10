@@ -79,6 +79,64 @@ class OhosSslAuthHandler implements SslAuthHandler {
 }
 
 export class WebViewPlatformView extends PlatformView {
+  denyPopups: boolean = false;
+  private findQuery: string = '';
+  private findMatches: number = 0;
+  private findBackward: boolean = false;
+  private findResolve: ((value: Map<string, boolean | number> | null) => void) | undefined;
+  private findTimer: number | undefined;
+
+  cancelFind(): void {
+    if (this.findTimer !== undefined) clearTimeout(this.findTimer);
+    this.findTimer = undefined;
+    const resolve = this.findResolve;
+    this.findResolve = undefined;
+    this.findQuery = '';
+    this.findMatches = 0;
+    if (resolve) resolve(null);
+  }
+
+  findText(text: string, forward: boolean): Promise<Map<string, boolean | number> | null> {
+    const continueSearch = this.findQuery === text && this.findMatches > 0;
+    if (this.findResolve) this.cancelFind();
+    this.findQuery = text;
+    return new Promise<Map<string, boolean | number> | null>((resolve) => {
+      this.findResolve = resolve;
+      this.findTimer = setTimeout(() => this.cancelFind(), 10000);
+      try {
+        if (continueSearch) {
+          this.findBackward = false;
+          this.controller.searchNext(forward);
+        } else {
+          this.findBackward = !forward;
+          this.controller.searchAllAsync(text);
+        }
+      } catch (error) {
+        this.cancelFind();
+        Log.e(TAG, 'Text search failed: ' + error);
+      }
+    });
+  }
+
+  onSearchResultReceive = (event: OnSearchResultReceiveEvent): void => {
+    if (!event.isDoneCounting || !this.findResolve) return;
+    this.findMatches = event.numberOfMatches;
+    if (this.findBackward && this.findMatches > 1) {
+      this.findBackward = false;
+      this.controller.searchNext(false);
+      return;
+    }
+    const result = new Map<string, boolean | number>();
+    result.set('matchFound', this.findMatches > 0);
+    result.set('matchCount', this.findMatches);
+    if (this.findMatches > 0) result.set('activeMatchIndex', event.activeMatchOrdinal);
+    if (this.findTimer !== undefined) clearTimeout(this.findTimer);
+    this.findTimer = undefined;
+    const resolve = this.findResolve;
+    this.findResolve = undefined;
+    resolve(result);
+  };
+
   private readonly cookieManager: web_webview.WebCookieManager = new web_webview.WebCookieManager();
   private readonly controller: web_webview.WebviewController = new web_webview.WebviewController();
   private readonly webViewFlutterApi: WebViewFlutterApiImpl;
@@ -88,6 +146,7 @@ export class WebViewPlatformView extends PlatformView {
   private downloadListener: DownloadListener | null = null;
   private downloadCoordinator?: WebDownloadCoordinator;
   private resourceCoordinator?: WebResourceCoordinator;
+  declaredCustomSchemes: Array<string> = [];
   private webChromeClient: WebChromeClient | null = null;
   private webViewClient: WebViewClient | null = null;
   private webSettings: WebSettings | null = null;
@@ -98,6 +157,9 @@ export class WebViewPlatformView extends PlatformView {
   private onDisposeCallback?: () => void;
   private rotation: number = 0;
   private fullScreen: boolean = false;
+  fullscreenDelegateEnabled: boolean = false;
+  private fullscreenExitHandler: FullScreenExitHandler | undefined;
+  private ownsFullscreenSystemChrome: boolean = false;
   private visibleAreaEventEnable: boolean = true;
   private visibleAreaEventRatios: Array<number> = [0, 0.1, 0.2, 0.5, 0.8, 1];
   private visibleAreaEventExpectedUpdateInterval: number = 1;
@@ -134,6 +196,7 @@ export class WebViewPlatformView extends PlatformView {
     if (this.documentStartScripts.isDisposed()) {
       return;
     }
+    this.cancelFind();
     this.setUrl(event.url);
     if (!this.documentStartScripts.isDisposed() && this.webViewClient) {
       this.webViewClient.onPageStarted(this, event.url);
@@ -275,6 +338,10 @@ export class WebViewPlatformView extends PlatformView {
   }
 
   onWindowNew = (event: ESObject): void => {
+    if (this.denyPopups) {
+      event.handler.setWebController(null);
+      return;
+    }
     if (!this.documentStartScripts.isDisposed() && this.webChromeClient) {
       this.webChromeClient.onCreateWindow(this, event.isAlert, event.isUserTrigger, event.handler);
     } else {
@@ -341,15 +408,22 @@ export class WebViewPlatformView extends PlatformView {
     return false;
   }
 
-  onFullScreenEnter = (_event: ESObject): void => {
+  onFullScreenEnter = (event: FullScreenEnterEvent): void => {
     if (this.documentStartScripts.isDisposed()) {
       return;
     }
+    this.fullscreenExitHandler = event.handler;
+    this.fullScreen = true;
+    if (this.fullscreenDelegateEnabled) {
+      this.webViewFlutterApi.onBrowserEvent(this, new Map<string, ESObject>()
+        .set('type', 'fullscreenChanged').set('active', true));
+      return;
+    }
+    this.ownsFullscreenSystemChrome = true;
     const context = getContext(this) as common.UIAbilityContext;
     const windowClass = context.windowStage.getMainWindowSync();
     windowClass.setWindowSystemBarEnable([]);
     this.rotation = windowClass.getPreferredOrientation();
-    this.fullScreen = true;
     if (this.getWebSettings().getAllowFullScreenRotate()) {
       windowClass.setPreferredOrientation(window.Orientation.LANDSCAPE);
     }
@@ -360,10 +434,46 @@ export class WebViewPlatformView extends PlatformView {
       return;
     }
     this.fullScreen = false;
+    this.fullscreenExitHandler = undefined;
+    if (this.fullscreenDelegateEnabled && !this.documentStartScripts.isDisposed()) {
+      this.webViewFlutterApi.onBrowserEvent(this, new Map<string, ESObject>()
+        .set('type', 'fullscreenChanged').set('active', false));
+    }
+    if (!this.ownsFullscreenSystemChrome) return;
+    this.ownsFullscreenSystemChrome = false;
     const context = getContext(this) as common.UIAbilityContext;
     const windowClass = context.windowStage.getMainWindowSync();
     windowClass.setWindowSystemBarEnable(['status', 'navigation']);
     windowClass.setPreferredOrientation(this.rotation);
+  }
+
+  exitFullscreen(): boolean {
+    const handler = this.fullscreenExitHandler;
+    if (!this.fullScreen || !handler) return false;
+    try {
+      handler.exitFullScreen();
+      this.fullscreenExitHandler = undefined;
+      return true;
+    } catch (error) {
+      Log.e(TAG, 'Exiting fullscreen failed: ' + error);
+      return false;
+    }
+  }
+
+  onRenderExited = (event: OnRenderExitedEvent): void => {
+    if (this.documentStartScripts.isDisposed()) return;
+    this.cancelFind();
+    this.exitFullscreen();
+    this.onFullScreenExit();
+    const failure: Map<string, ESObject> = new Map<string, ESObject>()
+      .set('type', 'processFailed').set('nativeCode', event.renderExitReason);
+    if (event.renderExitReason === RenderExitReason.ProcessCrashed) {
+      failure.set('didCrash', true);
+    } else if (event.renderExitReason === RenderExitReason.ProcessWasKilled ||
+        event.renderExitReason === RenderExitReason.ProcessOom) {
+      failure.set('didCrash', false);
+    }
+    this.webViewFlutterApi.onBrowserEvent(this, failure);
   }
 
   aboutToAppear(): void {
@@ -372,6 +482,7 @@ export class WebViewPlatformView extends PlatformView {
 
   aboutToDisappear(): void {
     this.isWebviewBinding = false;
+    this.cancelFind();
     this.documentStartScripts.detach();
   }
 
@@ -390,6 +501,7 @@ export class WebViewPlatformView extends PlatformView {
     const attached = this.documentStartScripts.isControllerAttached();
     this.downloadCoordinator?.dispose();
     this.resourceCoordinator?.dispose();
+    this.cancelFind();
     this.documentStartScripts.dispose();
     this.isWebviewBinding = false;
     this.webSettings?.onSettingsChanged(undefined);
@@ -399,6 +511,7 @@ export class WebViewPlatformView extends PlatformView {
       Log.e(TAG, 'Failed to close popup while disposing WebView: ' + error);
     }
     try {
+      this.exitFullscreen();
       this.onFullScreenExit();
     } catch (error) {
       Log.e(TAG, 'Failed to restore fullscreen state: ' + error);
@@ -456,6 +569,14 @@ export class WebViewPlatformView extends PlatformView {
   configureResources(messenger: BinaryMessenger, name: string, host: string, enabled: boolean): void {
     if (!this.resourceCoordinator) this.resourceCoordinator = new WebResourceCoordinator(messenger, this.controller);
     this.resourceCoordinator.configure(name, host, enabled, this.documentStartScripts.isControllerAttached());
+  }
+  configureContentRules(messenger: BinaryMessenger, rules: Array<Map<string, ESObject>>): void {
+    if (!this.resourceCoordinator) this.resourceCoordinator = new WebResourceCoordinator(messenger, this.controller);
+    this.resourceCoordinator.configureRules(rules, this.documentStartScripts.isControllerAttached());
+  }
+  configureCustomSchemes(messenger: BinaryMessenger, name: string, schemes: Array<string>, enabled: boolean): void {
+    if (!this.resourceCoordinator) this.resourceCoordinator = new WebResourceCoordinator(messenger, this.controller);
+    this.resourceCoordinator.configureSchemes(name, schemes, enabled, this.documentStartScripts.isControllerAttached());
   }
 
   getWebCookieManager(): web_webview.WebCookieManager {
@@ -551,8 +672,8 @@ export class WebViewPlatformView extends PlatformView {
     return this.documentStartScripts;
   }
 
-  setDocumentStartScripts(scripts: Array<string>): Promise<void> {
-    return this.documentStartScripts.setScripts(scripts);
+  setDocumentStartScripts(scripts: Array<string>, endScripts: Array<string> = []): Promise<void> {
+    return this.documentStartScripts.setScripts(scripts, endScripts);
   }
 
   addJavaScriptChannel(channel: JavaScriptChannel): void {

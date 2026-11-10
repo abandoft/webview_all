@@ -139,9 +139,71 @@ class WebViewHostApi {
 
   final _HostChannel _host;
 
-  Future<void> create(int instanceId, {bool incognito = false}) {
+  Future<void> stopLoading(int id) =>
+      _host.invoke<void>('WebView.stopLoading', {'instanceId': id});
+  Future<Map<Object?, Object?>> getNavigationHistory(int id) async =>
+      await _host.invoke<Map<Object?, Object?>>(
+        'WebView.getNavigationHistory',
+        {'instanceId': id},
+      ) ??
+      const {};
+  Future<bool> goToHistoryIndex(int id, int index) async =>
+      await _host.invoke<bool>('WebView.goToHistoryIndex', {
+        'instanceId': id,
+        'index': index,
+      }) ??
+      false;
+  Future<Map<Object?, Object?>?> findText(int id, String text, bool forward) =>
+      _host.invoke<Map<Object?, Object?>>('WebView.findText', {
+        'instanceId': id,
+        'text': text,
+        'forward': forward,
+      });
+  Future<void> clearFindMatches(int id) =>
+      _host.invoke<void>('WebView.clearFindMatches', {'instanceId': id});
+  Future<void> setPopupWindowPolicy(int id, int policy) => _host.invoke<void>(
+    'WebView.setPopupWindowPolicy',
+    {'instanceId': id, 'policy': policy},
+  );
+  Future<void> setFullscreenDelegateEnabled(int id, bool enabled) =>
+      _host.invoke<void>('WebView.setFullscreenDelegateEnabled', {
+        'instanceId': id,
+        'enabled': enabled,
+      });
+  Future<bool> exitFullscreen(int id) async =>
+      await _host.invoke<bool>('WebView.exitFullscreen', {'instanceId': id}) ??
+      false;
+  Future<Object?> invokeBrowserOperation(
+    int id,
+    String method,
+    Map<String, Object?> args,
+  ) => _host.invoke<Object?>('WebView.$method', {'instanceId': id, ...args});
+  Future<bool> clearNavigationHistory(int id) async =>
+      await _host.invoke<bool>('WebView.clearNavigationHistory', {
+        'instanceId': id,
+      }) ??
+      false;
+  Future<String?> saveNavigationState(int id) =>
+      _host.invoke<String>('WebView.saveNavigationState', {'instanceId': id});
+  Future<bool> restoreNavigationState(int id, String stateId) async =>
+      await _host.invoke<bool>('WebView.restoreNavigationState', {
+        'instanceId': id,
+        'stateId': stateId,
+      }) ??
+      false;
+  Future<void> releaseNavigationState(String stateId) => _host.invoke<void>(
+    'WebView.releaseNavigationState',
+    {'stateId': stateId},
+  );
+
+  Future<void> create(
+    int instanceId, {
+    bool incognito = false,
+    List<String> customSchemes = const [],
+  }) {
     return _host.invoke<void>('WebView.create', <String, Object?>{
       'instanceId': instanceId,
+      if (customSchemes.isNotEmpty) 'customSchemes': customSchemes,
       if (incognito) 'incognito': true,
     });
   }
@@ -236,11 +298,17 @@ class WebViewHostApi {
     });
   }
 
-  Future<void> setDocumentStartScripts(int instanceId, List<String> scripts) {
-    return _host.invoke<void>(
-      'WebView.setDocumentStartScripts',
-      <String, Object?>{'instanceId': instanceId, 'scripts': scripts},
-    );
+  Future<void> setDocumentStartScripts(
+    int instanceId,
+    List<String> scripts, {
+    List<String> documentEndScripts = const [],
+  }) {
+    return _host
+        .invoke<void>('WebView.setDocumentStartScripts', <String, Object?>{
+          'instanceId': instanceId,
+          'scripts': scripts,
+          if (documentEndScripts.isNotEmpty) 'endScripts': documentEndScripts,
+        });
   }
 
   Future<void> clearCache(int instanceId, bool includeDiskFiles) {

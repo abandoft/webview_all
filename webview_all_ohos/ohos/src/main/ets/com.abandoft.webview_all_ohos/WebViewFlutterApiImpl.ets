@@ -21,6 +21,12 @@ export class WebViewFlutterApiImpl {
     }
   }
 
+  onBrowserEvent(instance: WebViewPlatformView, event: Map<string, ESObject>): void {
+    this.callbackApi.invoke<void>('WebView.browserEvent', new Map<string, ESObject>()
+      .set('webViewInstanceId', this.instanceManager.getIdentifier(instance))
+      .set('event', event));
+  }
+
   onScrollChanged(
     instance: WebViewPlatformView,
     left: number,

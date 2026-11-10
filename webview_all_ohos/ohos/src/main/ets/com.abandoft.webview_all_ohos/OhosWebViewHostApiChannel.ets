@@ -98,6 +98,7 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
   }
 
   dispose(): void {
+    this.webViewApi.clearNavigationStates();
     this.channel.setMethodCallHandler(null);
   }
 
@@ -141,7 +142,7 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
           result.success(null);
           return;
         case 'WebView.create':
-          this.webViewApi.create(call.argument('instanceId'), call.argument('incognito') ?? false);
+          this.webViewApi.create(call.argument('instanceId'), call.argument('incognito') ?? false, call.argument('customSchemes') ?? []);
           result.success(null);
           return;
         case 'WebView.closeSession':
@@ -200,12 +201,73 @@ export class OhosWebViewHostApiChannel implements MethodCallHandler {
         case 'WebView.goForward':
           this.finishPromise(result, this.webViewApi.goForward(call.argument('instanceId')));
           return;
+        case 'WebView.stopLoading':
+          this.finishPromise(result, this.webViewApi.stopLoading(call.argument('instanceId')));
+          return;
+        case 'WebView.getNavigationHistory':
+          this.finishPromise(result, this.webViewApi.getNavigationHistory(call.argument('instanceId')));
+          return;
+        case 'WebView.goToHistoryIndex':
+          this.finishPromise(result, this.webViewApi.goToHistoryIndex(call.argument('instanceId'), call.argument('index')));
+          return;
+        case 'WebView.findText':
+          this.finishPromise(result, this.webViewApi.findText(call.argument('instanceId'), call.argument('text'), call.argument('forward')));
+          return;
+        case 'WebView.clearFindMatches':
+          this.finishPromise(result, this.webViewApi.clearFindMatches(call.argument('instanceId')));
+          return;
+        case 'WebView.setPopupWindowPolicy':
+          this.webViewApi.setPopupWindowPolicy(call.argument('instanceId'), call.argument('policy'));
+          result.success(null);
+          return;
+        case 'WebView.setFullscreenDelegateEnabled':
+          this.webViewApi.setFullscreenDelegateEnabled(call.argument('instanceId'), call.argument('enabled'));
+          result.success(null);
+          return;
+        case 'WebView.exitFullscreen':
+          result.success(this.webViewApi.exitFullscreen(call.argument('instanceId')));
+          return;
+        case 'WebView.clearNavigationHistory':
+          this.finishPromise(result, this.webViewApi.clearNavigationHistory(call.argument('instanceId')));
+          return;
+        case 'WebView.printPage':
+          this.finishPromise(result, this.webViewApi.printPage(call.argument('instanceId'), call.argument('jobName')));
+          return;
+        case 'WebView.supportsCustomSchemes':
+          result.success(this.webViewApi.supportsCustomSchemes(call.argument('instanceId'), call.argument('schemes'))); return;
+        case 'WebView.configureNetworkBridge':
+          result.success(this.webViewApi.configureNetworkBridge(call.argument('instanceId'), call.argument('channel'), call.argument('schemes'), call.argument('enabled') === true)); return;
+        case 'WebView.setContentRules':
+          result.success(this.webViewApi.setContentRules(call.argument('instanceId'), call.argument('rules'))); return;
+        case 'WebView.takeScreenshot':
+          this.finishPromise(result, this.webViewApi.takeScreenshot(call.argument('instanceId'))); return;
+        case 'WebView.createPdf':
+          this.finishPromise(result, this.webViewApi.createPdf(call.argument('instanceId'), call.argument('options'))); return;
+        case 'WebView.createArchive':
+          this.finishPromise(result, this.webViewApi.createArchive(call.argument('instanceId'))); return;
+        case 'WebView.setAudioMuted':
+        case 'WebView.pauseMedia':
+          this.finishPromise(result, this.webViewApi.mediaOperation(call.argument('instanceId'), call.method.substring(8), call.argument('muted') === true)); return;
+        case 'WebView.printJobState':
+          result.success(this.webViewApi.printJobState(call.argument('jobId'))); return;
+        case 'WebView.releasePrintJob':
+          this.webViewApi.releasePrintJob(call.argument('jobId')); result.success(null); return;
         case 'WebView.reload':
           this.finishPromise(result, this.webViewApi.reload(call.argument('instanceId')));
           return;
+        case 'WebView.saveNavigationState':
+          this.finishPromise(result, this.webViewApi.saveNavigationState(call.argument('instanceId')));
+          return;
+        case 'WebView.restoreNavigationState':
+          this.finishPromise(result, this.webViewApi.restoreNavigationState(call.argument('instanceId'), call.argument('stateId')));
+          return;
+        case 'WebView.releaseNavigationState':
+          this.webViewApi.releaseNavigationState(call.argument('stateId'));
+          result.success(null);
+          return;
         case 'WebView.setDocumentStartScripts':
           this.finishPromise(result, this.webViewApi.setDocumentStartScripts(
-            call.argument('instanceId'), call.argument('scripts')
+            call.argument('instanceId'), call.argument('scripts'), call.argument('endScripts') ?? []
           ));
           return;
         case 'WebView.clearAllCache':

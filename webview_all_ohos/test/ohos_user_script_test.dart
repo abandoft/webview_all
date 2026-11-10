@@ -46,6 +46,43 @@ void main() {
   OhosWebViewController createController() =>
       OhosWebViewController(OhosWebViewControllerCreationParams());
 
+  test('stop discards a late navigation policy decision', () async {
+    final controller = createController();
+    addTearDown(controller.closeWebViewSession);
+    final delegate = OhosNavigationDelegate(
+      const PlatformNavigationDelegateCreationParams(),
+    );
+    final started = Completer<void>();
+    final decision = Completer<NavigationDecision>();
+    await delegate.setOnNavigationRequest((_) {
+      started.complete();
+      return decision.future;
+    });
+    await controller.setPlatformNavigationDelegate(delegate);
+    // The navigation callback only uses the request; no widget is needed.
+    // ignore: invalid_use_of_protected_member
+    final view = native.WebView.detached(
+      instanceManager: InstanceManager(onWeakReferenceRemoved: (_) {}),
+    );
+    delegate.ohosWebViewClient.requestLoading!(
+      view,
+      native.WebResourceRequest(
+        url: 'https://example.test/pending',
+        isForMainFrame: true,
+        isRedirect: false,
+        hasGesture: true,
+        method: 'GET',
+        requestHeaders: {},
+      ),
+    );
+    await started.future.timeout(const Duration(seconds: 2));
+    await controller.stopLoading();
+    decision.complete(NavigationDecision.navigate);
+    await Future<void>.delayed(Duration.zero);
+    expect(calls.where((call) => call.method == 'WebView.loadUrl'), isEmpty);
+    expect(calls.any((call) => call.method == 'WebView.stopLoading'), isTrue);
+  });
+
   test(
     'supports document-start registration before a widget is attached',
     () async {
@@ -111,6 +148,44 @@ void main() {
       expect(snapshots, hasLength(count));
     },
   );
+
+  test('keeps both injection phases atomic when registration fails', () async {
+    final controller = createController();
+    await controller.addUserScript(
+      const WebViewUserScript(source: 'globalThis.start = true;'),
+    );
+    final end = await controller.addUserScript(
+      const WebViewUserScript(
+        source: 'globalThis.end = document.body != null;',
+        injectionTime: WebViewUserScriptInjectionTime.documentEnd,
+      ),
+    );
+    Map<Object?, Object?> latest() =>
+        calls
+                .lastWhere(
+                  (call) => call.method == 'WebView.setDocumentStartScripts',
+                )
+                .arguments
+            as Map<Object?, Object?>;
+    expect((latest()['scripts'] as List).single, contains('globalThis.start'));
+    expect((latest()['endScripts'] as List).single, contains('globalThis.end'));
+
+    update = (_) => Future<void>.error(PlatformException(code: 'disposed'));
+    await expectLater(
+      controller.removeUserScript(end),
+      throwsA(isA<PlatformException>()),
+    );
+    update = null;
+    await controller.addUserScript(
+      const WebViewUserScript(source: 'globalThis.next = true;'),
+    );
+    expect(latest()['scripts'], hasLength(2));
+    expect((latest()['endScripts'] as List).single, contains('globalThis.end'));
+
+    await controller.removeAllUserScripts();
+    expect(latest()['scripts'], isEmpty);
+    expect(latest()['endScripts'] ?? const <String>[], isEmpty);
+  });
 
   test(
     'serializes concurrent updates until the native snapshot is acknowledged',

@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 
 import 'types.dart';
 import 'api_implementations.dart';
+import 'browser_events.dart';
 
 const String _channelName = 'com.abandoft.webview_all_ohos/callback_api';
 
@@ -62,6 +63,12 @@ class OhosWebViewCallbackDispatcher {
           args.intValue('instanceId'),
           args.intValue('webViewInstanceId'),
           args.stringValue('url'),
+        );
+        return null;
+      case 'WebView.browserEvent':
+        await OhosBrowserEvents.dispatch(
+          args.intValue('webViewInstanceId'),
+          Map<Object?, Object?>.from(args['event']! as Map),
         );
         return null;
       case 'WebViewClient.onPageFinished':

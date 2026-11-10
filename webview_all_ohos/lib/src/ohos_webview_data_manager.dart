@@ -42,6 +42,38 @@ class OhosWebViewDataManager extends PlatformWebViewDataManager {
   final OhosWebsiteDataStore _websiteDataStore;
 
   @override
+  Future<WebViewDataCapabilities>
+  getCapabilities() async => WebViewDataCapabilities(
+    clearingGroups: [
+      {WebViewDataType.cookies},
+      if (!_incognito && !_sessionScoped) {WebViewDataType.cache},
+    ],
+    limitation:
+        'ArkWeb storage categories cannot be independently cleared by this API; shared cache clearing is unavailable for private/session-scoped managers.',
+  );
+
+  @override
+  Future<WebViewDataClearingResult> clearWebsiteData({
+    required Set<WebViewDataType> dataTypes,
+  }) {
+    if (dataTypes.containsAll(WebViewDataType.values)) {
+      return clearAllWebsiteData();
+    }
+    return clearDataCategories(dataTypes, {
+      WebViewDataType.cookies: () async {
+        if (_incognito) {
+          await CookieManagerHostApi().removeAllCookies(0, incognito: true);
+        } else {
+          await _cookieManager.removeAllCookies();
+        }
+      },
+      if (!_incognito && !_sessionScoped)
+        WebViewDataType.cache: () =>
+            _websiteDataStore.clearAllCache(includeDiskFiles: true),
+    });
+  }
+
+  @override
   Future<WebViewDataClearingResult> clearAllWebsiteData() async {
     final Set<WebViewDataType> cleared = <WebViewDataType>{};
     final Map<WebViewDataType, String> failures = <WebViewDataType, String>{};

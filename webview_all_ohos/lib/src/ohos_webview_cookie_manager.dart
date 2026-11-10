@@ -34,6 +34,43 @@ class OhosWebViewCookieManagerCreationParams
 
 /// Handles all cookie operations for the Ohos platform.
 class OhosWebViewCookieManager extends PlatformWebViewCookieManager {
+  @override
+  Future<WebViewCookieCapabilities>
+  getCapabilities() async => const WebViewCookieCapabilities(
+    setHttpOnly: true,
+    deleteByIdentity: true,
+    limitation:
+        'The engine returns cookie names and values only. Domain and path on reads are compatibility placeholders, not the stored cookie identity; other attributes remain null.',
+  );
+
+  @override
+  Future<bool> deleteCookie({
+    required String name,
+    required String domain,
+    String path = '/',
+  }) async {
+    final expired = WebViewCookie(
+      name: name,
+      value: '',
+      domain: domain,
+      path: path,
+      expires: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      isSecure:
+          name.startsWith('__Secure-') ||
+              name.startsWith('__Host-') ||
+              name.startsWith('__Http-')
+          ? true
+          : null,
+      isHttpOnly: name.startsWith('__Http-') || name.startsWith('__Host-Http-')
+          ? true
+          : null,
+    );
+    // Canonical domains retain the leading dot for domain cookies. Omitting
+    // Domain expires only the host cookie; never also expire its domain peer.
+    await _writeCookie(expired, includeDomain: domain.startsWith('.'));
+    return true;
+  }
+
   /// Creates a new [OhosWebViewCookieManager].
   OhosWebViewCookieManager(
     PlatformWebViewCookieManagerCreationParams params, {
@@ -60,20 +97,27 @@ class OhosWebViewCookieManager extends PlatformWebViewCookieManager {
   }
 
   @override
-  Future<void> setCookie(WebViewCookie cookie) {
-    _validateWebViewCookie(cookie);
+  Future<void> setCookie(WebViewCookie cookie) => _writeCookie(cookie);
 
-    final value =
-        '${Uri.encodeComponent(cookie.name)}=${Uri.encodeComponent(cookie.value)}; path=${cookie.path}';
+  Future<void> _writeCookie(WebViewCookie cookie, {bool? includeDomain}) {
+    final normalized = cookie.forUrlStore;
+    normalized.validate();
+    final value = normalized.toSetCookieHeader(
+      includeDomain:
+          includeDomain ??
+          (identical(normalized, cookie) &&
+              !(normalized.name.startsWith('__Host-') &&
+                  !normalized.domain.startsWith('.'))),
+    );
     if (_incognito) {
       return CookieManagerHostApi().setCookie(
         0,
-        cookie.domain,
+        cookie.url.toString(),
         value,
         incognito: true,
       );
     }
-    return _cookieManager.setCookie(cookie.domain, value);
+    return _cookieManager.setCookie(cookie.url.toString(), value);
   }
 
   @override
@@ -119,63 +163,6 @@ class OhosWebViewCookieManager extends PlatformWebViewCookieManager {
     } on ArgumentError {
       return value;
     }
-  }
-
-  void _validateWebViewCookie(WebViewCookie cookie) {
-    _validateCookieName(cookie.name);
-    _validateCookieAttribute('domain', cookie.domain);
-    _validateCookieAttribute('path', cookie.path);
-
-    if (cookie.path.isNotEmpty && !cookie.path.startsWith('/')) {
-      throw ArgumentError.value(
-        cookie.path,
-        'cookie.path',
-        'Cookie path must start with "/".',
-      );
-    }
-    if (!_isValidPath(cookie.path)) {
-      throw ArgumentError(
-        'The path property for the provided cookie was not given a legal value.',
-      );
-    }
-  }
-
-  void _validateCookieName(String name) {
-    if (name.isEmpty) {
-      throw ArgumentError.value(name, 'cookie.name', 'Cookie name is empty.');
-    }
-
-    if (RegExp(r'[\x00-\x20\x7F()<>@,;:\\"/\[\]?={}]+').hasMatch(name)) {
-      throw ArgumentError.value(
-        name,
-        'cookie.name',
-        'Cookie name contains characters rejected by browsers.',
-      );
-    }
-  }
-
-  void _validateCookieAttribute(String field, String value) {
-    if (value.isEmpty) {
-      return;
-    }
-
-    if (RegExp(r'[\x00-\x1F\x7F;]').hasMatch(value)) {
-      throw ArgumentError.value(
-        value,
-        'cookie.$field',
-        'Cookie $field contains characters rejected by browsers.',
-      );
-    }
-  }
-
-  bool _isValidPath(String path) {
-    // Permitted ranges based on RFC6265bis: https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-02#section-4.1.1
-    for (final int char in path.codeUnits) {
-      if ((char < 0x20 || char > 0x3A) && (char < 0x3C || char > 0x7E)) {
-        return false;
-      }
-    }
-    return true;
   }
 
   /// Sets whether the WebView should allow third party cookies to be set.

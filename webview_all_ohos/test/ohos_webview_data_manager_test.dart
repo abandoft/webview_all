@@ -188,4 +188,19 @@ void main() {
       );
     },
   );
+
+  test('selective clearing preserves unrequested shared storage', () async {
+    final cookies = _Cookies();
+    final storage = _Storage();
+    final store = _DataStore();
+    final result = await createManager(cookies, storage, store)
+        .clearWebsiteData(
+          dataTypes: {WebViewDataType.cookies, WebViewDataType.localStorage},
+        );
+    expect(result.clearedDataTypes, {WebViewDataType.cookies});
+    expect(result.unsupportedDataTypes, {WebViewDataType.localStorage});
+    expect(cookies.calls, 1);
+    expect(storage.calls, 0);
+    expect(store.lastIncludeDiskFiles, isNull);
+  });
 }

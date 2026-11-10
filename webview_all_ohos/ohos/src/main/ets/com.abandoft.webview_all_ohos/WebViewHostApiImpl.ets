@@ -1,5 +1,10 @@
 import common from '@ohos.app.ability.common';
 import web_webview from '@ohos.web.webview';
+import util from '@ohos.util';
+import print from '@ohos.print';
+import fs from '@ohos.file.fs';
+import image from '@ohos.multimedia.image';
+import { WebSchemeRegistry } from './WebSchemeRegistry';
 import { BinaryMessenger } from '@ohos/flutter_ohos/src/main/ets/plugin/common/BinaryMessenger';
 import Log from '@ohos/flutter_ohos/src/main/ets/util/Log';
 import { DisplayListenerProxy } from './DisplayListenerProxy';
@@ -30,6 +35,148 @@ export class WebViewProxy {
 }
 
 export class WebViewHostApiImpl {
+  setContentRules(instanceId: number, rules: Array<Map<string, ESObject>>): boolean {
+    this.webView(instanceId).configureContentRules(this.binaryMessenger, rules); return true;
+  }
+  async takeScreenshot(instanceId: number): Promise<Uint8Array> {
+    const view = this.webView(instanceId);
+    await view.waitControllerAttached();
+    // Capture the WebView surface itself, without Flutter overlays or a
+    // process-wide whole-page drawing setting.
+    const pixels = await image.createPixelMapFromSurface(view.getController().getSurfaceId());
+    try {
+      const info = await pixels.getImageInfo();
+      if (info.size.width <= 0 || info.size.height <= 0 || info.size.width * info.size.height > 16 * 1024 * 1024) throw new Error('The WebView surface exceeds the 16 megapixel capture limit.');
+      const packer = image.createImagePacker();
+      try {
+        const data = await packer.packing(pixels, {format: 'image/png', quality: 100, bufferSize: 64 * 1024 * 1024});
+        if (data.byteLength === 0 || data.byteLength > 64 * 1024 * 1024) throw new Error('The screenshot is empty or exceeds the 64 MiB output limit.');
+        return new Uint8Array(data);
+      } finally { await packer.release(); }
+    } finally { await pixels.release(); }
+  }
+  async createPdf(instanceId: number, options: Map<string, ESObject>): Promise<Uint8Array> {
+    const view = this.webView(instanceId);
+    await view.waitControllerAttached();
+    const width = options.get('paperWidth') as number;
+    const height = options.get('paperHeight') as number;
+    const top = options.get('marginTop') as number;
+    const bottom = options.get('marginBottom') as number;
+    const left = options.get('marginLeft') as number;
+    const right = options.get('marginRight') as number;
+    const landscape = options.get('landscape') === true;
+    const w = landscape ? height : width;
+    const h = landscape ? width : height;
+    if (![width, height, top, bottom, left, right].every((v: number) => Number.isFinite(v) && v >= 0 && v <= 14400) || w <= left + right || h <= top + bottom) throw new Error('Invalid PDF paper or margins.');
+    const data = await view.getController().createPdf({width: w / 72, height: h / 72,
+      marginTop: top / 72, marginBottom: bottom / 72, marginLeft: left / 72, marginRight: right / 72});
+    const bytes = data.pdfArrayBuffer();
+    if (bytes.byteLength === 0 || bytes.byteLength > 64 * 1024 * 1024) throw new Error('The PDF is empty or exceeds the 64 MiB limit.');
+    return bytes;
+  }
+  async createArchive(instanceId: number): Promise<Uint8Array> {
+    const view = this.webView(instanceId);
+    await view.waitControllerAttached();
+    const path = this.context.cacheDir + '/webview-all-archive-' + util.generateRandomUUID(true) + '.mht';
+    try {
+      const saved = await view.getController().storeWebArchive(path, false);
+      if (saved !== path) throw new Error('The native archive could not be saved.');
+      const size = fs.statSync(path).size;
+      if (size <= 0 || size > 64 * 1024 * 1024) throw new Error('The archive is empty or exceeds the 64 MiB limit.');
+      const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+      try {
+        const bytes = new Uint8Array(size);
+        let offset = 0;
+        while (offset < size) {
+          const chunk = new ArrayBuffer(Math.min(65536, size - offset));
+          const read = fs.readSync(file.fd, chunk, {offset: offset, length: chunk.byteLength});
+          if (read <= 0) throw new Error('Reading the archive failed.');
+          bytes.set(new Uint8Array(chunk, 0, read), offset);
+          offset += read;
+        }
+        return bytes;
+      } finally { fs.closeSync(file); }
+    } finally { try { fs.unlinkSync(path); } catch (_) {} }
+  }
+  async mediaOperation(instanceId: number, method: string, muted: boolean): Promise<boolean> {
+    const view = this.webView(instanceId);
+    await view.waitControllerAttached();
+    if (method === 'setAudioMuted') view.getController().setAudioMuted(muted);
+    else if (method === 'pauseMedia') view.getController().pauseAllMedia();
+    else return false;
+    return true;
+  }
+  private printJobs: Map<string, print.PrintTask> = new Map<string, print.PrintTask>();
+  private printStates: Map<string, string> = new Map<string, string>();
+
+  async printPage(instanceId: number, jobName: string): Promise<Map<string, ESObject> | null> {
+    if (jobName.trim().length === 0 || jobName.length > 256 || this.printJobs.size >= 32) return null;
+    const view = this.webView(instanceId);
+    await view.waitControllerAttached();
+    const adapter = view.getController().createWebPrintDocumentAdapter(jobName);
+    const task = await print.print(jobName, adapter, {}, this.context);
+    const id = util.generateRandomUUID(true);
+    this.printJobs.set(id, task);
+    this.printStates.set(id, 'presented');
+    try {
+    task.on('block', () => { if (this.printStates.has(id)) this.printStates.set(id, 'blocked'); });
+    task.on('succeed', () => { if (this.printStates.has(id)) this.printStates.set(id, 'completed'); });
+    task.on('fail', () => { if (this.printStates.has(id)) this.printStates.set(id, 'failed'); });
+    task.on('cancel', () => { if (this.printStates.has(id)) this.printStates.set(id, 'cancelled'); });
+    } catch (error) { this.releasePrintJob(id); throw new Error('Registering print task events failed: ' + error); }
+    const result: Map<string, ESObject> = new Map<string, ESObject>();
+    result.set('jobId', id); result.set('state', 'presented');
+    result.set('canQuery', true); result.set('canCancel', false);
+    return result;
+  }
+  printJobState(id: string): string { return this.printStates.get(id) ?? 'unknown'; }
+  releasePrintJob(id: string): void {
+    const task = this.printJobs.get(id);
+    if (task) {
+      try { task.off('block'); } catch (_) {}
+      try { task.off('succeed'); } catch (_) {}
+      try { task.off('fail'); } catch (_) {}
+      try { task.off('cancel'); } catch (_) {}
+    }
+    this.printJobs.delete(id); this.printStates.delete(id);
+  }
+  private navigationStates: Map<string, Uint8Array> = new Map<string, Uint8Array>();
+  private navigationModes: Map<string, boolean> = new Map<string, boolean>();
+
+  releaseNavigationState(stateId: string): void {
+    this.navigationStates.delete(stateId);
+    this.navigationModes.delete(stateId);
+  }
+  clearNavigationStates(): void {
+    this.printJobs.forEach((_task: print.PrintTask, id: string) => this.releasePrintJob(id));
+    this.navigationStates.clear();
+    this.navigationModes.clear();
+  }
+  async clearNavigationHistory(instanceId: number): Promise<boolean> {
+    const view = this.webView(instanceId);
+    await view.waitControllerAttached();
+    view.getController().clearHistory();
+    return true;
+  }
+  async saveNavigationState(instanceId: number): Promise<string | null> {
+    const view = this.webView(instanceId);
+    await view.waitControllerAttached();
+    if (this.navigationStates.size >= 16) return null;
+    const state: Uint8Array = view.getController().serializeWebState();
+    if (state.byteLength === 0 || state.byteLength > 4 * 1024 * 1024) return null;
+    const id = util.generateRandomUUID(true);
+    this.navigationStates.set(id, state.slice());
+    this.navigationModes.set(id, view.isIncognito());
+    return id;
+  }
+  async restoreNavigationState(instanceId: number, stateId: string): Promise<boolean> {
+    const view = this.webView(instanceId);
+    await view.waitControllerAttached();
+    const state = this.navigationStates.get(stateId);
+    if (!state || this.navigationModes.get(stateId) !== view.isIncognito()) return false;
+    view.getController().restoreWebState(state.slice());
+    return true;
+  }
   private readonly instanceManager: InstanceManager;
   private readonly webViewProxy: WebViewProxy;
   private readonly binaryMessenger: BinaryMessenger;
@@ -52,13 +199,23 @@ export class WebViewHostApiImpl {
     this.context = context;
   }
 
-  create(instanceId: number, incognito: boolean = false): void {
+  create(instanceId: number, incognito: boolean = false, schemes: Array<string> = []): void {
+    const registered = WebSchemeRegistry.register(schemes);
     const displayProxy = new DisplayListenerProxy();
     displayProxy.onPreWebViewInitialization();
     const webView = this.webViewProxy.createWebView(this.binaryMessenger, this.instanceManager);
     webView.setIncognito(incognito);
+    webView.declaredCustomSchemes = registered;
     displayProxy.onPostWebViewInitialization();
     this.instanceManager.addDartCreatedInstance(webView, instanceId);
+  }
+  supportsCustomSchemes(instanceId: number, schemes: Array<string>): boolean {
+    return schemes.every((name: string) => this.webView(instanceId).declaredCustomSchemes.includes(name));
+  }
+  configureNetworkBridge(instanceId: number, name: string, schemes: Array<string>, enabled: boolean): boolean {
+    const view = this.webView(instanceId);
+    if (schemes.length === 0 || !schemes.every((scheme: string) => view.declaredCustomSchemes.includes(scheme))) return false;
+    view.configureCustomSchemes(this.binaryMessenger, name, schemes, enabled); return true;
   }
 
   closeSession(instanceId: number): void {
@@ -153,14 +310,70 @@ export class WebViewHostApiImpl {
     webView.getController().forward();
   }
 
+  async stopLoading(instanceId: number): Promise<void> {
+    const view = this.webView(instanceId);
+    await view.waitControllerAttached();
+    view.getController().stop();
+  }
+  async getNavigationHistory(instanceId: number): Promise<Map<string, number | Array<Map<string, string>>>> {
+    const view = this.webView(instanceId);
+    await view.waitControllerAttached();
+    const history: web_webview.BackForwardList = view.getController().getBackForwardEntries();
+    const items: Array<Map<string, string>> = [];
+    for (let index = 0; index < history.size; index++) {
+      const item = history.getItemAtIndex(index);
+      const data = new Map<string, string>();
+      data.set('url', item.historyUrl);
+      data.set('originalUrl', item.historyRawUrl);
+      data.set('title', item.title);
+      items.push(data);
+    }
+    const result = new Map<string, number | Array<Map<string, string>>>();
+    result.set('currentIndex', history.size > 0 ? history.currentIndex : -1);
+    result.set('items', items);
+    return result;
+  }
+  async goToHistoryIndex(instanceId: number, index: number): Promise<boolean> {
+    const view = this.webView(instanceId);
+    await view.waitControllerAttached();
+    const history: web_webview.BackForwardList = view.getController().getBackForwardEntries();
+    if (!Number.isInteger(index) || index < 0 || index >= history.size) return false;
+    if (index !== history.currentIndex) view.getController().backOrForward(index - history.currentIndex);
+    return true;
+  }
+  async findText(instanceId: number, text: string, forward: boolean): Promise<Map<string, boolean | number> | null> {
+    const view = this.webView(instanceId);
+    await view.waitControllerAttached();
+    return view.findText(text, forward);
+  }
+  async clearFindMatches(instanceId: number): Promise<void> {
+    const view = this.webView(instanceId);
+    await view.waitControllerAttached();
+    view.cancelFind();
+    view.getController().clearMatches();
+  }
+  setPopupWindowPolicy(instanceId: number, policy: number): void {
+    const view = this.webView(instanceId);
+    view.ensureNotDisposed();
+    view.denyPopups = policy === 1;
+  }
+  setFullscreenDelegateEnabled(instanceId: number, enabled: boolean): void {
+    const view = this.webView(instanceId);
+    view.ensureNotDisposed();
+    view.fullscreenDelegateEnabled = enabled;
+  }
+  exitFullscreen(instanceId: number): boolean {
+    return this.webView(instanceId).exitFullscreen();
+  }
+
   async reload(instanceId: number): Promise<void> {
     const webView = this.webView(instanceId);
     await webView.waitControllerAttached();
     webView.getController().refresh();
   }
 
-  setDocumentStartScripts(instanceId: number, scripts: Array<string>): Promise<void> {
-    return this.webView(instanceId).setDocumentStartScripts(scripts);
+  setDocumentStartScripts(instanceId: number, scripts: Array<string>, endScripts: Array<string> = []): Promise<void> {
+    return this.webView(instanceId).setDocumentStartScripts(scripts, endScripts);
   }
 
   clearCache(instanceId: number, includeDiskFiles: boolean): void {

@@ -14,14 +14,18 @@ const apply = state => state.markApplied(state.getSnapshot().revision, state.get
 test('registration before mount completes, while navigation waits for attach and latest application', async () => {
   const state = new DocumentStartScriptState();
   const sources = ['first'];
-  await state.setScripts(sources);
+  const endSources = ['ready'];
+  await state.setScripts(sources, endSources);
   sources.push('external mutation');
+  endSources.push('external mutation');
   assert.deepEqual(state.getSnapshot().sources, ['first']);
+  assert.deepEqual(state.getSnapshot().endSources, ['ready']);
   let ready = false;
   const navigation = state.waitUntilReady().then(() => { ready = true; });
   mount(state);
   apply(state);
-  await state.setScripts(['first', 'second']);
+  await state.setScripts(['first', 'second'], ['latest ready']);
+  assert.deepEqual(state.getSnapshot().endSources, ['latest ready']);
   state.markControllerAttached();
   await tick();
   assert.equal(ready, false);

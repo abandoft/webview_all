@@ -945,8 +945,12 @@ void main() {
             // ignore: invalid_use_of_protected_member
             ohos_webview.WebStorage.detached(instanceManager: instanceManager),
         ohosWebViewProxy: OhosWebViewProxy(
-          createOhosWebView: ({incognito = false, onScrollChanged}) =>
-              testWebView,
+          createOhosWebView:
+              ({
+                incognito = false,
+                customSchemes = const <String>[],
+                onScrollChanged,
+              }) => testWebView,
           createOhosWebChromeClient:
               ({
                 onReceivedTitle,
@@ -1013,8 +1017,12 @@ void main() {
             // ignore: invalid_use_of_protected_member
             ohos_webview.WebStorage.detached(instanceManager: instanceManager),
         ohosWebViewProxy: OhosWebViewProxy(
-          createOhosWebView: ({incognito = false, onScrollChanged}) =>
-              testWebView,
+          createOhosWebView:
+              ({
+                incognito = false,
+                customSchemes = const <String>[],
+                onScrollChanged,
+              }) => testWebView,
           createOhosWebChromeClient:
               ({
                 onReceivedTitle,
@@ -1098,8 +1106,12 @@ void main() {
             // ignore: invalid_use_of_protected_member
             ohos_webview.WebStorage.detached(instanceManager: instanceManager),
         ohosWebViewProxy: OhosWebViewProxy(
-          createOhosWebView: ({incognito = false, onScrollChanged}) =>
-              testWebView,
+          createOhosWebView:
+              ({
+                incognito = false,
+                customSchemes = const <String>[],
+                onScrollChanged,
+              }) => testWebView,
           createOhosWebChromeClient:
               ({
                 onReceivedTitle,
@@ -1185,8 +1197,12 @@ void main() {
             // ignore: invalid_use_of_protected_member
             ohos_webview.WebStorage.detached(instanceManager: instanceManager),
         ohosWebViewProxy: OhosWebViewProxy(
-          createOhosWebView: ({incognito = false, onScrollChanged}) =>
-              testWebView,
+          createOhosWebView:
+              ({
+                incognito = false,
+                customSchemes = const <String>[],
+                onScrollChanged,
+              }) => testWebView,
           createOhosWebChromeClient:
               ({
                 onReceivedTitle,
@@ -1300,8 +1316,12 @@ void main() {
             // ignore: invalid_use_of_protected_member
             ohos_webview.WebStorage.detached(instanceManager: instanceManager),
         ohosWebViewProxy: OhosWebViewProxy(
-          createOhosWebView: ({incognito = false, onScrollChanged}) =>
-              testWebView,
+          createOhosWebView:
+              ({
+                incognito = false,
+                customSchemes = const <String>[],
+                onScrollChanged,
+              }) => testWebView,
           createOhosWebChromeClient:
               ({
                 onReceivedTitle,
@@ -1392,10 +1412,15 @@ void main() {
             // ignore: invalid_use_of_protected_member
             ohos_webview.WebStorage.detached(instanceManager: instanceManager),
         ohosWebViewProxy: OhosWebViewProxy(
-          createOhosWebView: ({incognito = false, onScrollChanged}) {
-            capturedOnScrollChanged = onScrollChanged!;
-            return testWebView;
-          },
+          createOhosWebView:
+              ({
+                incognito = false,
+                customSchemes = const <String>[],
+                onScrollChanged,
+              }) {
+                capturedOnScrollChanged = onScrollChanged!;
+                return testWebView;
+              },
           createOhosWebChromeClient:
               ({
                 onReceivedTitle,
@@ -1460,8 +1485,12 @@ void main() {
                 instanceManager: instanceManager,
               ),
           ohosWebViewProxy: OhosWebViewProxy(
-            createOhosWebView: ({incognito = false, onScrollChanged}) =>
-                testWebView,
+            createOhosWebView:
+                ({
+                  incognito = false,
+                  customSchemes = const <String>[],
+                  onScrollChanged,
+                }) => testWebView,
             createOhosWebChromeClient:
                 ({
                   onReceivedTitle,
@@ -1557,8 +1586,12 @@ void main() {
                 instanceManager: instanceManager,
               ),
           ohosWebViewProxy: OhosWebViewProxy(
-            createOhosWebView: ({incognito = false, onScrollChanged}) =>
-                testWebView,
+            createOhosWebView:
+                ({
+                  incognito = false,
+                  customSchemes = const <String>[],
+                  onScrollChanged,
+                }) => testWebView,
             createOhosWebChromeClient:
                 ({
                   onReceivedTitle,
@@ -1958,8 +1991,12 @@ OhosWebViewController _createTestWebViewController({
           // ignore: invalid_use_of_protected_member
           ohos_webview.WebStorage.detached(instanceManager: instanceManager),
       ohosWebViewProxy: OhosWebViewProxy(
-        createOhosWebView: ({incognito = false, onScrollChanged}) =>
-            testWebView,
+        createOhosWebView:
+            ({
+              incognito = false,
+              customSchemes = const <String>[],
+              onScrollChanged,
+            }) => testWebView,
         createOhosWebChromeClient:
             ({
               onReceivedTitle,
