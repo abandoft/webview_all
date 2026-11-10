@@ -41,6 +41,28 @@ flutter create \
   --platforms "$platforms" \
   "$project_directory"
 
+if [[ "$target" == "apple" ]]; then
+  python3 - "$project_directory" "$repository_root" <<'PY'
+from pathlib import Path
+import re
+import shutil
+import sys
+
+project, repository = map(Path, sys.argv[1:])
+for platform, setting, minimum in (
+    ('ios', 'IPHONEOS_DEPLOYMENT_TARGET', (14, 0)),
+    ('macos', 'MACOSX_DEPLOYMENT_TARGET', (11, 0)),
+):
+    target = project / platform / 'Runner.xcodeproj/project.pbxproj'
+    def raise_minimum(match):
+        version = tuple(map(int, match[2].split('.')))
+        return match[1] + ('.'.join(map(str, minimum)) if version < minimum else match[2])
+    target.write_text(re.sub(rf'({setting} = )([0-9.]+)', raise_minimum, target.read_text()))
+    shutil.copyfile(repository / 'webview_all/example' / platform / 'Podfile',
+                    project / platform / 'Podfile')
+PY
+fi
+
 dependencies=(
   "webview_all:{path: $repository_root/webview_all}"
   "$official_dependency"
