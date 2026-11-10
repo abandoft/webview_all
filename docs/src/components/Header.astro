@@ -1,5 +1,7 @@
 ---
 import config from 'virtual:starlight/user-config';
+import { getCollection } from 'astro:content';
+import { docsVersions, documentationPath, documentHref, documentId, normalizedDocumentId } from '../versions';
 
 import LanguageSelect from 'virtual:starlight/components/LanguageSelect';
 import Search from 'virtual:starlight/components/Search';
@@ -12,21 +14,14 @@ const shouldRenderSearch =
   config.components.Search !== '@astrojs/starlight/components/Search.astro';
 
 const docsBase = import.meta.env.BASE_URL.replace(/\/$/, '');
-const pathname = Astro.url.pathname.replace(/\/+$/, '');
-const relativePath = pathname.startsWith(docsBase)
-  ? pathname.slice(docsBase.length)
-  : pathname;
-const segments = relativePath.split('/').filter(Boolean);
-const isChinese = segments[0] === 'zh';
-if (isChinese) segments.shift();
-const isVersion12 = segments[0] === '1.2';
-if (isVersion12) segments.shift();
-
-const localePrefix = isChinese ? '/zh' : '';
-const pageSuffix = segments.length > 0 ? `/${segments.join('/')}/` : '/';
-const latestHref = `${docsBase}${localePrefix}${pageSuffix}`;
-const version12Href = `${docsBase}${localePrefix}/1.2${pageSuffix}`;
-const versionLabel = isChinese ? '文档版本' : 'Documentation version';
+const { locale, version, slug } = documentationPath(Astro.url.pathname, docsBase);
+const pages = new Set((await getCollection('docs')).map((entry) => normalizedDocumentId(entry.id)));
+const options = docsVersions.map((target) => ({
+  label: target,
+  href: documentHref(docsBase, locale, target,
+    pages.has(documentId(locale, target, slug)) ? slug : ''),
+}));
+const versionLabel = locale === 'zh' ? '文档版本' : 'Documentation version';
 ---
 
 <div class="header">
@@ -35,8 +30,9 @@ const versionLabel = isChinese ? '文档版本' : 'Documentation version';
     <label class="version-picker print:hidden">
       <span class="sr-only">{versionLabel}</span>
       <select aria-label={versionLabel} data-docs-version>
-        <option value={latestHref} selected={!isVersion12}>latest</option>
-        <option value={version12Href} selected={isVersion12}>1.2.1</option>
+        {options.map((option) => (
+          <option value={option.href} selected={version === option.label}>{option.label}</option>
+        ))}
       </select>
     </label>
   </div>
@@ -53,6 +49,18 @@ const versionLabel = isChinese ? '文档版本' : 'Documentation version';
 </div>
 
 <script>
+  // Keep the button's announced state in sync with Starlight's menu element.
+  const menu = document.querySelector('starlight-menu-button');
+  const menuButton = menu?.querySelector('button');
+  if (menu && menuButton) {
+    const syncExpanded = () => menuButton.setAttribute('aria-expanded', menu.getAttribute('aria-expanded') ?? 'false');
+    new MutationObserver(syncExpanded).observe(menu, {
+      attributes: true,
+      attributeFilter: ['aria-expanded'],
+    });
+    syncExpanded();
+  }
+
   document.querySelectorAll('[data-docs-version]').forEach((element) => {
     if (element instanceof HTMLSelectElement) {
       element.addEventListener('change', () => {
@@ -87,11 +95,13 @@ const versionLabel = isChinese ? '文档版本' : 'Documentation version';
 
     .version-picker select {
       max-width: 8.5rem;
-      border: 1px solid var(--sl-color-gray-5);
-      border-radius: 0.4rem;
+      min-height: 2.45rem;
+      border: 1px solid var(--doc-line);
+      border-radius: 999px;
       padding: 0.3rem 1.7rem 0.3rem 0.55rem;
       color: var(--sl-color-text);
-      background-color: var(--sl-color-bg-nav);
+      background-color: var(--doc-control);
+      box-shadow: 0 1px 0 var(--doc-highlight) inset;
       font: inherit;
       font-size: var(--sl-text-xs);
     }
@@ -110,7 +120,9 @@ const versionLabel = isChinese ? '文档版本' : 'Documentation version';
 
     @media (max-width: 30rem) {
       .version-picker select {
-        max-width: 4.75rem;
+        min-width: 5.4rem;
+        max-width: 6rem;
+        padding-inline: 0.6rem;
       }
     }
 

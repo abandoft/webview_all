@@ -1,14 +1,44 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { readdirSync } from 'node:fs';
+
+// Preserve existing 1.2 URLs after naming the archived release line 1.2.x.
+const archivedFiles = readdirSync(new URL('./src/content/docs/', import.meta.url), { recursive: true })
+  .map((file) => file.replaceAll('\\', '/'));
+const redirects = Object.fromEntries(archivedFiles
+  .filter((file) => /^(?:zh\/)?1\.2\.x\/.*\.md$/.test(file))
+  .map((file) => {
+    const target = file.replace(/\.md$/, '').replace(/\/index$/, '');
+    return [`/${target.replace('1.2.x', '1.2')}/`, `/webview_all/${target}/`];
+  }));
+
+// Keep wide tables scrollable while allowing ordinary tables to fill the text column.
+function scrollableTables() {
+  return (tree, file) => {
+    const label = file.path?.replaceAll('\\', '/').includes('/zh/') ? '表格' : 'Table';
+    function visit(node) {
+      if (!node.children) return;
+      node.children = node.children.map((child) => {
+        visit(child);
+        return child.type === 'element' && child.tagName === 'table'
+          ? { type: 'element', tagName: 'div', properties: { className: ['table-scroll'], tabIndex: 0, role: 'region', ariaLabel: label }, children: [child] }
+          : child;
+      });
+    }
+    visit(tree);
+  };
+}
 
 export default defineConfig({
+  redirects,
+  markdown: { rehypePlugins: [scrollableTables] },
   site: 'https://abandoft.github.io',
   base: '/webview_all',
   integrations: [
     starlight({
       title: 'WebView All',
       description:
-        'Commercial-grade Flutter WebView documentation for Android, iOS, macOS, Windows, Linux, OHOS, and web.',
+        'Flutter WebView documentation for Android, iOS, macOS, Windows, Linux, OHOS, and web.',
       locales: {
         root: {
           label: 'English',
@@ -24,6 +54,7 @@ export default defineConfig({
         src: './src/assets/logo.svg',
         alt: 'WebView All',
       },
+      favicon: '/favicon.svg',
       customCss: ['./src/styles/custom.css'],
       components: {
         Header: './src/components/Header.astro',
@@ -86,6 +117,8 @@ export default defineConfig({
               translations: { 'zh-CN': 'Cookie' },
               slug: 'guides/cookies',
             },
+            { label: 'Profiles and Page Tools', translations: { 'zh-CN': 'Profile 与页面工具' }, slug: 'guides/profiles-and-tools' },
+            { label: 'Network Control', translations: { 'zh-CN': '网络控制' }, slug: 'guides/network' },
             {
               label: 'Downloads',
               translations: { 'zh-CN': '下载' },

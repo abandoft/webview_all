@@ -6,7 +6,7 @@ export const collections = {
   docs: defineCollection({
     loader: docsLoader({
       // Astro's default GitHub-style slugger removes dots from path segments
-      // (`1.2` becomes `12`). Documentation versions are public URL
+      // (`1.4.x` becomes `14x`). Documentation versions are public URL
       // contracts, so preserve the source path verbatim.
       generateId: ({ entry }) =>
         entry

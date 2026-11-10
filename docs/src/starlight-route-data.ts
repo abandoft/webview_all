@@ -1,80 +1,40 @@
-import {
-  defineRouteMiddleware,
-  type StarlightRouteData,
-} from '@astrojs/starlight/route-data';
+import { getCollection } from 'astro:content';
+import { defineRouteMiddleware, type StarlightRouteData } from '@astrojs/starlight/route-data';
+import { documentationPath, documentHref, documentId, normalizedDocumentId } from './versions';
 
 type SidebarEntry = StarlightRouteData['sidebar'][number];
 type SidebarLink = Extract<SidebarEntry, { type: 'link' }>;
-
 const siteBase = '/webview_all';
-
-function withoutTrailingSlash(path: string): string {
-  return path === '/' ? path : path.replace(/\/+$/, '');
-}
-
-function version12Href(href: string, locale: string | undefined): string {
-  const localeBase = `${siteBase}${locale ? `/${locale}` : ''}`;
-  const normalizedHref = withoutTrailingSlash(href);
-  if (normalizedHref === localeBase) {
-    return `${localeBase}/1.2/`;
-  }
-  if (!normalizedHref.startsWith(`${localeBase}/`)) {
-    return href;
-  }
-  return `${localeBase}/1.2/${normalizedHref.slice(localeBase.length + 1)}/`;
-}
-
-function version12Link(
-  link: SidebarLink,
-  locale: string | undefined,
-  currentPath: string,
-): SidebarLink {
-  const href = version12Href(link.href, locale);
-  return {
-    ...link,
-    href,
-    isCurrent: withoutTrailingSlash(href) === currentPath,
-  };
-}
-
-function version12SidebarEntry(
-  entry: SidebarEntry,
-  locale: string | undefined,
-  currentPath: string,
-): SidebarEntry {
-  if (entry.type === 'link') {
-    return version12Link(entry, locale, currentPath);
-  }
-  return {
-    ...entry,
-    entries: entry.entries.map((child) =>
-      version12SidebarEntry(child, locale, currentPath),
-    ),
-  };
-}
+const normalized = (path: string) => path.replace(/\/+$/, '') || '/';
 
 export const onRequest = defineRouteMiddleware(async (context, next) => {
   const route = context.locals.starlightRoute;
-  const localeBase = `${siteBase}${route.locale ? `/${route.locale}` : ''}`;
-  const currentPath = withoutTrailingSlash(context.url.pathname);
-  const isVersion12 =
-    currentPath === `${localeBase}/1.2` ||
-    currentPath.startsWith(`${localeBase}/1.2/`);
-
-  if (isVersion12) {
-    route.siteTitleHref = `${localeBase}/1.2/`;
-    route.sidebar = route.sidebar.map((entry) =>
-      version12SidebarEntry(entry, route.locale, currentPath),
+  const current = normalized(context.url.pathname);
+  const { locale, version } = documentationPath(context.url.pathname, siteBase);
+  if (version !== 'latest') {
+    const pages = new Set((await getCollection('docs')).map((entry) => normalizedDocumentId(entry.id)));
+    function entryForVersion(entry: SidebarEntry): SidebarEntry | undefined {
+      if (entry.type === 'link') {
+        if (!entry.href.startsWith(`${siteBase}/`) && normalized(entry.href) !== siteBase) return entry;
+        const { slug } = documentationPath(entry.href, siteBase);
+        if (!pages.has(documentId(locale, version, slug))) return undefined;
+        const href = documentHref(siteBase, locale, version, slug);
+        return { ...entry, href, isCurrent: normalized(href) === current };
+      }
+      const entries = entry.entries.map(entryForVersion).filter((child): child is SidebarEntry => child !== undefined);
+      return entries.length ? { ...entry, entries } : undefined;
+    }
+    route.siteTitleHref = documentHref(siteBase, locale, version);
+    route.sidebar = route.sidebar.map(entryForVersion).filter((entry): entry is SidebarEntry => entry !== undefined);
+    const flatten = (entries: SidebarEntry[]): SidebarLink[] => entries.flatMap(
+      (entry) => entry.type === 'link' ? [entry] : flatten(entry.entries),
     );
+    const links = flatten(route.sidebar);
+    const index = links.findIndex((link) => link.isCurrent);
     route.pagination = {
-      prev: route.pagination.prev
-        ? version12Link(route.pagination.prev, route.locale, currentPath)
-        : undefined,
-      next: route.pagination.next
-        ? version12Link(route.pagination.next, route.locale, currentPath)
-        : undefined,
+      prev: index > 0 ? links[index - 1] : undefined,
+      next: index >= 0 ? links[index + 1] : undefined,
     };
   }
-
   await next();
 });
