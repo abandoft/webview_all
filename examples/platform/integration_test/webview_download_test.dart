@@ -278,7 +278,14 @@ void main() {
           controller.setNavigationDelegate(
             NavigationDelegate(
               onNavigationRequest: (_) => NavigationDecision.navigate,
-              onWebResourceError: errors.add,
+              onWebResourceError: (error) {
+                errors.add(error);
+                debugPrint(
+                  'Download navigation error: ${error.errorCode} '
+                  '${error.description}; url=${error.url}; '
+                  'last request=${requests.isEmpty ? null : requests.last}',
+                );
+              },
               onPageFinished: (url) {
                 if (url == origin.resolve('page').toString() &&
                     !loaded.isCompleted) {
