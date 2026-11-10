@@ -58,6 +58,37 @@ def normalize(repository_root: Path, target: NamespaceTarget) -> None:
         normalized_contents = contents.replace(
             target.generated_namespace, target.owned_namespace
         )
+        if target.package == "webview_all_android" and relative_path.endswith(".dart"):
+            normalized_contents = normalized_contents.replace(
+                "// ignore_for_file: unused_import, unused_shown_name\n",
+                "// ignore_for_file: unused_import, unused_shown_name, unused_field\n",
+            )
+        if target.package == "webview_all_wkwebview" and relative_path.endswith(".dart"):
+            # Pigeon emits unused codecs for these static-only proxy APIs.
+            for proxy in ("SecTrust", "SecCertificate"):
+                field = f"  late final _PigeonInternalProxyApiBaseCodec _pigeonVar_codec{proxy} ="
+                if f"  // ignore: unused_field\n{field}" not in normalized_contents:
+                    normalized_contents = normalized_contents.replace(
+                        field, f"  // ignore: unused_field\n{field}"
+                    )
+            normalized_contents = normalized_contents.replace(
+                "final Object? arg_body = (args[2] as Object?);",
+                "final Object? arg_body = args[2];",
+            )
+        if target.package == "webview_all_android" and relative_path.endswith(".kt"):
+            # Dart finalization must continue destroying the native WebView.
+            # Pigeon does not currently expose this instance-manager hook.
+            remove_hook = """    val instance: Any? = getInstance(identifier)
+    if (instance is WebViewProxyApi.WebViewPlatformView) {
+      instance.destroy()
+    }
+"""
+            anchor = "    logWarningIfFinalizationListenerHasStopped()\n    return strongInstances.remove(identifier) as T?"
+            normalized_contents = normalized_contents.replace(
+                anchor,
+                "    logWarningIfFinalizationListenerHasStopped()\n" + remove_hook
+                + "    return strongInstances.remove(identifier) as T?",
+            )
         if target.package == "webview_all_wkwebview" and relative_path.endswith(".swift"):
             # Pigeon 26 only checks nil before casting non-null callback replies.
             # StandardMessageCodec also represents unresolved instances as NSNull.
@@ -65,6 +96,9 @@ def normalize(repository_root: Path, target: NamespaceTarget) -> None:
                 "} else if listResponse[0] == nil {",
                 "} else if listResponse.isEmpty || isNullish(listResponse[0]) {",
             )
+        normalized_contents = "\n".join(
+            line.rstrip() for line in normalized_contents.splitlines()
+        ).rstrip() + "\n"
         if normalized_contents != contents:
             generated_file.write_text(normalized_contents, encoding="utf-8")
         owned_count += normalized_contents.count(target.owned_namespace)
@@ -91,6 +125,14 @@ def check(repository_root: Path, target: NamespaceTarget) -> None:
         raise RuntimeError(
             f"Generated bindings for {target.package} do not contain "
             f"{target.owned_namespace!r}."
+        )
+    if (
+        target.package == "webview_all_android"
+        and "if (instance is WebViewProxyApi.WebViewPlatformView) {" not in combined_contents
+    ):
+        raise RuntimeError(
+            "Android instance removal no longer destroys its native WebView; "
+            "run tool/normalize_pigeon_namespaces.py android."
         )
     if (
         target.package == "webview_all_wkwebview"
