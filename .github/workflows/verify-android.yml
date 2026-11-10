@@ -63,14 +63,14 @@ jobs:
         if: matrix.flutter == '3.44.x'
         run: tool/test_plugin_coexistence.sh android
 
-      - name: Enable KVM for resource integration tests
+      - name: Enable KVM for integration tests
         if: matrix.flutter == '3.44.x'
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Test application resources in Android WebView
+      - name: Test Android resources, downloads, JavaScript and browser operations
         if: matrix.flutter == '3.44.x'
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -78,4 +78,16 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
-          script: cd examples/platform && flutter test integration_test/webview_resource_test.dart -d emulator-5554
+          working-directory: examples/platform
+          script: |
+            flutter test integration_test/webview_resource_test.dart -d emulator-5554
+            flutter test integration_test/webview_javascript_test.dart -d emulator-5554
+            flutter test integration_test/webview_browser_test.dart -d emulator-5554
+            flutter test integration_test/webview_capture_data_test.dart -d emulator-5554
+            flutter test integration_test/webview_advanced_browser_test.dart -d emulator-5554
+            flutter test integration_test/webview_profile_management_test.dart -d emulator-5554
+            flutter test integration_test/webview_network_test.dart -d emulator-5554
+            flutter test integration_test/webview_new_window_test.dart -d emulator-5554
+            flutter test integration_test/webview_fullscreen_test.dart -d emulator-5554
+            flutter test integration_test/webview_process_test.dart -d emulator-5554
+            flutter test integration_test/webview_download_test.dart -d emulator-5554

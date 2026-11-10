@@ -88,6 +88,39 @@ jobs:
           flutter pub get
           flutter test integration_test/webview_download_test.dart -d macos
 
+      - name: Test JavaScript handlers and isolated worlds
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_javascript_test.dart -d macos
+
+      - name: Test native history, text search and cookies
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_browser_test.dart -d macos
+
+      - name: Test page exports and selective website-data clearing
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_capture_data_test.dart -d macos
+
+      - name: Test profiles, page tools and native network control
+        if: matrix.flutter == '3.47.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: |
+          flutter test integration_test/webview_advanced_browser_test.dart -d macos
+          flutter test integration_test/webview_profile_management_test.dart -d macos
+          flutter test integration_test/webview_network_test.dart -d macos
+
+      - name: Test native child-window attachment
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_new_window_test.dart -d macos
+
       - name: Test application resource URLs, ranges and streaming
         if: matrix.flutter == '3.44.x'
         timeout-minutes: 15
@@ -148,6 +181,7 @@ jobs:
             -scheme Runner -configuration Debug \
             -destination "platform=iOS Simulator,id=$simulator_id" \
             -only-testing:RunnerTests -parallel-testing-enabled NO \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
             CODE_SIGNING_ALLOWED=NO -quiet
 
       - name: Test iOS gestures
@@ -181,6 +215,21 @@ jobs:
           xcrun simctl boot "$simulator_id"
           xcrun simctl bootstatus "$simulator_id" -b
           flutter test integration_test/webview_resource_test.dart -d "$simulator_id"
+
+      - name: Test iOS JavaScript, browser operations and session stores
+        if: matrix.flutter == '3.47.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: |
+          simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
+          flutter test integration_test/webview_javascript_test.dart -d "$simulator_id"
+          flutter test integration_test/webview_browser_test.dart -d "$simulator_id"
+          flutter test integration_test/webview_capture_data_test.dart -d "$simulator_id"
+          flutter test integration_test/webview_advanced_browser_test.dart -d "$simulator_id"
+          flutter test integration_test/webview_profile_management_test.dart -d "$simulator_id"
+          flutter test integration_test/webview_network_test.dart -d "$simulator_id"
+          flutter test integration_test/webview_session_test.dart -d "$simulator_id"
+          flutter test integration_test/webview_new_window_test.dart -d "$simulator_id"
 
       - name: Clean up iOS test simulator
         if: always() && matrix.flutter == '3.47.x'
