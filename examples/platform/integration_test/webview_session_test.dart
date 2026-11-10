@@ -195,7 +195,21 @@ void main() {
         domain: '127.0.0.1',
       ),
     );
-    await a.cookieManager.clearCookies();
+    await b.controller.runJavaScript(
+      "localStorage.setItem('session_test','private_b');",
+    );
+    final storageBeforeCookieClear = await read(
+      a,
+      "localStorage.getItem('session_test')",
+    );
+    final cookieClear = await a.dataManager.clearWebsiteData(
+      dataTypes: {WebViewDataType.cookies},
+    );
+    expect(cookieClear.isComplete, isTrue);
+    expect(
+      await read(a, "localStorage.getItem('session_test')"),
+      storageBeforeCookieClear,
+    );
     expect(await a.cookieManager.getCookies(domain: url), isEmpty);
     if (isolated) {
       expect(
@@ -206,8 +220,30 @@ void main() {
       expect(await b.cookieManager.getCookies(domain: url), isEmpty);
       expect(await read(shared, 'document.cookie'), contains('shared'));
     }
-    final result = await a.dataManager.clearAllWebsiteData();
-    expect(result.failures, isEmpty);
+    final dataCapabilities = await a.dataManager.getCapabilities();
+    final selectedClear = await a.dataManager.clearWebsiteData(
+      dataTypes: {WebViewDataType.localStorage},
+    );
+    expect(selectedClear.failures, isEmpty);
+    if (!dataCapabilities.canClear({WebViewDataType.localStorage})) {
+      expect(selectedClear.unsupportedDataTypes, {
+        WebViewDataType.localStorage,
+      });
+      expect(
+        await read(a, "localStorage.getItem('session_test')"),
+        storageBeforeCookieClear,
+      );
+      final result = await a.dataManager.clearAllWebsiteData();
+      expect(result.failures, isEmpty);
+    } else {
+      expect(selectedClear.isComplete, isTrue);
+    }
+    if (isolated) {
+      expect(
+        await read(b, "localStorage.getItem('session_test')"),
+        'private_b',
+      );
+    }
     await load(a);
     expect(await read(a, "localStorage.getItem('session_test')"), isNull);
     if (!isolated) {

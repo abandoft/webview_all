@@ -223,6 +223,146 @@ void runInputFocusTests() {
     await _windowsKeys('{TAB}{TAB}');
     await _waitFor(tester, () async => after.hasFocus);
   }, skip: !Platform.isWindows);
+
+  testWidgets('Windows keyboard survives moved, scaled and restored views', (
+    tester,
+  ) async {
+    final controllers = [WebViewController(), WebViewController()];
+    final phase = ValueNotifier<int>(0);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      for (final controller in controllers) {
+        await (controller.platform as WindowsWebViewController).dispose();
+      }
+      phase.dispose();
+    });
+    final loaded = [Completer<void>(), Completer<void>()];
+    for (var i = 0; i < controllers.length; i++) {
+      final index = i;
+      await controllers[i].setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controllers[i].setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (_) {
+            if (!loaded[index].isCompleted) loaded[index].complete();
+          },
+        ),
+      );
+    }
+    final children = [
+      for (var i = 0; i < controllers.length; i++)
+        RepaintBoundary(
+          child: SizedBox(
+            width: 220,
+            height: 150,
+            child: WebViewWidget(
+              key: ValueKey('geometry-view-$i'),
+              controller: controllers[i],
+            ),
+          ),
+        ),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<int>(
+            valueListenable: phase,
+            builder: (_, value, _) => Stack(
+              children: [
+                Positioned(
+                  left: value == 0 ? 30 : 65,
+                  top: value == 0 ? 25 : 70,
+                  child: Offstage(
+                    offstage: value == 3,
+                    child: Transform.scale(
+                      scale: value >= 2 ? 1.25 : 1,
+                      alignment: Alignment.topLeft,
+                      child: children[0],
+                    ),
+                  ),
+                ),
+                Positioned(left: 370, top: 55, child: children[1]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    const html =
+        '<!doctype html><html><body style="margin:0"><input id="input" style="position:absolute;left:20px;top:20px;width:160px;height:45px;font-size:20px"></body></html>';
+    for (final controller in controllers) {
+      await controller.loadHtmlString(html);
+    }
+    await Future.wait(
+      loaded.map((item) => item.future.timeout(const Duration(seconds: 20))),
+    );
+    await _windowsKeys('', activate: true);
+    Future<void> typeIn(
+      int index,
+      String keys,
+      String expected, {
+      double cssWidth = 220,
+    }) async {
+      await tester.pump(const Duration(milliseconds: 200));
+      await _waitFor(
+        tester,
+        () async =>
+            await controllers[index].runJavaScriptReturningResult(
+              'document.visibilityState === "visible"',
+            ) ==
+            true,
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      final rect = tester.getRect(find.byKey(ValueKey('geometry-view-$index')));
+      final position = rect.topLeft + Offset(40, 40) * (rect.width / 220);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(position);
+      await mouse.down(position);
+      await mouse.up();
+      await mouse.removePointer();
+      await _waitFor(
+        tester,
+        () async =>
+            await controllers[index].runJavaScriptReturningResult(
+              'document.hasFocus() && document.activeElement.id === "input"',
+            ) ==
+            true,
+      );
+      await _windowsKeys('{END}$keys');
+      await _waitFor(
+        tester,
+        () async =>
+            await controllers[index].runJavaScriptReturningResult(
+              'document.getElementById("input").value === "$expected"',
+            ) ==
+            true,
+      );
+      expect(
+        await controllers[index].runJavaScriptReturningResult(
+          'window.innerWidth',
+        ),
+        closeTo(cssWidth, 1),
+        reason: 'Visual scaling must preserve the page layout width.',
+      );
+      expect(find.text('WebView rendering failed.'), findsNothing);
+    }
+
+    await typeIn(0, 'a', 'a');
+    phase.value = 1;
+    await typeIn(0, 'b', 'ab');
+    phase.value = 2;
+    await typeIn(0, 'c', 'abc');
+    await (controllers[0].platform as WindowsWebViewController).setZoomFactor(
+      1.2,
+    );
+    phase.value = 3;
+    await typeIn(1, 'd', 'd');
+    phase.value = 4;
+    await typeIn(0, 'e', 'abce', cssWidth: 220 / 1.2);
+    await typeIn(1, 'f', 'df');
+  }, skip: !Platform.isWindows);
 }
 
 Future<void> _waitFor(
