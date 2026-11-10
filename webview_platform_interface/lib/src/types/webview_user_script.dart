@@ -1,9 +1,14 @@
 import 'package:flutter/foundation.dart';
 
+import 'webview_javascript.dart';
+
 /// The lifecycle point at which a user script is injected.
 enum WebViewUserScriptInjectionTime {
   /// Inject after the document object is created and before page scripts run.
   documentStart,
+
+  /// Inject when the document has been parsed, without waiting for all images.
+  documentEnd,
 }
 
 /// A script registered for injection into future documents.
@@ -14,6 +19,7 @@ class WebViewUserScript {
     required this.source,
     this.injectionTime = WebViewUserScriptInjectionTime.documentStart,
     this.forMainFrameOnly = true,
+    this.world = WebViewJavaScriptWorld.page,
   });
 
   /// The JavaScript source to inject.
@@ -28,4 +34,8 @@ class WebViewUserScript {
 
   /// Whether the script is restricted to the main frame.
   final bool forMainFrameOnly;
+
+  /// The execution environment for this script. Unsupported worlds are never
+  /// silently replaced with the page world.
+  final WebViewJavaScriptWorld world;
 }

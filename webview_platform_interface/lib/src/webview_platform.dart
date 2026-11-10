@@ -5,6 +5,7 @@
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'platform_navigation_delegate.dart';
+import 'platform_webview_profile_manager.dart';
 import 'platform_webview_controller.dart';
 import 'platform_webview_cookie_manager.dart';
 import 'platform_webview_data_manager.dart';
@@ -56,6 +57,9 @@ abstract class WebViewPlatform extends PlatformInterface {
   /// Queries session support without creating a browsing controller.
   Future<WebViewSessionCapabilities> getSessionCapabilities() async =>
       WebViewSessionCapabilities(supportedModes: supportedSessionModes);
+
+  PlatformWebViewProfileManager createPlatformWebViewProfileManager() =>
+      PlatformWebViewProfileManager();
 
   /// Creates a new [PlatformWebViewCookieManager].
   ///

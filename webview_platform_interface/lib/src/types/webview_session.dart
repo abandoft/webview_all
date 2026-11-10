@@ -2,14 +2,16 @@ import 'package:flutter/foundation.dart';
 
 /// Website-data policy selected before a native WebView is created.
 enum WebViewSessionMode {
-  /// Uses the platform's ordinary shared, persistent website-data store.
+  /// Uses persistent storage: a selected named profile, or the ordinary shared
+  /// store when no profile is specified.
   shared,
 
   /// Uses platform private browsing, which may be limited as reported by capabilities.
   /// Stores may be shared; Android limited mode shares ordinary website data.
   incognito,
 
-  /// Uses private browsing with a store isolated from every other session.
+  /// Uses private browsing with a store isolated from independently created
+  /// sessions/profiles. Explicitly related controllers share their owner's store.
   isolatedIncognito,
 }
 
@@ -35,6 +37,8 @@ class WebViewSessionCapabilities {
     this.incognitoSupport = WebViewIncognitoSupport.none,
     this.scopedCookies = false,
     this.scopedWebsiteData = false,
+    this.namedProfiles = false,
+    this.relatedControllers = false,
   }) : supportedModes = Set.unmodifiable(supportedModes);
 
   final Set<WebViewSessionMode> supportedModes;
@@ -52,6 +56,8 @@ class WebViewSessionCapabilities {
   /// Website-data operations address the selected store. Individual categories
   /// can still be unsupported, as reported by the clearing result.
   final bool scopedWebsiteData;
+  final bool namedProfiles;
+  final bool relatedControllers;
 
   bool supports(WebViewSessionMode mode) => supportedModes.contains(mode);
 }

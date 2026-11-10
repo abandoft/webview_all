@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import 'webview_session.dart';
+import 'webview_browser.dart';
 
 /// Object specifying creation parameters for creating a [PlatformWebViewController].
 ///
@@ -41,21 +42,50 @@ class PlatformWebViewControllerCreationParams {
   /// Used by the platform implementation to create a new [PlatformWebViewController].
   const PlatformWebViewControllerCreationParams({
     WebViewSessionMode sessionMode = WebViewSessionMode.shared,
+    WebViewMediaPlaybackPolicy? mediaPlaybackPolicy,
+    String? profileName,
+    List<String> customSchemes = const [],
   }) : _sessionMode = sessionMode,
+       _mediaPlaybackPolicy = mediaPlaybackPolicy,
+       _profileName = profileName,
+       _customSchemes = customSchemes,
        _sourceParams = null;
 
   /// Preserves generic policies in const platform-specific converters.
   const PlatformWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
     PlatformWebViewControllerCreationParams params, {
     WebViewSessionMode? sessionMode,
+    WebViewMediaPlaybackPolicy? mediaPlaybackPolicy,
+    String? profileName,
+    List<String>? customSchemes,
   }) : _sessionMode = sessionMode,
+       _mediaPlaybackPolicy = mediaPlaybackPolicy,
+       _profileName = profileName,
+       _customSchemes = customSchemes,
        _sourceParams = params;
 
   final WebViewSessionMode? _sessionMode;
+  final WebViewMediaPlaybackPolicy? _mediaPlaybackPolicy;
+  final String? _profileName;
+  final List<String>? _customSchemes;
+
+  /// Non-engine URL schemes declared before native view/environment creation.
+  /// Names must be lowercase and must not name engine-owned protocols.
+  List<String> get customSchemes => List.unmodifiable(
+    _customSchemes ?? _sourceParams?.customSchemes ?? const [],
+  );
+
+  /// A persistent named store. Query namedProfiles support before requesting it;
+  /// private modes never silently become persistent named profiles.
+  String? get profileName => _profileName ?? _sourceParams?.profileName;
   final PlatformWebViewControllerCreationParams? _sourceParams;
 
   /// Immutable website-data policy. Unsupported modes must never fall back to
   /// an ordinary profile, because that could expose existing login state.
   WebViewSessionMode get sessionMode =>
       _sessionMode ?? _sourceParams!.sessionMode;
+
+  /// Applied before view creation where supported. Null retains engine defaults.
+  WebViewMediaPlaybackPolicy? get mediaPlaybackPolicy =>
+      _mediaPlaybackPolicy ?? _sourceParams?.mediaPlaybackPolicy;
 }

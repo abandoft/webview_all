@@ -10,4 +10,6 @@ export 'src/platform_webview_data_manager.dart';
 export 'src/platform_webview_widget.dart';
 export 'src/types/types.dart';
 export 'src/webview_platform.dart';
-export 'src/webview_resource_bridge.dart';
+export 'src/webview_resource_bridge.dart' hide WebViewPassThroughResponse;
+export 'src/webview_network_bridge.dart';
+export 'src/platform_webview_profile_manager.dart';

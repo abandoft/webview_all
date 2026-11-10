@@ -30,8 +30,12 @@ class WebViewResourceRequest {
     required this.method,
     required Map<String, String> headers,
     String? path,
+    this.isForMainFrame,
+    Uint8List? body,
+    this.bodyAvailable = false,
   }) : headers = Map<String, String>.unmodifiable(headers),
-       path = path ?? Uri.decodeComponent(uri.path);
+       path = path ?? Uri.decodeComponent(uri.path),
+       body = body == null ? null : Uint8List.fromList(body);
 
   final Uri uri;
 
@@ -42,6 +46,13 @@ class WebViewResourceRequest {
 
   final String method;
   final Map<String, String> headers;
+
+  /// Native metadata is null where the engine cannot identify a main frame.
+  final bool? isForMainFrame;
+
+  /// Null with bodyAvailable=false means unavailable, rather than an empty POST.
+  final Uint8List? body;
+  final bool bodyAvailable;
 }
 
 /// An application-supplied resource. This does not modify HTTP error callbacks.

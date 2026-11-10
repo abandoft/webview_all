@@ -2,6 +2,9 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
+import 'webview_javascript.dart';
+import 'javascript_json.dart';
+
 /// Parameters for invoking an asynchronous JavaScript function.
 @immutable
 class JavaScriptInvocationParams {
@@ -10,6 +13,7 @@ class JavaScriptInvocationParams {
     required this.functionBody,
     Map<String, Object?> arguments = const <String, Object?>{},
     this.timeout = const Duration(seconds: 30),
+    this.world = WebViewJavaScriptWorld.page,
   }) : arguments = UnmodifiableMapView<String, Object?>(
          arguments.map<String, Object?>((String key, Object? value) {
            if (!_javaScriptIdentifierPattern.hasMatch(key)) {
@@ -26,7 +30,10 @@ class JavaScriptInvocationParams {
                'JavaScript argument names must not be reserved words.',
              );
            }
-           return MapEntry<String, Object?>(key, _freezeJsonValue(value));
+           return MapEntry<String, Object?>(
+             key,
+             freezeJavaScriptJsonValue(value),
+           );
          }),
        ) {
     if (functionBody.trim().isEmpty) {
@@ -110,71 +117,7 @@ class JavaScriptInvocationParams {
 
   /// The maximum time allowed for the invocation to complete.
   final Duration timeout;
-}
 
-Object? _freezeJsonValue(Object? value, [Set<Object>? ancestors]) {
-  if (value == null || value is bool || value is String) {
-    return value;
-  }
-  if (value is num) {
-    if (!value.isFinite) {
-      throw ArgumentError.value(
-        value,
-        'arguments',
-        'JavaScript numeric arguments must be finite.',
-      );
-    }
-    return value;
-  }
-  if (value is List<Object?>) {
-    final Set<Object> activeAncestors = ancestors ?? HashSet<Object>.identity();
-    if (!activeAncestors.add(value)) {
-      throw ArgumentError.value(
-        value,
-        'arguments',
-        'JavaScript arguments must not contain cyclic values.',
-      );
-    }
-    try {
-      return List<Object?>.unmodifiable(
-        value.map<Object?>(
-          (Object? nestedValue) =>
-              _freezeJsonValue(nestedValue, activeAncestors),
-        ),
-      );
-    } finally {
-      activeAncestors.remove(value);
-    }
-  }
-  if (value is Map<Object?, Object?>) {
-    final Set<Object> activeAncestors = ancestors ?? HashSet<Object>.identity();
-    if (!activeAncestors.add(value)) {
-      throw ArgumentError.value(
-        value,
-        'arguments',
-        'JavaScript arguments must not contain cyclic values.',
-      );
-    }
-    final Map<String, Object?> result = <String, Object?>{};
-    try {
-      value.forEach((Object? key, Object? nestedValue) {
-        if (key is! String) {
-          throw ArgumentError.value(
-            key,
-            'arguments',
-            'JavaScript object argument keys must be strings.',
-          );
-        }
-        result[key] = _freezeJsonValue(nestedValue, activeAncestors);
-      });
-      return Map<String, Object?>.unmodifiable(result);
-    } finally {
-      activeAncestors.remove(value);
-    }
-  }
-  throw ArgumentError.value(
-    value,
-    'arguments',
-    'JavaScript arguments must contain only JSON-compatible values.',
-  );
+  /// The execution environment. The default preserves page-world invocation.
+  final WebViewJavaScriptWorld world;
 }

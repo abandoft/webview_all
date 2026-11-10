@@ -2,8 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
+import 'dart:ui' as ui;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
+import 'package:flutter/widgets.dart' show Widget;
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'platform_navigation_delegate.dart';
@@ -11,6 +16,8 @@ import 'platform_webview_cookie_manager.dart';
 import 'platform_webview_data_manager.dart';
 import 'types/types.dart';
 import 'webview_platform.dart' show WebViewPlatform;
+import 'webview_javascript_bridge.dart';
+import 'javascript_world_invocation.dart';
 
 /// Interface for a platform implementation of a web view controller.
 ///
@@ -21,6 +28,579 @@ import 'webview_platform.dart' show WebViewPlatform;
 /// `implements` this interface will be broken by newly added
 /// [PlatformWebViewController] methods.
 abstract class PlatformWebViewController extends PlatformInterface {
+  Future<WebViewNetworkCapabilities> getNetworkCapabilities() async =>
+      const WebViewNetworkCapabilities();
+  Future<bool> setContentRules(List<WebViewContentRule> rules) async {
+    debugPrint(
+      'webview_all: native resource content rules are unavailable on this platform.',
+    );
+    return false;
+  }
+
+  Future<bool> setRequestDelegate(WebViewRequestDelegate? delegate) async {
+    debugPrint(
+      'webview_all: native HTTP(S) request interception is unavailable on this platform. No JavaScript fetch/XHR replacement was installed.',
+    );
+    return false;
+  }
+
+  Future<bool> setCustomSchemeDelegate(
+    WebViewResourceDelegate? delegate,
+  ) async {
+    debugPrint(
+      'webview_all: custom URL scheme handling is unavailable on this platform.',
+    );
+    return false;
+  }
+
+  Future<Uint8List?> createArchive({
+    required WebViewArchiveFormat format,
+  }) async {
+    debugPrint(
+      'webview_all: native ${format.name} page archives are unavailable on this platform.',
+    );
+    return null;
+  }
+
+  Future<bool> setContextMenuEnabled(bool enabled) async {
+    debugPrint(
+      'webview_all: native context-menu control is unavailable on this platform. Existing native behavior was retained.',
+    );
+    return false;
+  }
+
+  Future<bool> setAudioMuted(bool muted) async {
+    debugPrint(
+      'webview_all: per-view native audio muting is unavailable on this platform.',
+    );
+    return false;
+  }
+
+  Future<bool> pauseMedia() async {
+    debugPrint(
+      'webview_all: pausing all native media in this view is unavailable on this platform.',
+    );
+    return false;
+  }
+
+  Future<bool> setMediaPlaybackSuspended(bool suspended) async {
+    debugPrint(
+      'webview_all: suspending and preventing media playback in this view is unavailable on this platform.',
+    );
+    return false;
+  }
+
+  /// Creates a separately configured view in exactly the same native store.
+  /// The caller owns its lifetime; closing either view must retain the other.
+  Future<PlatformWebViewController?> createRelatedController() async {
+    debugPrint(
+      'webview_all: creating another controller in this data store is unavailable.',
+    );
+    return null;
+  }
+
+  Future<WebViewPrintJob?> printPage({String jobName = 'Web page'}) async {
+    debugPrint(
+      'webview_all: the system print flow is unavailable on this platform.',
+    );
+    return null;
+  }
+
+  @protected
+  Future<WebViewPrintJob?> startNativePrint(
+    String jobName,
+    Future<Object?> Function(String method, Map<String, Object?> arguments)
+    invoke,
+  ) async {
+    if (jobName.trim().isEmpty || jobName.length > 256) {
+      debugPrint('webview_all: print job names must contain 1–256 characters.');
+      return null;
+    }
+    WebViewPrintState parse(Object? value) =>
+        WebViewPrintState.values.firstWhere(
+          (v) => v.name == value,
+          orElse: () => WebViewPrintState.unknown,
+        );
+    try {
+      // A user may leave a native print panel open; do not time it out.
+      final raw = await invoke('printPage', {'jobName': jobName});
+      if (raw is! Map) {
+        debugPrint(
+          'webview_all: the engine could not open a system print flow. The view may need an attached native window.',
+        );
+        return null;
+      }
+      final id = raw['jobId'];
+      final args = <String, Object?>{'jobId': id};
+      return WebViewPrintJob(
+        initialState: parse(raw['state']),
+        readState: raw['canQuery'] == true
+            ? () async => parse(await invoke('printJobState', args))
+            : null,
+        cancel: raw['canCancel'] == true
+            ? () async => await invoke('cancelPrintJob', args) == true
+            : null,
+        release: id is String
+            ? () async {
+                await invoke('releasePrintJob', args);
+              }
+            : null,
+      );
+    } catch (error) {
+      debugPrint('webview_all: opening the print flow failed: $error');
+      return null;
+    }
+  }
+
+  /// Clears this view's native back/forward history, retaining its current page.
+  Future<bool> clearNavigationHistory() async {
+    debugPrint(
+      'webview_all: clearing native navigation history is unavailable on this platform. The history was retained.',
+    );
+    return false;
+  }
+
+  Future<WebViewNavigationState?> saveNavigationState() async {
+    debugPrint(
+      'webview_all: native navigation-state snapshots are unavailable on this platform. No URL-only substitute was created.',
+    );
+    return null;
+  }
+
+  Future<bool> restoreNavigationState(WebViewNavigationState state) async {
+    debugPrint(
+      'webview_all: restoring native navigation state is unavailable on this platform. The current page was retained.',
+    );
+    return false;
+  }
+
+  @protected
+  bool acceptsNavigationState(WebViewNavigationState state, String platform) {
+    if (state.isDisposed || state.platform != platform) {
+      debugPrint(
+        'webview_all: this navigation snapshot is disposed or belongs to another platform. The current page was retained.',
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /// Bounds native browser operations and contains unsupported/runtime errors.
+  @protected
+  Future<T> browserOperation<T>(
+    String name,
+    T fallback,
+    Future<T> Function() operation,
+  ) async {
+    try {
+      return await operation().timeout(const Duration(seconds: 30));
+    } catch (error) {
+      debugPrint('webview_all: $name failed: $error');
+      return fallback;
+    }
+  }
+
+  WebViewFullscreenDelegate? _fullscreenDelegate;
+  WebViewFullscreenRequest? _fullscreenRequest;
+  FutureOr<void> Function(WebViewProcessFailure)? _onProcessFailed;
+
+  Future<void> setFullscreenDelegate(
+    WebViewFullscreenDelegate? delegate,
+  ) async {
+    debugPrint(
+      'webview_all: native fullscreen notifications are unavailable on this platform. Existing platform behavior is retained.',
+    );
+  }
+
+  Future<bool> exitFullscreen() async {
+    debugPrint(
+      'webview_all: exiting native fullscreen is unavailable on this platform.',
+    );
+    return false;
+  }
+
+  /// Requests DOM fullscreen exit without affecting other system media UI.
+  /// The native exit event confirms completion; true means the request was sent.
+  @protected
+  Future<bool> exitDocumentFullscreen() async {
+    try {
+      final result = await runJavaScriptReturningResult('''
+(() => {
+  if (!(document.fullscreenElement || document.webkitFullscreenElement)) return false;
+  const exit = document.exitFullscreen || document.webkitExitFullscreen || document.webkitCancelFullScreen;
+  if (typeof exit !== 'function') return false;
+  const pending = exit.call(document);
+  if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+  return true;
+})()
+''');
+      final accepted = result == true || result == 'true';
+      if (!accepted) {
+        debugPrint(
+          'webview_all: this fullscreen presentation has no DOM exit API. Use the platform media controls to dismiss system video UI.',
+        );
+      }
+      return accepted;
+    } catch (error) {
+      debugPrint('webview_all: exiting document fullscreen failed: $error');
+      return false;
+    }
+  }
+
+  Future<void> setOnProcessFailed(
+    FutureOr<void> Function(WebViewProcessFailure)? callback,
+  ) async {
+    debugPrint(
+      'webview_all: renderer process failures cannot be observed on this platform.',
+    );
+  }
+
+  @protected
+  bool get hasFullscreenDelegate => _fullscreenDelegate != null;
+
+  @protected
+  bool get isFullscreenActive => _fullscreenRequest != null;
+
+  @protected
+  Future<void> updateFullscreenDelegate(
+    WebViewFullscreenDelegate? delegate,
+  ) async {
+    if (identical(_fullscreenDelegate, delegate)) return;
+    if (_fullscreenRequest != null) {
+      await _fullscreenRequest!.exit();
+      unawaited(notifyFullscreenExited());
+    }
+    _fullscreenDelegate = delegate;
+  }
+
+  @protected
+  Future<void> notifyFullscreenEntered({Widget? content}) async {
+    final delegate = _fullscreenDelegate;
+    if (delegate == null || _fullscreenRequest != null) return;
+    late final WebViewFullscreenRequest request;
+    request = WebViewFullscreenRequest(
+      content: content,
+      onExit: () async {
+        if (!identical(_fullscreenRequest, request)) return false;
+        try {
+          return await exitFullscreen().timeout(const Duration(seconds: 10));
+        } catch (error) {
+          debugPrint('webview_all: exiting fullscreen failed: $error');
+          return false;
+        }
+      },
+    );
+    _fullscreenRequest = request;
+    try {
+      await delegate.onEnter(request);
+    } catch (error) {
+      debugPrint('webview_all: the fullscreen enter callback failed: $error');
+      await request.exit();
+    }
+  }
+
+  @protected
+  Future<void> notifyFullscreenExited() async {
+    if (_fullscreenRequest == null) return;
+    _fullscreenRequest = null;
+    try {
+      await _fullscreenDelegate?.onExit();
+    } catch (error) {
+      debugPrint('webview_all: the fullscreen exit callback failed: $error');
+    }
+  }
+
+  @protected
+  void updateProcessFailureCallback(
+    FutureOr<void> Function(WebViewProcessFailure)? callback,
+  ) {
+    _onProcessFailed = callback;
+  }
+
+  /// Call after ending any presentation. Application callbacks must never keep
+  /// native controller disposal pending (they may themselves await disposal).
+  @protected
+  void disposeBrowserLifecycleCallbacks() {
+    _capturesClosed = true;
+    _cancelPageCaptures();
+    if (_fullscreenRequest != null) unawaited(notifyFullscreenExited());
+    _fullscreenDelegate = null;
+    _onProcessFailed = null;
+  }
+
+  @protected
+  Future<void> notifyProcessFailed(WebViewProcessFailure failure) async {
+    if (failure.recovery != WebViewProcessRecovery.none) {
+      _cancelPageCaptures();
+      cancelJavaScriptHandlerCalls();
+      unawaited(notifyFullscreenExited());
+    }
+    try {
+      if (_onProcessFailed != null) {
+        await _onProcessFailed!(failure);
+      } else {
+        debugPrint(
+          'webview_all: ${failure.kind.name}; recovery: ${failure.recovery.name}. ${failure.description ?? ''}',
+        );
+      }
+    } catch (error) {
+      debugPrint('webview_all: the process-failure callback failed: $error');
+    }
+  }
+
+  Future<void> _textSearchTail = Future<void>.value();
+
+  /// Serializes engines whose search notifications carry no request identifier.
+  @protected
+  Future<T> serializeTextSearch<T>(Future<T> Function() operation) {
+    final result = _textSearchTail.then((_) => operation());
+    _textSearchTail = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    return result;
+  }
+
+  /// Installs native child-window handling; null restores the popup policy.
+  Future<void> setNewWindowDelegate(
+    FutureOr<void> Function(WebViewNewWindowRequest<PlatformWebViewController>)?
+    delegate,
+  ) async {
+    debugPrint(
+      'webview_all: native child-window attachment is unavailable on this platform; the existing popup policy is retained.',
+    );
+  }
+
+  /// Receives native window.close requests. The app owns view removal/disposal.
+  Future<void> setOnWindowCloseRequested(VoidCallback? callback) async {
+    debugPrint(
+      'webview_all: native window-close notifications are unavailable on this platform.',
+    );
+  }
+
+  Future<void> _captureTail = Future<void>.value();
+  int _captureGeneration = 0;
+  final _captureCancellations = <Completer<Uint8List?>>{};
+  bool _capturesClosed = false;
+
+  void _cancelPageCaptures() {
+    _captureGeneration++;
+    for (final cancellation in _captureCancellations) {
+      cancellation.complete(null);
+    }
+    _captureCancellations.clear();
+  }
+
+  /// Serializes capture/printing operations and reports native failures safely.
+  @protected
+  Future<Uint8List?> capturePageData(
+    String operation,
+    Future<Uint8List?> Function() capture,
+  ) {
+    final generation = _captureGeneration;
+    final result = _captureTail.then((_) async {
+      if (_capturesClosed || generation != _captureGeneration) return null;
+      try {
+        final cancellation = Completer<Uint8List?>();
+        _captureCancellations.add(cancellation);
+        final timedOut = Completer<Uint8List?>();
+        final timer = Timer(const Duration(seconds: 40), () {
+          timedOut.completeError(TimeoutException('$operation timed out.'));
+        });
+        final Uint8List? bytes;
+        try {
+          bytes = await Future.any<Uint8List?>([
+            Future<Uint8List?>.sync(capture),
+            cancellation.future,
+            timedOut.future,
+          ]);
+        } finally {
+          timer.cancel();
+          _captureCancellations.remove(cancellation);
+        }
+        if (_capturesClosed || generation != _captureGeneration) return null;
+        if (bytes == null) {
+          debugPrint(
+            'webview_all: $operation returned no data; the page may be unavailable or the engine may not support this operation.',
+          );
+        }
+        return bytes;
+      } catch (error) {
+        debugPrint('webview_all: $operation failed: $error');
+        return null;
+      }
+    });
+    _captureTail = result.then<void>((_) {});
+    return result;
+  }
+
+  /// Captures the visible native page as PNG, or warns and returns null.
+  Future<Uint8List?> takeScreenshot({
+    WebViewScreenshotOptions options = const WebViewScreenshotOptions(),
+  }) async {
+    debugPrint(
+      'webview_all: native page screenshots are unavailable on this platform.',
+    );
+    return null;
+  }
+
+  /// Exports PDF bytes using native layout defaults, or warns and returns null.
+  Future<Uint8List?> createPdf({WebViewPdfOptions? options}) async {
+    debugPrint(
+      'webview_all: native PDF export is unavailable on this platform.',
+    );
+    return null;
+  }
+
+  @protected
+  Future<Uint8List?> captureScreenshot(
+    WebViewScreenshotOptions options,
+    Future<Uint8List?> Function() capture,
+  ) => capturePageData('Screenshot', () async {
+    if (options.fullDocument &&
+        !(await getBrowserCapabilities()).fullDocumentScreenshot) {
+      debugPrint(
+        'webview_all: native full-document screenshots are unavailable on this platform/runtime.',
+      );
+      return null;
+    }
+    if (!options.scale.isFinite || options.scale <= 0) {
+      throw ArgumentError('Screenshot scale must be finite and positive.');
+    }
+    final region = options.region;
+    if (region != null &&
+        (!region.isFinite ||
+            region.isEmpty ||
+            region.left < 0 ||
+            region.top < 0)) {
+      throw ArgumentError(
+        'Screenshot region must be a finite positive rectangle.',
+      );
+    }
+    final bytes = await capture();
+    if (bytes == null || options.isDefault) return bytes;
+    final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+    ui.ImageDescriptor? descriptor;
+    ui.Codec? codec;
+    ui.Image? source;
+    ui.Image? output;
+    ui.Picture? picture;
+    try {
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
+      if (descriptor.width * descriptor.height > 16 * 1024 * 1024) {
+        throw StateError(
+          'The source image exceeds the screenshot pixel limit.',
+        );
+      }
+      if (options.region == null && options.scale == 1) return bytes;
+      final rect =
+          options.region ??
+          ui.Rect.fromLTWH(
+            0,
+            0,
+            descriptor.width.toDouble(),
+            descriptor.height.toDouble(),
+          );
+      if (!rect.isFinite ||
+          rect.isEmpty ||
+          rect.left < 0 ||
+          rect.top < 0 ||
+          rect.right > descriptor.width ||
+          rect.bottom > descriptor.height) {
+        throw ArgumentError(
+          'Screenshot region must be inside the captured image.',
+        );
+      }
+      final width = (rect.width * options.scale).round();
+      final height = (rect.height * options.scale).round();
+      if (width <= 0 || height <= 0 || width * height > 16 * 1024 * 1024) {
+        throw ArgumentError('The scaled screenshot exceeds the pixel limit.');
+      }
+      codec = await descriptor.instantiateCodec();
+      source = (await codec.getNextFrame()).image;
+      final recorder = ui.PictureRecorder();
+      final canvas = ui.Canvas(recorder);
+      canvas.drawImageRect(
+        source,
+        rect,
+        ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+        ui.Paint()..filterQuality = ui.FilterQuality.high,
+      );
+      picture = recorder.endRecording();
+      output = await picture.toImage(width, height);
+      final data = await output.toByteData(format: ui.ImageByteFormat.png);
+      return data?.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    } finally {
+      output?.dispose();
+      picture?.dispose();
+      source?.dispose();
+      codec?.dispose();
+      descriptor?.dispose();
+      buffer.dispose();
+    }
+  });
+
+  /// Queries browser operations without invoking unsupported APIs.
+  Future<WebViewBrowserCapabilities> getBrowserCapabilities() async =>
+      const WebViewBrowserCapabilities();
+
+  Future<void> stopLoading() async {
+    debugPrint(
+      'webview_all: stopping page loading is unavailable on this platform.',
+    );
+  }
+
+  Future<WebViewNavigationHistory?> getNavigationHistory() async {
+    debugPrint(
+      'webview_all: the native navigation history is unavailable on this platform.',
+    );
+    return null;
+  }
+
+  Future<bool> goToHistoryIndex(int index) async {
+    debugPrint(
+      'webview_all: navigating to a history index is unavailable on this platform.',
+    );
+    return false;
+  }
+
+  /// Finds rendered text. Repeating the same query advances the selected match.
+  Future<WebViewFindResult?> findText(
+    String text, {
+    bool forward = true,
+    bool caseSensitive = false,
+    bool wrapAround = true,
+  }) async {
+    debugPrint('webview_all: text search is unavailable on this platform.');
+    return null;
+  }
+
+  Future<void> clearFindMatches() async {
+    debugPrint(
+      'webview_all: clearing text search is unavailable on this platform.',
+    );
+  }
+
+  Future<void> setPopupPolicy(WebViewPopupWindowPolicy policy) async {
+    debugPrint(
+      'webview_all: popup policy ${policy.name} is unavailable on this platform.',
+    );
+  }
+
+  Future<void> setFileSelector(WebViewFileSelector? selector) async {
+    if (selector != null) {
+      debugPrint(
+        'webview_all: custom file selection is unavailable on this platform; the engine retains its normal file input behavior.',
+      );
+    }
+  }
+
+  Future<void> setMediaPlaybackRequiresUserGesture(bool require) async {
+    debugPrint(
+      'webview_all: changing the media user-gesture requirement is unavailable on this platform.',
+    );
+  }
+
   /// Creates a new [PlatformWebViewController]
   factory PlatformWebViewController(
     PlatformWebViewControllerCreationParams params,
@@ -50,6 +630,143 @@ abstract class PlatformWebViewController extends PlatformInterface {
 
   /// The parameters used to initialize the [PlatformWebViewController].
   final PlatformWebViewControllerCreationParams params;
+
+  WebViewJavaScriptBridge? _javaScriptHandlerBridge;
+  final Set<String> _javaScriptBridgeScripts = {};
+  int _javaScriptDocumentGeneration = 0;
+  bool _javaScriptHandlersDisposed = false;
+
+  /// Features available in this engine. Unsupported additions warn and return
+  /// without changing the existing page-world JavaScript APIs.
+  Future<WebViewJavaScriptCapabilities> getJavaScriptCapabilities({
+    WebViewJavaScriptWorld world = WebViewJavaScriptWorld.page,
+  }) async => const WebViewJavaScriptCapabilities();
+
+  Future<bool> addJavaScriptHandler(WebViewJavaScriptHandlerParams params) {
+    if (_javaScriptHandlersDisposed) {
+      debugPrint(
+        'webview_all: JavaScript handler registration was skipped because the WebView is closed.',
+      );
+      return Future<bool>.value(false);
+    }
+    return (_javaScriptHandlerBridge ??= WebViewJavaScriptBridge(
+      this,
+    )).add(params);
+  }
+
+  Future<void> removeJavaScriptHandler(
+    String name, {
+    WebViewJavaScriptWorld world = WebViewJavaScriptWorld.page,
+  }) async {
+    await _javaScriptHandlerBridge?.remove(name, world);
+  }
+
+  Future<void> removeAllJavaScriptHandlers() async {
+    await _javaScriptHandlerBridge?.removeAll();
+  }
+
+  /// Invalidates Dart-to-JavaScript evaluations when navigation is requested.
+  /// Pending JavaScript-to-Dart handlers stay alive until navigation starts.
+  @protected
+  void prepareJavaScriptForNavigation() {
+    _javaScriptDocumentGeneration++;
+  }
+
+  @protected
+  void cancelJavaScriptHandlerCalls() {
+    prepareJavaScriptForNavigation();
+    _javaScriptHandlerBridge?.documentChanged();
+  }
+
+  @protected
+  void disposeJavaScriptHandlers() {
+    _javaScriptHandlersDisposed = true;
+    _javaScriptDocumentGeneration++;
+    _javaScriptHandlerBridge?.close();
+  }
+
+  @protected
+  bool isJavaScriptBridgeScript(String identifier) =>
+      _javaScriptBridgeScripts.contains(identifier);
+
+  /// Installs an internal script kept by removeAllUserScripts.
+  Future<String?> installJavaScriptBridgeScript(
+    WebViewUserScript script,
+  ) async {
+    final identifier = await addUserScript(script);
+    _javaScriptBridgeScripts.add(identifier);
+    return identifier;
+  }
+
+  @protected
+  Future<Object?> invokeAsyncJavaScriptInWorld(
+    JavaScriptInvocationParams params,
+  ) async {
+    final caps = await getJavaScriptCapabilities(world: params.world);
+    if (!caps.supportsWorld(params.world)) {
+      debugPrint(
+        'webview_all: Isolated JavaScript execution was skipped because it is unavailable.',
+      );
+      return null;
+    }
+    final generation = _javaScriptDocumentGeneration;
+    try {
+      return await invokeJavaScriptInWorld(
+        params,
+        evaluate: (source) => evaluateJavaScriptInWorld(source, params.world),
+        isCurrentDocument: () =>
+            !_javaScriptHandlersDisposed &&
+            generation == _javaScriptDocumentGeneration,
+      );
+    } on PlatformException catch (error) {
+      if (error.code != 'javascript-world-unavailable') rethrow;
+      debugPrint(
+        'webview_all: Isolated JavaScript invocation was skipped. ${error.message}',
+      );
+      return null;
+    }
+  }
+
+  /// Internal world-aware channel hook. Native adapters override for isolation.
+  Future<void> addJavaScriptChannelInWorld(
+    JavaScriptChannelParams params,
+    WebViewJavaScriptWorld world,
+  ) {
+    if (world.isPage) return addJavaScriptChannel(params);
+    throw UnsupportedError('Isolated JavaScript channels are unavailable.');
+  }
+
+  /// Internal world-aware execution hook.
+  Future<Object?> evaluateJavaScriptInWorld(
+    String source,
+    WebViewJavaScriptWorld world,
+  ) {
+    if (world.isPage) return runJavaScriptReturningResult(source);
+    throw UnsupportedError('Isolated JavaScript execution is unavailable.');
+  }
+
+  Future<void> runJavaScriptInWorld(
+    String source,
+    WebViewJavaScriptWorld world,
+  ) async {
+    if (world.isPage) {
+      await runJavaScript(source);
+    } else {
+      await evaluateJavaScriptInWorld(source, world);
+    }
+  }
+
+  /// Uses a document-start listener on engines without native document-end.
+  @protected
+  String buildDocumentEndScript(String source) =>
+      '''
+(function() {
+  const run = function() { $source\n };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run, {once: true});
+  } else { run(); }
+})();
+''';
 
   /// Waits for native creation, including applying the requested data policy.
   Future<void> prepareSession() async {}

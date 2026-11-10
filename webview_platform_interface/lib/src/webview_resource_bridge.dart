@@ -74,6 +74,9 @@ class WebViewResourceBridge {
     required ResourceBridgeConfiguration configure,
     this.supportsStreaming = true,
     this.nativeBodies = false,
+    this.uriFilter,
+    this.allowAnyMethod = false,
+    this.allowPassThrough = false,
     this.requestTimeout = const Duration(seconds: 30),
     BinaryMessenger? binaryMessenger,
   }) : _scheme = scheme,
@@ -114,6 +117,11 @@ class WebViewResourceBridge {
 
   /// Whether the native engine reads file/byte bodies without Dart chunk calls.
   final bool nativeBodies;
+
+  /// Additional transports supply their own strict URL allowlist.
+  final bool Function(Uri uri)? uriFilter;
+  final bool allowAnyMethod;
+  final bool allowPassThrough;
   final Duration requestTimeout;
   final String host;
   late final MethodChannel _channel;
@@ -290,16 +298,20 @@ class WebViewResourceBridge {
     if (_closed || delegate == null) return _emptyResponse(404);
     final uri = Uri.tryParse(arguments['uri'] as String? ?? '');
     if (uri == null ||
-        uri.scheme != _baseUri.scheme ||
-        uri.host != _baseUri.host ||
-        uri.port != _baseUri.port ||
-        uri.hasPort != _baseUri.hasPort ||
         uri.userInfo.isNotEmpty ||
-        !uri.path.startsWith(_baseUri.path)) {
+        (uriFilter != null
+            ? !uriFilter!(uri)
+            : (uri.scheme != _baseUri.scheme ||
+                  uri.host != _baseUri.host ||
+                  uri.port != _baseUri.port ||
+                  uri.hasPort != _baseUri.hasPort ||
+                  uri.userInfo.isNotEmpty ||
+                  !uri.path.startsWith(_baseUri.path)))) {
       return _emptyResponse(403);
     }
     final method = (arguments['method'] as String? ?? 'GET').toUpperCase();
-    if (method != 'GET' && method != 'HEAD') {
+    if (!RegExp(r"^[!#$%&'*+.^_`|~0-9A-Z-]+$").hasMatch(method) ||
+        (!allowAnyMethod && method != 'GET' && method != 'HEAD')) {
       return _emptyResponse(405, <String, String>{'allow': 'GET, HEAD'});
     }
     if (_requests.length >= 64 || _requests.containsKey(id)) {
@@ -317,13 +329,29 @@ class WebViewResourceBridge {
       }
     }
     try {
+      var requestBody = arguments['body'] as Uint8List?;
+      var bodyAvailable = arguments['bodyAvailable'] == true;
+      if (requestBody != null && requestBody.length > 4 * 1024 * 1024) {
+        requestBody = null;
+        bodyAvailable = false;
+        debugPrint(
+          'webview_all: the native request body exceeds 4 MiB and is unavailable to this delegate.',
+        );
+      }
+      if (bodyAvailable) requestBody ??= Uint8List(0);
+      if (!bodyAvailable) requestBody = null;
       final request = WebViewResourceRequest(
         uri: uri,
         method: method,
         headers: headers,
-        path: Uri.decodeComponent(
-          '/${uri.path.substring(_baseUri.path.length)}',
-        ),
+        isForMainFrame: arguments['isForMainFrame'] as bool?,
+        body: requestBody,
+        bodyAvailable: bodyAvailable,
+        path: uriFilter != null
+            ? Uri.decodeComponent(uri.path)
+            : Uri.decodeComponent(
+                '/${uri.path.substring(_baseUri.path.length)}',
+              ),
       );
       final response = await Future.any<WebViewResourceResponse?>(
         <Future<WebViewResourceResponse?>>[
@@ -345,6 +373,11 @@ class WebViewResourceBridge {
         _requests.remove(id);
         await body.close();
         return _emptyResponse(404);
+      }
+      if (response is WebViewPassThroughResponse) {
+        _requests.remove(id);
+        await body.close();
+        return allowPassThrough ? {'passThrough': true} : _emptyResponse(501);
       }
       if (method != 'HEAD') body.unstartedStream = response.stream;
       _validateResponse(response);
@@ -658,4 +691,11 @@ Future<void> _cancelUnstartedStream(Stream<List<int>> stream) async {
     onError: (Object _, StackTrace __) {},
   );
   await subscription.cancel();
+}
+
+/// Internal signal for native HTTP pass-through; not a resource response.
+@internal
+class WebViewPassThroughResponse extends WebViewResourceResponse {
+  WebViewPassThroughResponse()
+    : super.bytes(Uint8List(0), mimeType: 'text/plain');
 }

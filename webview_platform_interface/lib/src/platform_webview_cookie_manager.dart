@@ -17,6 +17,25 @@ import 'webview_platform.dart' show WebViewPlatform;
 /// `implements` this interface will be broken by newly added
 /// [PlatformWebViewCookieManager] methods.
 abstract class PlatformWebViewCookieManager extends PlatformInterface {
+  Future<WebViewCookieCapabilities> getCapabilities() async =>
+      const WebViewCookieCapabilities();
+
+  /// Deletes a known cookie identity, including its domain and path.
+  /// Values inferred by a URL-only cookie read may not identify the stored path.
+  /// Deletes one known stored identity. Preserve native domain spelling,
+  /// including a leading dot for domain cookies, and the exact path.
+  /// Completion does not confirm that the cookie previously existed.
+  Future<bool> deleteCookie({
+    required String name,
+    required String domain,
+    String path = '/',
+  }) async {
+    debugPrint(
+      'webview_all: deleting an individual cookie is unavailable on this platform.',
+    );
+    return false;
+  }
+
   /// Creates a new [PlatformWebViewCookieManager]
   factory PlatformWebViewCookieManager(
     PlatformWebViewCookieManagerCreationParams params,
