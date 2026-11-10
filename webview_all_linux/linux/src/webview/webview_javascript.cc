@@ -236,7 +236,8 @@ static void message_metadata_received_cb(WebKitUserContentManager *manager,
   JSCValue *value = webkit_javascript_result_get_js_value(result);
   if (!jsc_value_is_object(value)) return;
   g_autofree gchar *name = message_string_property(value, "channelName");
-  if (name == nullptr || !g_hash_table_contains(webview->js_channels, name)) {
+  if (name == nullptr || !g_hash_table_contains(webview->js_channels, name) ||
+      g_hash_table_contains(webview->js_channel_worlds, name)) {
     return;
   }
   g_autofree gchar *message = message_string_property(value, "message");
@@ -295,9 +296,9 @@ void destroy_js_channel_handler_data(gpointer data, GClosure *closure) {
 }
 
 void evaluate_javascript(WebKitWebView *web_view, const gchar *script,
-                         FlMethodCall *method_call) {
+                         FlMethodCall *method_call, const gchar *world_name) {
   g_object_ref(method_call);
-  webkit_web_view_evaluate_javascript(web_view, script, -1, nullptr, nullptr,
+  webkit_web_view_evaluate_javascript(web_view, script, -1, world_name, nullptr,
                                       nullptr, script_finished_cb, method_call);
 }
 
@@ -428,7 +429,30 @@ void rebuild_user_scripts(LinuxWebView *webview) {
 
   add_user_script(webview->content_manager, kScrollHookScript);
 
-  gchar *channel_source = build_javascript_channels_script(webview->js_channels);
+  GHashTable *page_channels = g_hash_table_new(g_str_hash, g_str_equal);
+  GHashTableIter channel_iter;
+  gpointer channel_name;
+  g_hash_table_iter_init(&channel_iter, webview->js_channels);
+  while (g_hash_table_iter_next(&channel_iter, &channel_name, nullptr)) {
+    const gchar *world = static_cast<const gchar *>(
+        g_hash_table_lookup(webview->js_channel_worlds, channel_name));
+    if (world == nullptr) {
+      g_hash_table_insert(page_channels, channel_name, GINT_TO_POINTER(1));
+    } else {
+      g_autofree gchar *source = g_strdup_printf(
+          "globalThis['%s'] = {postMessage: function(value) "
+          "{window.webkit.messageHandlers['%s'].postMessage(String(value));}};",
+          static_cast<const gchar *>(channel_name),
+          static_cast<const gchar *>(channel_name));
+      WebKitUserScript *script = webkit_user_script_new_for_world(
+          source, WEBKIT_USER_CONTENT_INJECT_TOP_FRAME,
+          WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, world, nullptr, nullptr);
+      webkit_user_content_manager_add_script(webview->content_manager, script);
+      webkit_user_script_unref(script);
+    }
+  }
+  gchar *channel_source = build_javascript_channels_script(page_channels);
+  g_hash_table_destroy(page_channels);
   add_user_script(webview->content_manager, channel_source);
   g_free(channel_source);
 

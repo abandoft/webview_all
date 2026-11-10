@@ -30,6 +30,8 @@ typedef struct {
   gint id;
   WebKitUserContentManager *content_manager;
   WebKitWebView *web_view;
+  void *browser_state;
+  GCancellable *pending_load_request;
   GtkWidget *clip_container;
   FlMethodChannel *method_channel;
   FlEventChannel *event_channel;
@@ -42,6 +44,7 @@ typedef struct {
   GHashTable *pending_request_timeouts;
   GHashTable *js_channel_signal_ids;
   GHashTable *js_channels;
+  GHashTable *js_channel_worlds;
   gboolean message_metadata_enabled;
   GHashTable *user_scripts;
   GPtrArray *user_script_order;
@@ -91,7 +94,9 @@ typedef struct {
 
 LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self,
                                   GError **error = nullptr,
-                                  gboolean incognito = FALSE);
+                                  gboolean incognito = FALSE,
+                                  WebKitWebView *related = nullptr,
+                                  const gchar* profile_name = nullptr);
 void destroy_linux_webview(gpointer data);
 void root_method_call_cb(FlMethodChannel *channel, FlMethodCall *method_call,
                          gpointer user_data);

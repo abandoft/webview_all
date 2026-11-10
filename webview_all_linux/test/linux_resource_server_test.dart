@@ -83,6 +83,44 @@ void main() {
   );
 
   test(
+    'scheme body transport reads an existing request without reopening it',
+    () async {
+      await server.close();
+      server = await LinuxResourceServer.bind(bridge, bodyTransport: true);
+      var opened = 0;
+      await bridge.update(
+        WebViewResourceDelegate(
+          onRequest: (_) {
+            opened++;
+            return WebViewResourceResponse.bytes(
+              Uint8List.fromList([1, 2, 3]),
+              mimeType: 'application/octet-stream',
+            );
+          },
+        ),
+      );
+      final uri = bridge.getResourceUri('/data')!;
+      await bridge.handleCall(
+        MethodCall('open', {
+          'id': 'native-request',
+          'uri': uri.toString(),
+          'method': 'GET',
+          'headers': <String, String>{},
+        }),
+      );
+      final response = await get(server.baseUri.resolve('read/native-request'));
+      expect(await read(response), [1, 2, 3]);
+      expect(opened, 1);
+      final invalid = await get(
+        server.baseUri.resolve('read/native-request?secret=wrong'),
+      );
+      expect(invalid.statusCode, 403);
+      await read(invalid);
+      expect(opened, 1);
+    },
+  );
+
+  test(
     'file URLs remain usable after disabling and re-enabling the delegate',
     () async {
       final directory = await Directory.systemTemp.createTemp(

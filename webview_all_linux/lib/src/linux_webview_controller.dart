@@ -41,7 +41,512 @@ Future<void> _disposeFinalizedLinuxWebView(
 }
 
 class LinuxWebViewController extends PlatformWebViewController
-    with WebViewResourceControllerMixin {
+    with WebViewResourceControllerMixin, WebViewNetworkControllerMixin {
+  WebViewFileSelector? _fileSelector;
+  FutureOr<void> Function(WebViewNewWindowRequest<PlatformWebViewController>)?
+  _newWindowDelegate;
+  VoidCallback? _onWindowCloseRequested;
+  bool _nativeFullscreen = false;
+
+  @override
+  Future<WebViewNetworkCapabilities> getNetworkCapabilities() async {
+    if (_disposed) return const WebViewNetworkCapabilities();
+    var body = false;
+    try {
+      body =
+          (await _invoke<Map<Object?, Object?>>(
+            'getNetworkCapabilities',
+          ))?['customSchemeRequestBodies'] ==
+          true;
+    } catch (_) {}
+    return WebViewNetworkCapabilities(
+      contentRules: true,
+      ruleActions: {
+        WebViewContentRuleAction.block,
+        WebViewContentRuleAction.allow,
+        WebViewContentRuleAction.hideElements,
+        WebViewContentRuleAction.upgradeToHttps,
+      },
+      ruleConditions: {
+        WebViewContentRuleCondition.domain,
+        WebViewContentRuleCondition.topUrl,
+        WebViewContentRuleCondition.loadType,
+      },
+      customSchemes: true,
+      customSchemeFetch: true,
+      customSchemeRequestBodies: body,
+      streamingResponses: true,
+      resourceTypes: {
+        WebViewNetworkResourceType.document,
+        WebViewNetworkResourceType.image,
+        WebViewNetworkResourceType.styleSheet,
+        WebViewNetworkResourceType.script,
+        WebViewNetworkResourceType.font,
+        WebViewNetworkResourceType.media,
+        WebViewNetworkResourceType.raw,
+        WebViewNetworkResourceType.svgDocument,
+      },
+      limitation:
+          'WebKitGTK content filters run natively. Its public UI-process API does not provide asynchronous pass-through HTTP request interception.',
+    );
+  }
+
+  @override
+  Future<bool> configureContentRules(List<Map<String, Object?>> rules) async {
+    if (_disposed) return false;
+    const names = {
+      'document': 'document',
+      'image': 'image',
+      'styleSheet': 'style-sheet',
+      'script': 'script',
+      'font': 'font',
+      'media': 'media',
+      'raw': 'raw',
+      'svgDocument': 'svg-document',
+    };
+    final json = jsonEncode(
+      rules
+          .map(
+            (r) => {
+              'trigger': {
+                'url-filter': r['urlFilter'],
+                'url-filter-is-case-sensitive': r['caseSensitive'],
+                if ((r['ifDomains'] as List? ?? const []).isNotEmpty)
+                  'if-domain': r['ifDomains'],
+                if ((r['unlessDomains'] as List? ?? const []).isNotEmpty)
+                  'unless-domain': r['unlessDomains'],
+                if ((r['ifTopUrls'] as List? ?? const []).isNotEmpty)
+                  'if-top-url': r['ifTopUrls'],
+                if ((r['unlessTopUrls'] as List? ?? const []).isNotEmpty)
+                  'unless-top-url': r['unlessTopUrls'],
+                if ((r['loadTypes'] as List? ?? const []).isNotEmpty)
+                  'load-type': r['loadTypes'],
+                if ((r['resourceTypes']! as List).isNotEmpty)
+                  'resource-type': (r['resourceTypes']! as List)
+                      .map((v) => names[v])
+                      .toList(),
+              },
+              'action': {
+                'type': switch (r['action']) {
+                  'block' => 'block',
+                  'allow' => 'ignore-previous-rules',
+                  'hideElements' => 'css-display-none',
+                  'upgradeToHttps' => 'make-https',
+                  _ => throw ArgumentError('Unknown native rule action.'),
+                },
+                if (r['selector'] != null) 'selector': r['selector'],
+              },
+            },
+          )
+          .toList(),
+    );
+    return await _invoke<bool>('setContentRules', {'json': json}) ?? false;
+  }
+
+  final Map<String, LinuxResourceServer> _schemeServers = {};
+  @override
+  Future<bool> configureNetworkBridge(
+    Map<String, Object?> configuration,
+  ) async {
+    if (configuration['kind'] != 'schemes') return false;
+    final name = configuration['channel']! as String;
+    if (configuration['enabled'] != true) {
+      try {
+        if (!_disposed) {
+          await _invoke<bool>('configureCustomSchemes', configuration);
+        }
+      } finally {
+        await _schemeServers.remove(name)?.close();
+      }
+      return true;
+    }
+    if (_disposed) return false;
+    final bridge = networkBridgeForChannel(name);
+    if (bridge == null) return false;
+    final server = await LinuxResourceServer.bind(bridge, bodyTransport: true);
+    _schemeServers[name] = server;
+    try {
+      final accepted =
+          await _invoke<bool>('configureCustomSchemes', {
+            ...configuration,
+            'baseUri': server.baseUri.toString(),
+          }) ??
+          false;
+      if (!accepted) {
+        _schemeServers.remove(name);
+        await server.close();
+      }
+      return accepted;
+    } catch (_) {
+      _schemeServers.remove(name);
+      await server.close();
+      rethrow;
+    }
+  }
+
+  @override
+  Future<PlatformWebViewController?> createRelatedController() =>
+      browserOperation<PlatformWebViewController?>(
+        'createRelatedController',
+        null,
+        () async {
+          if (_disposed) return null;
+          await _ensureReady();
+          final id = await rootChannel.invokeMethod<int>(
+            'createRelatedWebView',
+            {'parentId': _sessionViewId},
+          );
+          if (id == null) return null;
+          final child = LinuxWebViewController._(params, adoptedViewId: id);
+          try {
+            await child._ensureReady();
+            return child;
+          } catch (_) {
+            await child.closeWebViewSession();
+            rethrow;
+          }
+        },
+      );
+
+  @override
+  Future<WebViewNavigationState?> saveNavigationState() =>
+      browserOperation<WebViewNavigationState?>(
+        'saveNavigationState',
+        null,
+        () async {
+          if (_disposed) return null;
+          final id = await _invoke<String>('saveNavigationState');
+          return id == null
+              ? null
+              : WebViewNavigationState(
+                  platform: 'linux',
+                  identifier: id,
+                  onDispose: () => rootChannel.invokeMethod<void>(
+                    'releaseNavigationState',
+                    {'stateId': id},
+                  ),
+                );
+        },
+      );
+
+  @override
+  Future<bool> restoreNavigationState(WebViewNavigationState state) =>
+      browserOperation('restoreNavigationState', false, () async {
+        if (_disposed || !acceptsNavigationState(state, 'linux')) return false;
+        prepareJavaScriptForNavigation();
+        return await _invoke<bool>('restoreNavigationState', {
+              'stateId': state.identifier,
+            }) ??
+            false;
+      });
+
+  Future<void> _handleFullscreenChanged(bool active) {
+    _nativeFullscreen = active;
+    return active ? notifyFullscreenEntered() : notifyFullscreenExited();
+  }
+
+  Future<void> _handleProcessFailure(Map<Object?, Object?> event) {
+    _nativeFullscreen = false;
+    _cancelPendingAsyncJavaScriptInvocations(
+      const JavaScriptExecutionException(
+        name: 'ProcessError',
+        message: 'The renderer process exited.',
+      ),
+    );
+    return notifyProcessFailed(
+      WebViewProcessFailure(
+        kind: WebViewProcessFailureKind.rendererExited,
+        recovery: WebViewProcessRecovery.reload,
+        didCrash: event['didCrash'] as bool?,
+        nativeCode: (event['nativeCode'] as num?)?.toInt(),
+        description:
+            'The WebKit renderer process exited. Reload the page to recover.',
+      ),
+    );
+  }
+
+  @override
+  Future<void> setFullscreenDelegate(
+    WebViewFullscreenDelegate? delegate,
+  ) async {
+    if (_disposed) return;
+    await updateFullscreenDelegate(delegate);
+    await _invoke<void>('setFullscreenDelegateEnabled', {
+      'enabled': delegate != null,
+    });
+  }
+
+  @override
+  Future<bool> exitFullscreen() async {
+    if (_disposed || !_nativeFullscreen) return false;
+    return exitDocumentFullscreen();
+  }
+
+  @override
+  Future<void> setOnProcessFailed(
+    FutureOr<void> Function(WebViewProcessFailure)? callback,
+  ) async {
+    if (!_disposed) updateProcessFailureCallback(callback);
+  }
+
+  @override
+  Future<void> setNewWindowDelegate(
+    FutureOr<void> Function(WebViewNewWindowRequest<PlatformWebViewController>)?
+    delegate,
+  ) async {
+    final previous = _newWindowDelegate;
+    _newWindowDelegate = delegate;
+    try {
+      await _invoke<void>('setNewWindowDelegateEnabled', {
+        'enabled': delegate != null,
+      });
+    } catch (error) {
+      _newWindowDelegate = previous;
+      debugPrint(
+        'webview_all_linux: new-window delegation is unavailable: $error',
+      );
+    }
+  }
+
+  @override
+  Future<void> setOnWindowCloseRequested(VoidCallback? callback) async {
+    if (!_disposed) _onWindowCloseRequested = callback;
+  }
+
+  Future<void> _handleNewWindowRequest(Map<Object?, Object?> args) async {
+    final id = (args['requestId']! as num).toInt();
+    LinuxWebViewController? created;
+    final request = WebViewNewWindowRequest<PlatformWebViewController>(
+      url: Uri.tryParse(args['url'] as String? ?? ''),
+      isUserGesture: args['isUserGesture'] as bool?,
+      onCreateController: () async {
+        final childId = await _invoke<int>('claimNewWindow', {'requestId': id});
+        if (childId == null) return null;
+        final child = LinuxWebViewController._(params, adoptedViewId: childId);
+        await child._readyFuture;
+        return created = child;
+      },
+      onAttach: (child) async {
+        final valid =
+            identical(child, created) &&
+            !_disposed &&
+            created != null &&
+            !created!._disposed;
+        if (!valid) {
+          debugPrint(
+            'webview_all_linux: use request.createController() to obtain the related native child; independent controllers cannot preserve the opener and POST request.',
+          );
+        }
+        return await _invoke<bool>('attachNewWindow', {
+              'requestId': id,
+              'childWebViewId': valid ? created!._sessionViewId : null,
+            }) ??
+            false;
+      },
+      onReject: () => _invoke<void>('attachNewWindow', {'requestId': id}),
+    );
+    await dispatchWebViewNewWindowRequest(
+      _disposed ? null : _newWindowDelegate,
+      request,
+    );
+  }
+
+  static Future<Object?> Function(MethodCall) _fileSelectorReceiver(
+    WeakReference<LinuxWebViewController> owner,
+  ) => (call) async {
+    if (call.method != 'fileSelectorRequested') throw MissingPluginException();
+    final selector = owner.target?._fileSelector;
+    if (selector == null || owner.target?._disposed != false) return <String>[];
+    final args = call.arguments as Map<Object?, Object?>;
+    try {
+      return await selector(
+        WebViewFileSelectorParams(
+          mode: args['multiple'] == true
+              ? WebViewFileSelectorMode.openMultiple
+              : WebViewFileSelectorMode.open,
+          acceptTypes: (args['acceptTypes'] as List<Object?>? ?? [])
+              .whereType<String>(),
+        ),
+      );
+    } catch (error) {
+      debugPrint('webview_all_linux: the custom file selector failed: $error');
+      return <String>[];
+    }
+  };
+
+  @override
+  Future<void> setFileSelector(WebViewFileSelector? selector) async {
+    final previous = _fileSelector;
+    _fileSelector = selector;
+    try {
+      await _invoke<void>('setFileSelectorEnabled', {
+        'enabled': selector != null,
+      });
+    } catch (_) {
+      _fileSelector = previous;
+      rethrow;
+    }
+  }
+
+  @override
+  Future<WebViewBrowserCapabilities> getBrowserCapabilities() async =>
+      WebViewBrowserCapabilities(
+        newWindowDelegate: true,
+        windowCloseRequests: true,
+        fullscreenEvents: true,
+        processFailureEvents: true,
+        navigationState: true,
+        stopLoading: true,
+        viewportScreenshot: true,
+        archiveFormats: const {WebViewArchiveFormat.mhtml},
+        contextMenuControl: true,
+        audioMuting: true,
+        printing: true,
+        printJobState: true,
+        fullDocumentScreenshot: true,
+        screenshotRegion: true,
+        screenshotScale: true,
+        pdfExport: true,
+        pdfPageLayout: true,
+        mediaPlaybackPolicyAtCreation: true,
+        navigationHistory: true,
+        historyNavigation: true,
+        findText: true,
+        findCaseSensitive: true,
+        findWithoutWrapping: true,
+        findMatchCount: true,
+        fileSelector: true,
+        mediaPlaybackRequiresUserGesture: true,
+        popupWindowPolicies: {
+          WebViewPopupWindowPolicy.platformDefault,
+          WebViewPopupWindowPolicy.deny,
+          WebViewPopupWindowPolicy.sameView,
+        },
+      );
+
+  @override
+  Future<bool> setAudioMuted(
+    bool muted,
+  ) => browserOperation('setAudioMuted', false, () async {
+    final accepted =
+        await _invoke<bool>('setAudioMuted', {'muted': muted}) ?? false;
+    if (!accepted) {
+      debugPrint(
+        'webview_all_linux: setAudioMuted is unavailable in this engine or the native view is closed.',
+      );
+    }
+    return accepted;
+  });
+
+  @override
+  Future<bool> setContextMenuEnabled(
+    bool enabled,
+  ) => browserOperation('setContextMenuEnabled', false, () async {
+    final accepted =
+        await _invoke<bool>('setContextMenuEnabled', {'enabled': enabled}) ??
+        false;
+    if (!accepted) {
+      debugPrint(
+        'webview_all_linux: setContextMenuEnabled is unavailable in this engine or the native view is closed.',
+      );
+    }
+    return accepted;
+  });
+
+  @override
+  Future<Uint8List?> createArchive({required WebViewArchiveFormat format}) {
+    if (format != WebViewArchiveFormat.mhtml) {
+      return super.createArchive(format: format);
+    }
+    return capturePageData('Page archive', () async {
+      if (_disposed) return null;
+      return _invoke<Uint8List>('createArchive', {'format': format.name});
+    });
+  }
+
+  @override
+  Future<WebViewPrintJob?> printPage({String jobName = 'Web page'}) async {
+    return startNativePrint(
+      jobName,
+      (method, args) => method == 'printPage'
+          ? _invoke<Object?>(method, args)
+          : rootChannel.invokeMethod<Object?>(method, args),
+    );
+  }
+
+  @override
+  Future<Uint8List?> takeScreenshot({
+    WebViewScreenshotOptions options = const WebViewScreenshotOptions(),
+  }) => captureScreenshot(
+    options,
+    () => _invoke<Uint8List>('takeScreenshot', {
+      'fullDocument': options.fullDocument,
+    }),
+  );
+
+  @override
+  Future<Uint8List?> createPdf({WebViewPdfOptions? options}) =>
+      capturePageData('createPdf', () {
+        if (options != null && !options.isValid) {
+          throw ArgumentError('Invalid PDF paper size or margins.');
+        }
+        return _invoke<Uint8List>('createPdf', {'options': options?.toMap()});
+      });
+
+  @override
+  Future<void> stopLoading() => _invoke<void>('stopLoading');
+
+  @override
+  Future<WebViewNavigationHistory> getNavigationHistory() async =>
+      WebViewNavigationHistory.fromMap(
+        (await _invoke<Map<Object?, Object?>>('getNavigationHistory')) ??
+            const {},
+      );
+
+  @override
+  Future<bool> goToHistoryIndex(int index) async =>
+      await _invoke<bool>('goToHistoryIndex', {'index': index}) ?? false;
+
+  @override
+  Future<WebViewFindResult?> findText(
+    String text, {
+    bool forward = true,
+    bool caseSensitive = false,
+    bool wrapAround = true,
+  }) async {
+    if (text.isEmpty) {
+      await clearFindMatches();
+      return const WebViewFindResult(matchFound: false, matchCount: 0);
+    }
+    return serializeTextSearch(() async {
+      final result =
+          await _invoke<Map<Object?, Object?>>('findText', {
+            'text': text,
+            'forward': forward,
+            'caseSensitive': caseSensitive,
+            'wrapAround': wrapAround,
+          }).timeout(
+            const Duration(seconds: 10),
+            onTimeout: () async {
+              await _invoke<void>('clearFindMatches');
+              debugPrint(
+                'webview_all_linux: text search timed out and was cancelled.',
+              );
+              return null;
+            },
+          );
+      return result == null ? null : WebViewFindResult.fromMap(result);
+    });
+  }
+
+  @override
+  Future<void> clearFindMatches() =>
+      serializeTextSearch(() => _invoke<void>('clearFindMatches'));
+
+  @override
+  Future<void> setPopupPolicy(WebViewPopupWindowPolicy policy) =>
+      _invoke<void>('setPopupWindowPolicy', {'policy': policy.index});
+
   @override
   String get resourceUrlScheme => 'http';
 
@@ -66,14 +571,22 @@ class LinuxWebViewController extends PlatformWebViewController
 
   LinuxResourceServer? _resourceServer;
   LinuxWebViewController(PlatformWebViewControllerCreationParams params)
-    : super.implementation(
-        params is LinuxWebViewControllerCreationParams
-            ? params
-            : LinuxWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
-                params,
-              ),
-      ) {
-    _readyFuture = _initialize(WeakReference<LinuxWebViewController>(this));
+    : this._(params);
+
+  LinuxWebViewController._(
+    PlatformWebViewControllerCreationParams params, {
+    int? adoptedViewId,
+  }) : super.implementation(
+         params is LinuxWebViewControllerCreationParams
+             ? params
+             : LinuxWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
+                 params,
+               ),
+       ) {
+    _readyFuture = _initialize(
+      WeakReference<LinuxWebViewController>(this),
+      adoptedViewId: adoptedViewId,
+    );
   }
 
   static final Finalizer<_LinuxWebViewDisposal> _finalizer =
@@ -192,16 +705,25 @@ class LinuxWebViewController extends PlatformWebViewController
   _onJavaScriptTextInputDialog;
 
   Future<void> _initialize(
-    WeakReference<LinuxWebViewController> weakThis,
-  ) async {
+    WeakReference<LinuxWebViewController> weakThis, {
+    int? adoptedViewId,
+  }) async {
     final int id =
+        adoptedViewId ??
         await rootChannel.invokeMethod<int>(
           'createWebView',
-          _linuxParams.incognito ? <String, Object?>{'incognito': true} : null,
+          _linuxParams.incognito || params.profileName != null
+              ? {
+                  if (_linuxParams.incognito) 'incognito': true,
+                  if (params.profileName != null)
+                    'profileName': params.profileName,
+                }
+              : null,
         ) ??
         (throw StateError('Failed to create Linux WebView instance.'));
     _sessionViewId = id;
     _channel = MethodChannel('$linuxWebViewChannelPrefix/$id');
+    _channel!.setMethodCallHandler(_fileSelectorReceiver(weakThis));
     _eventChannel = EventChannel('$linuxWebViewChannelPrefix/$id/events');
     _eventSubscription = _eventChannel!.receiveBroadcastStream().listen(
       (dynamic event) {
@@ -302,7 +824,12 @@ class LinuxWebViewController extends PlatformWebViewController
       if (_linuxParams.javascriptCanOpenWindowsAutomatically
           case final bool value)
         'javascriptCanOpenWindowsAutomatically': value,
-      if (_linuxParams.mediaPlaybackRequiresUserGesture case final bool value)
+      if ((_linuxParams.mediaPlaybackRequiresUserGesture ??
+              (_linuxParams.mediaPlaybackPolicy == null
+                  ? null
+                  : _linuxParams.mediaPlaybackPolicy ==
+                        WebViewMediaPlaybackPolicy.requireUserGesture))
+          case final bool value)
         'mediaPlaybackRequiresUserGesture': value,
       if (_linuxParams.mediaPlaybackAllowsInline case final bool value)
         'mediaPlaybackAllowsInline': value,
@@ -518,6 +1045,7 @@ class LinuxWebViewController extends PlatformWebViewController
 
   @override
   Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
+    if (!params.world.isPage) return invokeAsyncJavaScriptInWorld(params);
     await _ensureReady();
     final String identifier = _createLinuxOpaqueIdentifier(
       'async_${++_nextAsyncJavaScriptInvocationIdentifier}',
@@ -559,11 +1087,54 @@ class LinuxWebViewController extends PlatformWebViewController
   Future<void> closeOffscreenWebView() => dispose();
 
   @override
+  Future<WebViewJavaScriptCapabilities> getJavaScriptCapabilities({
+    WebViewJavaScriptWorld world = WebViewJavaScriptWorld.page,
+  }) async => WebViewJavaScriptCapabilities(
+    supportsPromiseHandlers: true,
+    supportsIsolatedWorlds: true,
+    userScriptInjectionTimes: const {
+      WebViewUserScriptInjectionTime.documentStart,
+      WebViewUserScriptInjectionTime.documentEnd,
+    },
+    supportsTrustedOrigins: world.isPage,
+    supportsTrustedFrameInformation: world.isPage,
+    limitation:
+        'Handlers run in the main document. Isolated-world messages cannot provide verified origin/frame metadata.',
+  );
+
+  @override
+  Future<Object?> evaluateJavaScriptInWorld(
+    String source,
+    WebViewJavaScriptWorld world,
+  ) async {
+    final result = await _invoke<Object?>('runJavaScriptReturningResult', {
+      'script': source,
+      'worldName': world.isPage ? null : 'webview_all.user.${world.name}',
+    });
+    if (result is Map && result['__json__'] is String) {
+      return jsonDecode(result['__json__'] as String);
+    }
+    return result;
+  }
+
+  @override
+  Future<void> addJavaScriptChannelInWorld(
+    JavaScriptChannelParams params,
+    WebViewJavaScriptWorld world,
+  ) async {
+    if (world.isPage) return addJavaScriptChannel(params);
+    return _addJavaScriptChannel(
+      params,
+      worldName: 'webview_all.user.${world.name}',
+    );
+  }
+
+  @override
   Future<bool> isUserScriptInjectionSupported(
     WebViewUserScriptInjectionTime injectionTime,
   ) async {
     await _ensureReady();
-    return injectionTime == WebViewUserScriptInjectionTime.documentStart;
+    return true;
   }
 
   @override
@@ -576,6 +1147,12 @@ class LinuxWebViewController extends PlatformWebViewController
         platformHandlesMainFrameOnly: true,
       ),
       'mainFrameOnly': userScript.forMainFrameOnly,
+      'worldName': userScript.world.isPage
+          ? null
+          : 'webview_all.user.${userScript.world.name}',
+      'documentEnd':
+          userScript.injectionTime ==
+          WebViewUserScriptInjectionTime.documentEnd,
     });
     _userScriptIdentifiers.add(identifier);
     return identifier;
@@ -594,17 +1171,22 @@ class LinuxWebViewController extends PlatformWebViewController
 
   @override
   Future<void> removeAllUserScripts() async {
-    if (_userScriptIdentifiers.isEmpty) {
-      return;
+    for (final identifier in _userScriptIdentifiers.toList()) {
+      if (!isJavaScriptBridgeScript(identifier)) {
+        await removeUserScript(identifier);
+      }
     }
-    await _invoke<void>('removeAllUserScripts');
-    _userScriptIdentifiers.clear();
   }
 
   @override
   Future<void> addJavaScriptChannel(
     JavaScriptChannelParams javaScriptChannelParams,
-  ) async {
+  ) => _addJavaScriptChannel(javaScriptChannelParams);
+
+  Future<void> _addJavaScriptChannel(
+    JavaScriptChannelParams javaScriptChannelParams, {
+    String? worldName,
+  }) async {
     final String name = javaScriptChannelParams.name;
     if (!_javaScriptIdentifierPattern.hasMatch(name)) {
       throw ArgumentError.value(
@@ -621,9 +1203,15 @@ class LinuxWebViewController extends PlatformWebViewController
     }
 
     _javaScriptChannels[name] = javaScriptChannelParams;
-    await _invoke<void>('addJavaScriptChannel', <String, Object?>{
-      'name': name,
-    });
+    try {
+      await _invoke<void>('addJavaScriptChannel', <String, Object?>{
+        'name': name,
+        if (worldName != null) 'worldName': worldName,
+      });
+    } catch (_) {
+      _javaScriptChannels.remove(name);
+      rethrow;
+    }
   }
 
   @override
@@ -859,6 +1447,7 @@ class LinuxWebViewController extends PlatformWebViewController
   }
 
   /// Sets whether media playback requires a user gesture.
+  @override
   Future<void> setMediaPlaybackRequiresUserGesture(bool require) {
     return _invoke<void>(
       'setMediaPlaybackRequiresUserGesture',
@@ -935,10 +1524,18 @@ class LinuxWebViewController extends PlatformWebViewController
   }
 
   Future<void> _dispose() async {
+    if (_nativeFullscreen) await exitFullscreen();
+    disposeBrowserLifecycleCallbacks();
+    _newWindowDelegate = null;
+    _onWindowCloseRequested = null;
+    _channel?.setMethodCallHandler(null);
+    disposeJavaScriptHandlers();
     _disposed = true;
     final resourceServer = _resourceServer;
     _resourceServer = null;
     if (resourceServer != null) await resourceServer.close();
+    final networkDisposal = disposeNetworkBridges();
+    if (networkDisposal != null) await networkDisposal;
     final resourceDisposal = disposeResourceBridge();
     if (resourceDisposal != null) await resourceDisposal;
     _downloadDelegateGeneration++;
@@ -997,6 +1594,7 @@ class LinuxWebViewController extends PlatformWebViewController
   }
 
   void _cancelPendingAsyncJavaScriptInvocations(Object error) {
+    cancelJavaScriptHandlerCalls();
     final List<Completer<Object?>> pending = _pendingAsyncJavaScriptInvocations
         .values
         .toList(growable: false);
@@ -1053,7 +1651,7 @@ class LinuxWebViewController extends PlatformWebViewController
     return '''
 (()=>{
   const __identifier=${jsonEncode(identifier)};
-  const __arguments=${jsonEncode(params.arguments)};
+  const __arguments=JSON.parse(${jsonEncode(jsonEncode(params.arguments))});
   const __post=(payload)=>window.webkit.messageHandlers.__webview_all_async_javascript.postMessage(JSON.stringify(payload));
   const __postError=(error)=>__post({
     identifier:__identifier,
@@ -1120,6 +1718,7 @@ class _LinuxWebViewDisposal {
   }
 
   Future<void> _dispose() async {
+    channel.setMethodCallHandler(null);
     Object? disposalError;
     StackTrace? disposalStackTrace;
     try {

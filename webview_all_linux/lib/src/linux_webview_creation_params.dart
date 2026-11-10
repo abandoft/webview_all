@@ -7,6 +7,9 @@ class LinuxWebViewControllerCreationParams
   const LinuxWebViewControllerCreationParams({
     bool incognito = false,
     WebViewSessionMode sessionMode = WebViewSessionMode.shared,
+    WebViewMediaPlaybackPolicy? mediaPlaybackPolicy,
+    String? profileName,
+    List<String> customSchemes = const [],
     this.developerExtrasEnabled,
     this.downloadsEnabled,
     this.javascriptCanOpenWindowsAutomatically,
@@ -21,6 +24,9 @@ class LinuxWebViewControllerCreationParams
     this.minimumFontSize,
     this.zoomFactor,
   }) : super(
+         mediaPlaybackPolicy: mediaPlaybackPolicy,
+         profileName: profileName,
+         customSchemes: customSchemes,
          sessionMode: incognito
              ? WebViewSessionMode.isolatedIncognito
              : sessionMode,

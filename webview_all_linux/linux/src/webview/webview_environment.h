@@ -2,6 +2,9 @@
 #define WEBVIEW_ALL_LINUX_WEBVIEW_ENVIRONMENT_H_
 
 #include <webkit2/webkit2.h>
+#include <functional>
+#include <string>
+#include <vector>
 
 enum LinuxEnvironmentError {
   LINUX_ENVIRONMENT_CREATION_FAILED,
@@ -28,6 +31,13 @@ WebKitWebContext *get_linux_environment_context(GError **error);
 // views own a separate ephemeral context and do not initialize the environment.
 WebKitWebView *
 create_linux_environment_web_view(WebKitUserContentManager *content_manager,
-                                  GError **error, gboolean incognito = FALSE);
+                                  GError **error, gboolean incognito = FALSE,
+                                  const gchar* profile_name = nullptr);
+
+struct LinuxProfileInfo { std::string name; bool pending; };
+struct LinuxProfileDeletion { std::string status, description; };
+std::vector<LinuxProfileInfo> list_linux_profiles();
+void delete_linux_profile(const std::string& name,
+    std::function<void(LinuxProfileDeletion)> callback);
 
 #endif // WEBVIEW_ALL_LINUX_WEBVIEW_ENVIRONMENT_H_

@@ -8,6 +8,10 @@ import 'linux_webview_widget.dart';
 
 class LinuxWebViewPlatform extends WebViewPlatform {
   @override
+  PlatformWebViewProfileManager createPlatformWebViewProfileManager() =>
+      PlatformWebViewProfileManager.channel('com.abandoft.webview_all_linux');
+
+  @override
   bool get supportsOffscreenWebViews => true;
 
   @override
@@ -22,6 +26,8 @@ class LinuxWebViewPlatform extends WebViewPlatform {
         incognitoSupport: WebViewIncognitoSupport.nativeStore,
         scopedCookies: true,
         scopedWebsiteData: true,
+        relatedControllers: true,
+        namedProfiles: true,
       );
 
   static void registerWith() {

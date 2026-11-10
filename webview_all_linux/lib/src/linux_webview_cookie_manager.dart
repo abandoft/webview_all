@@ -14,6 +14,37 @@ class LinuxWebViewCookieManagerCreationParams
 }
 
 class LinuxWebViewCookieManager extends PlatformWebViewCookieManager {
+  @override
+  Future<WebViewCookieCapabilities> getCapabilities() async =>
+      WebViewCookieCapabilities(
+        setHttpOnly: true,
+        deleteByIdentity: true,
+        readableAttributes: Set.unmodifiable(WebViewCookieAttribute.values),
+      );
+
+  @override
+  Future<bool> deleteCookie({
+    required String name,
+    required String domain,
+    String path = '/',
+  }) async {
+    WebViewCookie(name: name, value: '', domain: domain, path: path).validate();
+    await LinuxWebViewController.rootChannel
+        .invokeMethod<void>('deleteCookie', {
+          if (_viewId != null) 'webViewId': _viewId,
+          'name': name,
+          'domain': domain,
+          'path': path,
+          'url': WebViewCookie(
+            name: name,
+            value: '',
+            domain: domain,
+            path: path,
+          ).url.toString(),
+        });
+    return true;
+  }
+
   LinuxWebViewCookieManager(PlatformWebViewCookieManagerCreationParams params)
     : super.implementation(
         params is LinuxWebViewCookieManagerCreationParams
@@ -37,7 +68,7 @@ class LinuxWebViewCookieManager extends PlatformWebViewCookieManager {
 
   @override
   Future<void> setCookie(WebViewCookie cookie) {
-    _validateWebViewCookie(cookie);
+    cookie.validate();
 
     return LinuxWebViewController.rootChannel.invokeMethod<void>('setCookie', {
       if (_viewId != null) 'webViewId': _viewId,
@@ -45,6 +76,11 @@ class LinuxWebViewCookieManager extends PlatformWebViewCookieManager {
       'value': cookie.value,
       'domain': cookie.domain,
       'path': cookie.path,
+      if (cookie.expires != null)
+        'expires': cookie.expires!.millisecondsSinceEpoch,
+      if (cookie.isSecure != null) 'isSecure': cookie.isSecure,
+      if (cookie.isHttpOnly != null) 'isHttpOnly': cookie.isHttpOnly,
+      if (cookie.sameSite != null) 'sameSite': cookie.sameSite!.index,
     });
   }
 
@@ -66,64 +102,19 @@ class LinuxWebViewCookieManager extends PlatformWebViewCookieManager {
         value: '${cookie['value'] ?? ''}',
         domain: '${cookie['domain'] ?? url.host}',
         path: '${cookie['path'] ?? '/'}',
+        expires: cookie['expires'] == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(
+                (cookie['expires'] as num).toInt(),
+                isUtc: true,
+              ),
+        isSecure: cookie['isSecure'] as bool?,
+        isHttpOnly: cookie['isHttpOnly'] as bool?,
+        isSession: cookie['isSession'] as bool?,
+        sameSite: cookie['sameSite'] == null
+            ? null
+            : WebViewCookieSameSite.values[(cookie['sameSite'] as num).toInt()],
       );
     }).toList();
-  }
-
-  void _validateWebViewCookie(WebViewCookie cookie) {
-    _validateCookieName(cookie.name);
-    _validateCookieAttribute('domain', cookie.domain);
-    _validateCookieAttribute('path', cookie.path);
-
-    if (cookie.path.isNotEmpty && !cookie.path.startsWith('/')) {
-      throw ArgumentError.value(
-        cookie.path,
-        'cookie.path',
-        'Cookie path must start with "/".',
-      );
-    }
-    if (!_isValidPath(cookie.path)) {
-      throw ArgumentError(
-        'The path property for the provided cookie was not given a legal value.',
-      );
-    }
-  }
-
-  void _validateCookieName(String name) {
-    if (name.isEmpty) {
-      throw ArgumentError.value(name, 'cookie.name', 'Cookie name is empty.');
-    }
-
-    if (RegExp(r'[\x00-\x20\x7F()<>@,;:\\"/\[\]?={}]+').hasMatch(name)) {
-      throw ArgumentError.value(
-        name,
-        'cookie.name',
-        'Cookie name contains characters rejected by browsers.',
-      );
-    }
-  }
-
-  void _validateCookieAttribute(String field, String value) {
-    if (value.isEmpty) {
-      return;
-    }
-
-    if (RegExp(r'[\x00-\x1F\x7F;]').hasMatch(value)) {
-      throw ArgumentError.value(
-        value,
-        'cookie.$field',
-        'Cookie $field contains characters rejected by browsers.',
-      );
-    }
-  }
-
-  bool _isValidPath(String path) {
-    // Permitted ranges based on RFC6265bis section 4.1.1.
-    for (final int char in path.codeUnits) {
-      if ((char < 0x20 || char > 0x3A) && (char < 0x3C || char > 0x7E)) {
-        return false;
-      }
-    }
-    return true;
   }
 }

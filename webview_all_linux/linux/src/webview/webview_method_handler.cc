@@ -30,6 +30,7 @@ typedef struct {
   SoupSession *session;
   SoupCookieJar *cookie_jar;
   SoupMessage *message;
+  GCancellable *cancellable;
   gchar *url;
 } PendingSoupLoadRequest;
 
@@ -231,6 +232,7 @@ void destroy_pending_soup_load_request(PendingSoupLoadRequest *pending) {
   g_clear_object(&pending->session);
   g_clear_object(&pending->cookie_jar);
   g_clear_object(&pending->message);
+  g_clear_object(&pending->cancellable);
   g_free(pending->url);
   g_free(pending);
 }
@@ -302,6 +304,13 @@ void soup_load_request_cb(GObject *source_object, GAsyncResult *result,
   GBytes *bytes =
       soup_session_send_and_read_finish(pending->session, result, &error);
 
+  if (g_cancellable_is_cancelled(pending->cancellable)) {
+    g_clear_error(&error);
+    if (bytes) g_bytes_unref(bytes);
+    respond(pending->method_call, success_response());
+    destroy_pending_soup_load_request(pending);
+    return;
+  }
   if (error != nullptr) {
     respond(pending->method_call,
             error_response("load_request_error", error->message));
@@ -360,6 +369,14 @@ void soup_request_cookies_cb(GObject *source, GAsyncResult *result,
   GError *error = nullptr;
   GList *cookies = webkit_cookie_manager_get_cookies_finish(
       WEBKIT_COOKIE_MANAGER(source), result, &error);
+  if (g_cancellable_is_cancelled(pending->cancellable)) {
+    g_clear_error(&error);
+    g_list_free_full(cookies,
+                     reinterpret_cast<GDestroyNotify>(soup_cookie_free));
+    respond(pending->method_call, success_response());
+    destroy_pending_soup_load_request(pending);
+    return;
+  }
   if (error) {
     respond(pending->method_call,
             error_response("load_request_error", error->message));
@@ -383,7 +400,7 @@ void soup_request_cookies_cb(GObject *source, GAsyncResult *result,
     return;
   }
   soup_session_send_and_read_async(pending->session, pending->message,
-                                   G_PRIORITY_DEFAULT, nullptr,
+                                   G_PRIORITY_DEFAULT, pending->cancellable,
                                    soup_load_request_cb, pending);
 }
 
@@ -423,6 +440,13 @@ void load_request_with_soup(WebKitWebView *web_view, FlMethodCall *method_call,
   }
 
   PendingSoupLoadRequest *pending = g_new0(PendingSoupLoadRequest, 1);
+  auto *owner = static_cast<LinuxWebView *>(
+      g_object_get_data(G_OBJECT(web_view), kLinuxWebViewInstanceKey));
+  if (owner) cancel_linux_load_request(owner);
+  pending->cancellable = g_cancellable_new();
+  if (owner)
+    owner->pending_load_request =
+        G_CANCELLABLE(g_object_ref(pending->cancellable));
   pending->web_view = WEBKIT_WEB_VIEW(g_object_ref(web_view));
   pending->method_call = FL_METHOD_CALL(g_object_ref(method_call));
   pending->session = soup_session_new_with_options(
@@ -437,17 +461,26 @@ void load_request_with_soup(WebKitWebView *web_view, FlMethodCall *method_call,
 
   WebKitCookieManager *manager = webkit_web_context_get_cookie_manager(
       webkit_web_view_get_context(web_view));
-  webkit_cookie_manager_get_cookies(manager, url, nullptr,
+  webkit_cookie_manager_get_cookies(manager, url, pending->cancellable,
                                     soup_request_cookies_cb, pending);
   g_object_unref(message);
 }
 
-} // namespace
+}  // namespace
+
+void cancel_linux_load_request(LinuxWebView *view) {
+  if (view->pending_load_request) {
+    g_cancellable_cancel(view->pending_load_request);
+    g_clear_object(&view->pending_load_request);
+  }
+}
 
 void instance_method_call_cb(FlMethodChannel *channel,
                              FlMethodCall *method_call, gpointer user_data) {
   LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
   const gchar *method = fl_method_call_get_name(method_call);
+  if (handle_browser_method(webview, method_call)) return;
+  if (handle_network_method(webview, method_call)) return;
   FlValue *args = fl_method_call_get_args(method_call);
 
   if (strcmp(method, "setFrame") == 0) {
@@ -708,15 +741,30 @@ void instance_method_call_cb(FlMethodChannel *channel,
 
   if (strcmp(method, "runJavaScript") == 0 ||
       strcmp(method, "runJavaScriptReturningResult") == 0) {
-    evaluate_javascript(webview->web_view, map_lookup_string(args, "script"),
-                        method_call);
+    const gchar *source = map_lookup_string(args, "script");
+    // The void API must not fail when WebKit cannot serialize the expression's
+    // value (for example, a Promise). Keep synchronous script errors
+    // observable.
+    g_autofree gchar *discard_result =
+        strcmp(method, "runJavaScript") == 0
+            ? g_strconcat(source, "\n;void 0;", nullptr)
+            : nullptr;
+    evaluate_javascript(webview->web_view,
+                        discard_result != nullptr ? discard_result : source,
+                        method_call, map_lookup_string(args, "worldName"));
     return;
   }
 
   if (strcmp(method, "addJavaScriptChannel") == 0) {
     const gchar *name = map_lookup_string(args, "name");
-    if (!webkit_user_content_manager_register_script_message_handler(
-            webview->content_manager, name)) {
+    const gchar *world = map_lookup_string(args, "worldName");
+    const gboolean registered =
+        world == nullptr
+            ? webkit_user_content_manager_register_script_message_handler(
+                  webview->content_manager, name)
+            : webkit_user_content_manager_register_script_message_handler_in_world(
+                  webview->content_manager, name, world);
+    if (!registered) {
       respond(method_call, error_response("channel_error",
                                           "Failed to register JS channel."));
       return;
@@ -735,6 +783,9 @@ void instance_method_call_cb(FlMethodChannel *channel,
                         GINT_TO_POINTER(1));
     g_hash_table_insert(webview->js_channel_signal_ids, g_strdup(name),
                         GUINT_TO_POINTER(signal_id));
+    if (world != nullptr)
+      g_hash_table_insert(webview->js_channel_worlds, g_strdup(name),
+                          g_strdup(world));
     rebuild_user_scripts(webview);
     respond(method_call, success_response());
     return;
@@ -749,8 +800,16 @@ void instance_method_call_cb(FlMethodChannel *channel,
                                   GPOINTER_TO_UINT(signal_id_ptr));
       g_hash_table_remove(webview->js_channel_signal_ids, name);
     }
-    webkit_user_content_manager_unregister_script_message_handler(
-        webview->content_manager, name);
+    const gchar *world = static_cast<const gchar *>(
+        g_hash_table_lookup(webview->js_channel_worlds, name));
+    if (world != nullptr) {
+      webkit_user_content_manager_unregister_script_message_handler_in_world(
+          webview->content_manager, name, world);
+      g_hash_table_remove(webview->js_channel_worlds, name);
+    } else {
+      webkit_user_content_manager_unregister_script_message_handler(
+          webview->content_manager, name);
+    }
     g_hash_table_remove(webview->js_channels, name);
     rebuild_user_scripts(webview);
     respond(method_call, success_response());
@@ -766,12 +825,23 @@ void instance_method_call_cb(FlMethodChannel *channel,
                              "A script identifier and source are required."));
       return;
     }
-    WebKitUserScript *script = webkit_user_script_new(
-        source,
-        map_lookup_bool(args, "mainFrameOnly", TRUE)
-            ? WEBKIT_USER_CONTENT_INJECT_TOP_FRAME
-            : WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
-        WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, nullptr, nullptr);
+    const auto frames = map_lookup_bool(args, "mainFrameOnly", TRUE)
+                            ? WEBKIT_USER_CONTENT_INJECT_TOP_FRAME
+                            : WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES;
+    const auto time = map_lookup_bool(args, "documentEnd", FALSE)
+                          ? WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_END
+                          : WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START;
+    const gchar *world = map_lookup_string(args, "worldName");
+    WebKitUserScript *script =
+        world == nullptr
+            ? webkit_user_script_new(source, frames, time, nullptr, nullptr)
+            : webkit_user_script_new_for_world(source, frames, time, world,
+                                               nullptr, nullptr);
+    if (script == nullptr) {
+      respond(method_call, error_response("script_error",
+                                          "Failed to create the user script."));
+      return;
+    }
     remove_user_script_from_order(webview, identifier);
     g_hash_table_insert(webview->user_scripts, g_strdup(identifier), script);
     g_ptr_array_add(webview->user_script_order, g_strdup(identifier));

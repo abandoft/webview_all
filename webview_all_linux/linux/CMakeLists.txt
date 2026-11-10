@@ -20,6 +20,9 @@ add_library(${PLUGIN_NAME} SHARED
   "src/webview/webview_environment.cc"
   "src/webview/webview_javascript.cc"
   "src/webview/webview_method_handler.cc"
+  "src/webview/webview_browser.cc"
+  "src/webview/webview_network.cc"
+  "src/webview/webview_schemes.cc"
 )
 
 apply_standard_settings(${PLUGIN_NAME})

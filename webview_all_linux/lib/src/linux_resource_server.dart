@@ -8,7 +8,7 @@ import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 /// A controller-owned loopback transport for WebKitGTK's HTTP media loader.
 class LinuxResourceServer {
-  LinuxResourceServer._(HttpServer server, this._bridge)
+  LinuxResourceServer._(HttpServer server, this._bridge, this.bodyTransport)
     : _disposal = _ResourceServerDisposal(server) {
     final weak = WeakReference<LinuxResourceServer>(this);
     server.listen(
@@ -32,7 +32,10 @@ class LinuxResourceServer {
         (disposal) => unawaited(disposal.close()),
       );
 
-  static Future<LinuxResourceServer> bind(WebViewResourceBridge bridge) async {
+  static Future<LinuxResourceServer> bind(
+    WebViewResourceBridge bridge, {
+    bool bodyTransport = false,
+  }) async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.autoCompress = false;
     try {
@@ -44,7 +47,7 @@ class LinuxResourceServer {
           pathSegments: <String>[bridge.host, ''],
         ),
       );
-      return LinuxResourceServer._(server, bridge);
+      return LinuxResourceServer._(server, bridge, bodyTransport);
     } catch (_) {
       await server.close(force: true);
       rethrow;
@@ -53,11 +56,32 @@ class LinuxResourceServer {
 
   final _ResourceServerDisposal _disposal;
   final WebViewResourceBridge _bridge;
+  final bool bodyTransport;
+  Uri get baseUri => Uri(
+    scheme: 'http',
+    host: _disposal.server.address.address,
+    port: _disposal.server.port,
+    pathSegments: [_bridge.host, ''],
+  );
   int _nextId = 0;
   bool _closed = false;
 
   Future<void> _serve(HttpRequest request) async {
-    final id = 'http-${++_nextId}';
+    var id = 'http-${++_nextId}';
+    if (bodyTransport) {
+      final parts = request.uri.pathSegments;
+      if (request.method != 'GET' ||
+          parts.length != 3 ||
+          parts[0] != _bridge.host ||
+          parts[1] != 'read' ||
+          parts[2].isEmpty ||
+          request.uri.hasQuery) {
+        request.response.statusCode = 403;
+        await request.response.close();
+        return;
+      }
+      id = parts[2];
+    }
     var disconnected = false;
     Socket? socket;
     StreamSubscription<Uint8List>? subscription;
@@ -99,16 +123,21 @@ class LinuxResourceServer {
       request.headers.forEach((name, values) {
         headers[name] = values.join(', ');
       });
-      final response =
-          (await _bridge.handleCall(
-                MethodCall('open', <String, Object?>{
-                  'id': id,
-                  'uri': request.requestedUri.toString(),
-                  'method': request.method,
-                  'headers': headers,
-                }),
-              ))!
-              as Map<String, Object?>;
+      final response = bodyTransport
+          ? <String, Object?>{
+              'statusCode': 200,
+              'contentLength': -1,
+              'headers': <String, String>{'cache-control': 'no-store'},
+            }
+          : (await _bridge.handleCall(
+                  MethodCall('open', <String, Object?>{
+                    'id': id,
+                    'uri': request.requestedUri.toString(),
+                    'method': request.method,
+                    'headers': headers,
+                  }),
+                ))!
+                as Map<String, Object?>;
       if (disconnected || _closed) return;
       final status = response['statusCode']! as int;
       final responseHeaders = Map<String, String>.of(

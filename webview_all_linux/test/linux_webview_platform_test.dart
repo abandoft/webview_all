@@ -17,6 +17,74 @@ void main() {
   tearDown(_clearLinuxWebViewCreationMock);
 
   test(
+    'renderer loss ends fullscreen once and reports reload recovery',
+    () async {
+      final controller = LinuxWebViewController(
+        const PlatformWebViewControllerCreationParams(),
+      );
+      await controller.currentUrl();
+      WebViewFullscreenRequest? fullscreen;
+      var exits = 0;
+      final failures = <WebViewProcessFailure>[];
+      await controller.setFullscreenDelegate(
+        WebViewFullscreenDelegate(
+          onEnter: (request) {
+            fullscreen = request;
+          },
+          onExit: () {
+            exits++;
+          },
+        ),
+      );
+      await controller.setOnProcessFailed(failures.add);
+      await _emitLinuxWebViewEvent({
+        'type': 'fullscreenChanged',
+        'active': true,
+      });
+      await _flushAsyncEvents();
+      expect(fullscreen, isNotNull);
+      await _emitLinuxWebViewEvent({
+        'type': 'processFailed',
+        'nativeCode': 0,
+        'didCrash': true,
+      });
+      await _flushAsyncEvents();
+      expect(exits, 1);
+      expect(failures.single.recovery, WebViewProcessRecovery.reload);
+      expect(failures.single.didCrash, isTrue);
+      expect(await fullscreen!.exit(), isFalse);
+      await _emitLinuxWebViewEvent({
+        'type': 'fullscreenChanged',
+        'active': false,
+      });
+      await _flushAsyncEvents();
+      expect(exits, 1);
+      await controller.dispose();
+    },
+  );
+
+  test(
+    'selective clearing uses the selected native store and exact categories',
+    () async {
+      final calls = <MethodCall>[];
+      _mockLinuxWebViewCreation(onRootCall: calls.add);
+      final manager = LinuxWebViewDataManager(
+        const LinuxWebViewDataManagerCreationParams(webViewId: 42),
+      );
+      final result = await manager.clearWebsiteData(
+        dataTypes: {WebViewDataType.cookies, WebViewDataType.localStorage},
+      );
+      expect(result.isComplete, isTrue);
+      expect(calls, hasLength(1));
+      expect(calls.single.method, 'clearWebsiteData');
+      expect(calls.single.arguments, {
+        'webViewId': 42,
+        'dataTypes': [0, 2],
+      });
+    },
+  );
+
+  test(
     'incognito sessions request an isolated native context at creation',
     () async {
       final calls = <MethodCall>[];

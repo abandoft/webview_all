@@ -6,6 +6,9 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <unistd.h>
+#include <sys/file.h>
+#include <fcntl.h>
 
 #include "../src/webview/webview_environment.h"
 #include "javascript_test_helpers.h"
@@ -415,6 +418,83 @@ void incognito_storage_test() {
   });
 }
 
+void profile_management_test() {
+  isolated([] {
+    // A read-only management query must not select the default environment.
+    g_assert_true(list_linux_profiles().empty());
+    GError* error = nullptr;
+    g_assert_true(ensure_linux_environment(path("named/data").c_str(), path("named/cache").c_str(), TRUE, &error));
+    auto root = path("named/data/webview_all_profiles");
+    auto cache = path("named/cache/webview_all_profiles");
+    g_assert_cmpint(g_mkdir_with_parents((root + "/owned").c_str(), 0700), ==, 0);
+    g_assert_cmpint(g_mkdir_with_parents((cache + "/owned").c_str(), 0700), ==, 0);
+    g_assert_true(g_file_set_contents((root + "/owned/.webview_all_profile").c_str(), "owned", -1, &error));
+    g_assert_true(g_file_set_contents((cache + "/owned/.webview_all_profile").c_str(), "owned", -1, &error));
+    // A symlink inside an owned profile must never delete its target.
+    g_assert_cmpint(g_mkdir_with_parents(path("outside").c_str(), 0700), ==, 0);
+    g_assert_true(g_file_set_contents(path("outside/keep").c_str(), "keep", -1, &error));
+    g_assert_cmpint(symlink(path("outside").c_str(), (root + "/owned/link").c_str()), ==, 0);
+    g_assert_cmpint(g_mkdir_with_parents((root + "/foreign").c_str(), 0700), ==, 0);
+    auto entries = list_linux_profiles();
+    g_assert_cmpuint(entries.size(), ==, 1);
+    g_assert_cmpstr(entries[0].name.c_str(), ==, "owned");
+    std::string status;
+    delete_linux_profile("../outside", [&](LinuxProfileDeletion value) { status = value.status; });
+    g_assert_cmpstr(status.c_str(), ==, "failed");
+    delete_linux_profile("foreign", [&](LinuxProfileDeletion value) { status = value.status; });
+    g_assert_cmpstr(status.c_str(), ==, "notFound");
+    g_assert_cmpint(g_mkdir_with_parents((root + "/.locks").c_str(), 0700), ==, 0);
+    const int external_lock = open((root + "/.locks/owned").c_str(), O_CREAT | O_RDWR, 0600);
+    g_assert_cmpint(external_lock, >=, 0);
+    g_assert_cmpint(flock(external_lock, LOCK_EX | LOCK_NB), ==, 0);
+    delete_linux_profile("owned", [&](LinuxProfileDeletion value) { status = value.status; });
+    g_assert_cmpstr(status.c_str(), ==, "busy");
+    close(external_lock);
+    bool done = false;
+    delete_linux_profile("owned", [&](LinuxProfileDeletion value) { status = value.status; done = true; });
+    delete_linux_profile("owned", [&](LinuxProfileDeletion value) { g_assert_cmpstr(value.status.c_str(), ==, "pending"); });
+    while (!done) g_main_context_iteration(nullptr, TRUE);
+    g_assert_cmpstr(status.c_str(), ==, "deleted");
+    g_assert_true(g_file_test(path("outside/keep").c_str(), G_FILE_TEST_IS_REGULAR));
+    g_assert_true(g_file_test((root + "/foreign").c_str(), G_FILE_TEST_IS_DIR));
+    g_assert_false(g_file_test((root + "/owned").c_str(), G_FILE_TEST_EXISTS));
+    g_assert_false(g_file_test((cache + "/owned").c_str(), G_FILE_TEST_EXISTS));
+    g_assert_true(list_linux_profiles().empty());
+    // Reject a dangling cache symlink too, even though exists() follows it.
+    g_assert_cmpint(g_mkdir_with_parents((root + "/untrusted").c_str(), 0700), ==, 0);
+    g_assert_true(g_file_set_contents((root + "/untrusted/.webview_all_profile").c_str(), "untrusted", -1, &error));
+    g_assert_cmpint(symlink(path("does-not-exist").c_str(), (cache + "/untrusted").c_str()), ==, 0);
+    delete_linux_profile("untrusted", [&](LinuxProfileDeletion value) { status = value.status; });
+    g_assert_cmpstr(status.c_str(), ==, "failed");
+    g_assert_true(g_file_test((root + "/untrusted/.webview_all_profile").c_str(), G_FILE_TEST_IS_REGULAR));
+    g_unlink((cache + "/untrusted").c_str());
+    // A failed child removal keeps the ownership marker and remains retryable.
+    g_assert_cmpint(g_mkdir_with_parents((root + "/retry/blocked").c_str(), 0700), ==, 0);
+    g_assert_true(g_file_set_contents((root + "/retry/.webview_all_profile").c_str(), "retry", -1, &error));
+    g_assert_true(g_file_set_contents((root + "/retry/blocked/data").c_str(), "data", -1, &error));
+    g_assert_cmpint(g_chmod((root + "/retry/blocked").c_str(), 0000), ==, 0);
+    done = false;
+    delete_linux_profile("retry", [&](LinuxProfileDeletion value) { status = value.status; done = true; });
+    while (!done) g_main_context_iteration(nullptr, TRUE);
+    if (geteuid() != 0) {
+      g_assert_cmpstr(status.c_str(), ==, "failed");
+      g_assert_true(g_file_test((root + "/retry/.webview_all_profile").c_str(), G_FILE_TEST_IS_REGULAR));
+      g_assert_cmpint(g_chmod((root + "/retry/blocked").c_str(), 0700), ==, 0);
+      done = false;
+      delete_linux_profile("retry", [&](LinuxProfileDeletion value) { status = value.status; done = true; });
+      while (!done) g_main_context_iteration(nullptr, TRUE);
+      g_assert_cmpstr(status.c_str(), ==, "deleted");
+    }
+    // Live contexts (including retained navigation states) prevent deletion.
+    auto* manager = webkit_user_content_manager_new();
+    auto* view = create_linux_environment_web_view(manager, &error, FALSE, "live");
+    g_assert_no_error(error); g_assert_nonnull(view); g_object_ref_sink(view);
+    delete_linux_profile("live", [&](LinuxProfileDeletion value) { status = value.status; });
+    g_assert_cmpstr(status.c_str(), ==, "busy");
+    gtk_widget_destroy(GTK_WIDGET(view)); g_object_unref(view); g_object_unref(manager);
+  });
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -440,5 +520,6 @@ int main(int argc, char **argv) {
                   explicit_default_failure_test);
   g_test_add_func("/environment/shared-storage", shared_storage_test);
   g_test_add_func("/environment/incognito-storage", incognito_storage_test);
+  g_test_add_func("/environment/profile-management", profile_management_test);
   return g_test_run();
 }

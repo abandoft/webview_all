@@ -1,5 +1,6 @@
 #include "plugin/webview_all_linux_plugin_private.h"
 #include "common/method_channel_utils.h"
+#include "webview/webview_internal.h"
 
 G_DEFINE_TYPE(WebviewAllLinuxPlugin,
               webview_all_linux_plugin,
@@ -10,6 +11,7 @@ static void webview_all_linux_plugin_dispose(GObject* object) {
       reinterpret_cast<WebviewAllLinuxPlugin*>(object);
 
   self->disposing = TRUE;
+  dispose_browser_navigation_states(self);
   if (self->webviews != nullptr) {
     g_hash_table_destroy(self->webviews);
     self->webviews = nullptr;

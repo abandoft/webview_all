@@ -8,6 +8,27 @@ extension LinuxWebViewControllerEventHandling on LinuxWebViewController {
 
     final String? type = event['type'] as String?;
     switch (type) {
+      case 'fullscreenChanged':
+        _dispatchEventHandler(
+          'fullscreen callback',
+          () => _handleFullscreenChanged(event['active'] == true),
+        );
+        break;
+      case 'processFailed':
+        _dispatchEventHandler(
+          'process-failure callback',
+          () => _handleProcessFailure(Map<Object?, Object?>.from(event)),
+        );
+        break;
+      case 'newWindowRequested':
+        _dispatchEventHandler(
+          'new-window request',
+          () => _handleNewWindowRequest(Map<Object?, Object?>.from(event)),
+        );
+        break;
+      case 'windowCloseRequested':
+        _onWindowCloseRequested?.call();
+        break;
       case 'downloadRequest':
         _dispatchEventHandler(
           'download request',

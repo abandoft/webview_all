@@ -179,7 +179,18 @@ void cancel_pending_request_timeout(LinuxWebView *webview, gint request_id) {
   }
 }
 
-static void resolve_all_pending_requests(LinuxWebView *webview) {
+void cancel_pending_navigation_requests(LinuxWebView *webview) {
+  GList *ids = g_hash_table_get_keys(webview->pending_nav_decisions);
+  for (GList *item = ids; item; item = item->next) {
+    const gint id = GPOINTER_TO_INT(item->data);
+    cancel_pending_request_timeout(webview, id);
+    resolve_pending_request_with_safe_default(webview, id,
+                                              PendingRequestType::kNavigation);
+  }
+  g_list_free(ids);
+}
+
+void resolve_all_pending_requests(LinuxWebView *webview) {
   GList *timeout_ids = g_hash_table_get_keys(webview->pending_request_timeouts);
   for (GList *item = timeout_ids; item != nullptr; item = item->next) {
     cancel_pending_request_timeout(webview, GPOINTER_TO_INT(item->data));
@@ -235,9 +246,13 @@ void use_navigation_decision(LinuxWebView *webview,
   g_object_unref(policies);
 }
 
-static WebKitWebView *
-create_web_view_cb(WebKitWebView *widget,
-                   WebKitNavigationAction *navigation_action, gpointer) {
+static WebKitWebView *create_web_view_cb(
+    WebKitWebView *widget, WebKitNavigationAction *navigation_action,
+    gpointer data) {
+  auto *view = static_cast<LinuxWebView *>(data);
+  if (browser_denies_popups(view)) return nullptr;
+  if (browser_delegates_windows(view))
+    return create_browser_window(view, navigation_action);
   WebKitURIRequest *request =
       webkit_navigation_action_get_request(navigation_action);
   const gchar *uri =
@@ -253,12 +268,24 @@ static gboolean decide_policy_cb(WebKitWebView *widget,
                                  WebKitPolicyDecisionType type,
                                  gpointer user_data) {
   LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
+  if (defer_browser_window_navigation(webview, decision, type)) return TRUE;
   if (type == WEBKIT_POLICY_DECISION_TYPE_RESPONSE) {
     return webview->download_policy->HandleResponsePolicy(decision);
   }
   if (type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION &&
       type != WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION) {
     return FALSE;
+  }
+  if (type == WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION &&
+      browser_denies_popups(webview)) {
+    webkit_policy_decision_ignore(decision);
+    return TRUE;
+  }
+  if (type == WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION &&
+      browser_delegates_windows(webview)) {
+    // The child's own policy delegate will decide its original navigation.
+    webkit_policy_decision_use(decision);
+    return TRUE;
   }
 
   WebKitNavigationPolicyDecision *navigation_decision =
@@ -307,12 +334,23 @@ static gboolean decide_policy_cb(WebKitWebView *widget,
   return TRUE;
 }
 
+void resume_browser_window_navigation(LinuxWebView *view,
+                                       WebKitPolicyDecision *decision,
+                                       WebKitPolicyDecisionType type) {
+  if (!decide_policy_cb(view->web_view, decision, type, view))
+    use_navigation_decision(view, decision);
+}
+
 static void load_changed_cb(WebKitWebView *widget, WebKitLoadEvent load_event,
                             gpointer user_data) {
   LinuxWebView *webview = static_cast<LinuxWebView *>(user_data);
   const gchar *uri = webkit_web_view_get_uri(widget);
   switch (load_event) {
   case WEBKIT_LOAD_STARTED: {
+    cancel_browser_windows(webview);
+    cancel_linux_load_request(webview);
+    reset_browser_find(webview);
+    cancel_browser_file_selections(webview);
     FlValue *event = make_event("pageStarted");
     fl_value_set_string_take(event, "url",
                              fl_value_new_string(uri != nullptr ? uri : ""));
@@ -734,8 +772,10 @@ void destroy_linux_webview(gpointer data) {
     return;
   }
 
+  cancel_linux_load_request(webview);
   unregister_message_metadata_handler(webview);
   if (webview->web_view != nullptr) {
+    dispose_browser_operations(webview);
     delete webview->download_policy;
     webview->download_policy = nullptr;
     webview->visible = FALSE;
@@ -744,6 +784,18 @@ void destroy_linux_webview(gpointer data) {
       schedule_flutter_view_input_region_update(webview->plugin);
     }
     resolve_all_pending_requests(webview);
+    // Async engine work may outlive GtkWidget destruction. No signal may keep
+    // using the LinuxWebView storage after it is released below.
+    g_signal_handlers_disconnect_by_data(webview->web_view, webview);
+    g_signal_handlers_disconnect_by_data(webview->content_manager, webview);
+    GHashTableIter channel_signals;
+    gpointer signal_value;
+    g_hash_table_iter_init(&channel_signals, webview->js_channel_signal_ids);
+    while (g_hash_table_iter_next(&channel_signals, nullptr, &signal_value)) {
+      const auto signal = static_cast<gulong>(GPOINTER_TO_SIZE(signal_value));
+      if (g_signal_handler_is_connected(webview->content_manager, signal))
+        g_signal_handler_disconnect(webview->content_manager, signal);
+    }
     g_object_set_data(G_OBJECT(webview->web_view), kLinuxWebViewInstanceKey,
                       nullptr);
     if (webview->clip_container != nullptr) {
@@ -770,6 +822,7 @@ void destroy_linux_webview(gpointer data) {
   g_hash_table_destroy(webview->pending_request_timeouts);
   g_hash_table_destroy(webview->js_channel_signal_ids);
   g_hash_table_destroy(webview->js_channels);
+  g_hash_table_destroy(webview->js_channel_worlds);
   g_hash_table_destroy(webview->user_scripts);
   g_ptr_array_unref(webview->user_script_order);
   g_clear_pointer(&webview->clip_region, cairo_region_destroy);
@@ -777,18 +830,46 @@ void destroy_linux_webview(gpointer data) {
 }
 
 LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self, GError **error,
-                                  gboolean incognito) {
+                                  gboolean incognito, WebKitWebView *related,
+                                  const gchar* profile_name) {
   LinuxWebView *webview = g_new0(LinuxWebView, 1);
   webview->plugin = self;
   webview->id = self->next_webview_id++;
   webview->content_manager = webkit_user_content_manager_new();
-  webview->web_view =
-      create_linux_environment_web_view(webview->content_manager, error,
-                                        incognito);
+  webview->web_view = related
+      ? WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
+            "related-view", related, "user-content-manager",
+            webview->content_manager, nullptr))
+      : create_linux_environment_web_view(webview->content_manager, error,
+                                          incognito, profile_name);
   if (webview->web_view == nullptr) {
     g_object_unref(webview->content_manager);
     g_free(webview);
     return nullptr;
+  }
+  if (related) {
+    // A related WebView shares the context, but its mutable settings must not
+    // let child configuration change the opener's JavaScript or permissions.
+    auto *settings = webkit_settings_new();
+    auto *source = webkit_web_view_get_settings(related);
+    guint count = 0;
+    auto **properties = g_object_class_list_properties(
+        G_OBJECT_GET_CLASS(source), &count);
+    for (guint i = 0; i < count; ++i) {
+      auto *property = properties[i];
+      if ((property->flags & (G_PARAM_READABLE | G_PARAM_WRITABLE)) !=
+              (G_PARAM_READABLE | G_PARAM_WRITABLE) ||
+          (property->flags & (G_PARAM_CONSTRUCT_ONLY | G_PARAM_DEPRECATED)))
+        continue;
+      GValue value = G_VALUE_INIT;
+      g_value_init(&value, G_PARAM_SPEC_VALUE_TYPE(property));
+      g_object_get_property(G_OBJECT(source), property->name, &value);
+      g_object_set_property(G_OBJECT(settings), property->name, &value);
+      g_value_unset(&value);
+    }
+    g_free(properties);
+    webkit_web_view_set_settings(webview->web_view, settings);
+    g_object_unref(settings);
   }
   g_object_ref_sink(webview->web_view);
   g_object_set_data(G_OBJECT(webview->web_view), kLinuxWebViewInstanceKey,
@@ -811,6 +892,8 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self, GError **error,
       g_hash_table_new(g_direct_hash, g_direct_equal);
   webview->js_channel_signal_ids =
       g_hash_table_new_full(g_str_hash, g_str_equal, g_free, nullptr);
+  webview->js_channel_worlds =
+      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
   webview->js_channels =
       g_hash_table_new_full(g_str_hash, g_str_equal, g_free, nullptr);
   webview->user_scripts = g_hash_table_new_full(
@@ -886,6 +969,7 @@ LinuxWebView *create_linux_webview(WebviewAllLinuxPlugin *self, GError **error,
   register_message_metadata_handler(webview);
   rebuild_user_scripts(webview);
 
+  initialize_browser_operations(webview);
   g_signal_connect(webview->web_view, "decide-policy",
                    G_CALLBACK(decide_policy_cb), webview);
   g_signal_connect(webview->web_view, "create", G_CALLBACK(create_web_view_cb),
