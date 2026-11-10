@@ -228,7 +228,7 @@ jobs:
           flutter pub get
           flutter build ios --simulator --debug --target test_driver/webview_gesture_app.dart
           cd ../..
-          ruby tool/add_ios_ui_test_target.rb \
+          ruby tool/add_ios_test_target.rb \
             examples/platform/ios/Runner.xcodeproj Runner \
             examples/platform/ios/WebViewGestureUITests
           xcodebuild test \
@@ -239,28 +239,26 @@ jobs:
             -only-testing:WebViewGestureUITests -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO -quiet
 
-      - name: Test iOS application resources
-        if: matrix.suite == 'flutter'
-        timeout-minutes: 15
-        working-directory: examples/platform
-        run: |
-          simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
-          flutter test integration_test/webview_resource_test.dart -d "$simulator_id" --reporter expanded
-
-      - name: Test iOS JavaScript, browser operations and session stores
+      # Avoid Flutter's simulator log-reader race: flutter/flutter#181771.
+      - name: Test iOS Flutter integrations through XCTest
         if: matrix.suite == 'flutter'
         timeout-minutes: 30
-        working-directory: examples/platform
         run: |
           simulator_id="$(cat "$RUNNER_TEMP/webview-ios-simulator")"
-          flutter test integration_test/webview_javascript_test.dart -d "$simulator_id" --reporter expanded
-          flutter test integration_test/webview_browser_test.dart -d "$simulator_id" --reporter expanded
-          flutter test integration_test/webview_capture_data_test.dart -d "$simulator_id" --reporter expanded
-          flutter test integration_test/webview_advanced_browser_test.dart -d "$simulator_id" --reporter expanded
-          flutter test integration_test/webview_profile_management_test.dart -d "$simulator_id" --reporter expanded
-          flutter test integration_test/webview_network_test.dart -d "$simulator_id" --reporter expanded
-          flutter test integration_test/webview_session_test.dart -d "$simulator_id" --reporter expanded
-          flutter test integration_test/webview_new_window_test.dart -d "$simulator_id" --reporter expanded
+          ruby tool/add_ios_test_target.rb \
+            examples/platform/ios/Runner.xcodeproj Runner \
+            examples/platform/ios/WebViewIntegrationTests integration
+          cd examples/platform
+          flutter build ios --simulator --debug --target integration_test/webview_ios_test.dart
+          xcodebuild test \
+            -workspace ios/Runner.xcworkspace \
+            -scheme WebViewIntegrationTests -configuration Debug \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            FLUTTER_TARGET=integration_test/webview_ios_test.dart \
+            -only-testing:WebViewIntegrationTests -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/webview-ios-integration.xcresult" \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            CODE_SIGNING_ALLOWED=NO -quiet
 
       - name: Collect iOS simulator diagnostics
         if: failure()
@@ -278,7 +276,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ios-${{ matrix.suite }}-simulator-log
-          path: ${{ runner.temp }}/webview-ios-simulator.log
+          path: |
+            ${{ runner.temp }}/webview-ios-simulator.log
+            ${{ runner.temp }}/webview-ios-integration.xcresult
           if-no-files-found: ignore
 
       - name: Clean up iOS test simulator

@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
-# CocoaPods provides xcodeproj on the Apple build hosts. Keep the UI automation
-# target generated so regular example builds do not acquire test-only settings.
+# CocoaPods provides xcodeproj on the Apple build hosts. Keep the native test
+# targets generated so regular example builds do not acquire test-only settings.
 require 'pathname'
 begin
   require 'xcodeproj'
@@ -14,21 +14,24 @@ rescue LoadError
   require 'xcodeproj'
 end
 
-abort 'Usage: add_ios_ui_test_target.rb PROJECT APP_TARGET TESTS_DIRECTORY' unless ARGV.length == 3
+abort 'Usage: add_ios_test_target.rb PROJECT APP_TARGET TESTS_DIRECTORY [ui|integration]' unless (3..4).cover?(ARGV.length)
 
-project_path, app_name, source_directory = ARGV
+project_path, app_name, source_directory, kind = ARGV
+kind ||= 'ui'
+abort 'Test kind must be ui or integration' unless %w[ui integration].include?(kind)
 project_path = File.expand_path(project_path)
 source_directory = File.expand_path(source_directory)
 project = Xcodeproj::Project.open(project_path)
 app = project.targets.find { |target| target.name == app_name }
 abort "App target not found: #{app_name}" unless app
-sources = Dir.glob(File.join(source_directory, '*.swift')).sort
-abort "No Swift UI tests in #{source_directory}" if sources.empty?
+sources = Dir.glob(File.join(source_directory, '*.{swift,m}')).sort
+abort "No native test sources in #{source_directory}" if sources.empty?
 
-name = 'WebViewGestureUITests'
+name = kind == 'ui' ? 'WebViewGestureUITests' : 'WebViewIntegrationTests'
+deployment_target = kind == 'ui' ? '17.0' : '14.0'
 target = project.targets.find { |value| value.name == name }
 unless target
-  target = project.new_target(:ui_test_bundle, name, :ios, '17.0')
+  target = project.new_target(kind == 'ui' ? :ui_test_bundle : :unit_test_bundle, name, :ios, deployment_target)
   target.add_dependency(app)
 end
 target.build_configurations.each do |configuration|
@@ -36,12 +39,16 @@ target.build_configurations.each do |configuration|
     'TEST_TARGET_NAME' => app_name,
     'PRODUCT_NAME' => name,
     'PRODUCT_MODULE_NAME' => name,
-    'PRODUCT_BUNDLE_IDENTIFIER' => 'com.abandoft.webviewall.GestureUITests',
+    'PRODUCT_BUNDLE_IDENTIFIER' => (kind == 'ui' ? 'com.abandoft.webviewall.GestureUITests' : 'com.abandoft.webviewall.IntegrationTests'),
     'GENERATE_INFOPLIST_FILE' => 'YES',
-    'IPHONEOS_DEPLOYMENT_TARGET' => '17.0',
+    'IPHONEOS_DEPLOYMENT_TARGET' => deployment_target,
     'SWIFT_VERSION' => '5.0',
     'CODE_SIGNING_ALLOWED' => 'NO'
   )
+  if kind == 'integration'
+    configuration.build_settings['BUNDLE_LOADER'] = '$(TEST_HOST)'
+    configuration.build_settings['TEST_HOST'] = "$(BUILT_PRODUCTS_DIR)/#{app_name}.app/#{app_name}"
+  end
 end
 project.root_object.attributes['TargetAttributes'] ||= {}
 project.root_object.attributes['TargetAttributes'][target.uuid] = { 'TestTargetID' => app.uuid }

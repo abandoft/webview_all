@@ -30,6 +30,12 @@ target 'Runner' do
   use_frameworks!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  if Xcodeproj::Project.open(File.join(__dir__, 'Runner.xcodeproj')).targets.any? { |target| target.name == 'WebViewIntegrationTests' }
+    target 'WebViewIntegrationTests' do
+      inherit! :search_paths
+    end
+  end
 end
 
 post_install do |installer|
