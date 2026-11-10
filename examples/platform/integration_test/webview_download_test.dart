@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:webview_all/webview_all.dart';
@@ -12,6 +13,118 @@ import 'package:webview_all_windows/webview_all_windows.dart';
 // Run in a separate process: native environments outlive individual views.
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('Android download callbacks support handoff and cancellation', (
+    tester,
+  ) async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    var attachmentRequests = 0;
+    final payload = utf8.encode('Android attachment response');
+    unawaited(
+      server.forEach((request) async {
+        try {
+          if (request.uri.path == '/file') {
+            attachmentRequests += 1;
+            request.response.headers.contentType = ContentType.binary;
+            request.response.headers.set(
+              'Content-Disposition',
+              'attachment; filename="android-download.bin"',
+            );
+            request.response.contentLength = payload.length;
+            request.response.add(payload);
+          } else {
+            request.response.headers.contentType = ContentType.html;
+            request.response.write(
+              '<!doctype html><p id="marker">original page</p>',
+            );
+          }
+          await request.response.close();
+        } on IOException {
+          // Cancelling a download may close the connection during the response.
+        }
+      }),
+    );
+    final origin = Uri.parse('http://127.0.0.1:${server.port}/');
+    final controller = WebViewController();
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await controller.platform.closeWebViewSession();
+    });
+    await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    final loaded = Completer<void>();
+    await controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageFinished: (_) {
+          if (!loaded.isCompleted) loaded.complete();
+        },
+      ),
+    );
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: WebViewWidget(controller: controller),
+      ),
+    );
+    await controller.loadRequest(origin.resolve('/page'));
+    await loaded.future.timeout(const Duration(seconds: 20));
+    var requested = Completer<WebViewDownloadRequest>();
+    var finished = Completer<WebViewDownloadResult>();
+    var decision = const WebViewDownloadDecision.handledExternally();
+    Completer<WebViewDownloadDecision>? deferred;
+    final results = <WebViewDownloadResult>[];
+    await controller.setDownloadDelegate(
+      WebViewDownloadDelegate(
+        onDownloadRequest: (request) {
+          requested.complete(request);
+          return deferred?.future ?? decision;
+        },
+        onDownloadResult: (result) {
+          results.add(result);
+          finished.complete(result);
+        },
+      ),
+    );
+
+    for (var index = 0; index < 3; index++) {
+      requested = Completer<WebViewDownloadRequest>();
+      finished = Completer<WebViewDownloadResult>();
+      if (index == 1) decision = const WebViewDownloadDecision.cancel();
+      if (index == 2) deferred = Completer<WebViewDownloadDecision>();
+      final uri = origin.resolve('/file?case=$index');
+      await controller.loadRequest(uri);
+      final request = await requested.future.timeout(
+        const Duration(seconds: 15),
+      );
+      expect(request.url, uri.toString());
+      expect(request.suggestedFilename, 'android-download.bin');
+      expect(request.mimeType, 'application/octet-stream');
+      expect(request.contentLength, payload.length);
+      expect(request.supportedActions, {
+        WebViewDownloadAction.cancel,
+        WebViewDownloadAction.handledExternally,
+      });
+      if (index == 2) await controller.setDownloadDelegate(null);
+      expect(
+        (await finished.future.timeout(const Duration(seconds: 15))).status,
+        index == 0
+            ? WebViewDownloadStatus.handedOff
+            : WebViewDownloadStatus.cancelled,
+      );
+      if (index == 2) {
+        deferred!.complete(const WebViewDownloadDecision.handledExternally());
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(results, hasLength(index + 1));
+      expect(attachmentRequests, index + 1);
+      expect(
+        await controller.callAsyncJavaScript(
+          'return document.getElementById("marker").textContent;',
+        ),
+        'original page',
+      );
+    }
+  }, skip: !Platform.isAndroid);
 
   testWidgets(
     'downloads preserve requests and never replace existing files',
@@ -155,6 +268,10 @@ void main() {
         },
       );
       await controller.setDownloadDelegate(downloadDelegate);
+
+      // Browser lifecycle observers must coexist with the download delegate,
+      // including when navigation callbacks are replaced below.
+      await controller.getBrowserCapabilities();
 
       var loaded = Completer<void>();
       Future<void> installNavigationDelegate() =>
