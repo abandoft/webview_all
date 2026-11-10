@@ -38,6 +38,16 @@ external JSPromise<JSAny?> _resolveJavaScriptPromise(JSAny? value);
 extension _WebWindowJavaScriptExtension on web.Window {
   @JS('eval')
   external JSAny? evaluateJavaScript(String script);
+  @JS('find')
+  external bool findTextInPage(
+    String text,
+    bool caseSensitive,
+    bool backwards,
+    bool wrapAround,
+    bool wholeWord,
+    bool frames,
+    bool showDialog,
+  );
 }
 
 extension _WebHeadersExtension on web.Headers {
@@ -97,13 +107,17 @@ class WebWebViewControllerCreationParams
   /// Creates a new [WebWebViewControllerCreationParams] instance.
   WebWebViewControllerCreationParams({
     WebViewSessionMode sessionMode = WebViewSessionMode.shared,
+    WebViewMediaPlaybackPolicy? mediaPlaybackPolicy,
     @visibleForTesting this.httpRequestFactory = const HttpRequestFactory(),
     this.iFrameAllow,
     this.iFrameSandbox,
     this.iFrameReferrerPolicy,
     Map<String, String?> iFrameAttributes = const <String, String?>{},
   }) : iFrameAttributes = Map<String, String?>.unmodifiable(iFrameAttributes),
-       super(sessionMode: sessionMode) {
+       super(
+         sessionMode: sessionMode,
+         mediaPlaybackPolicy: mediaPlaybackPolicy,
+       ) {
     if (sessionMode != WebViewSessionMode.shared) {
       debugPrint(
         'webview_all_web: private sessions are unavailable in a browser iframe.',
@@ -131,6 +145,7 @@ class WebWebViewControllerCreationParams
     Map<String, String?> iFrameAttributes = const <String, String?>{},
   }) : this(
          sessionMode: params.sessionMode,
+         mediaPlaybackPolicy: params.mediaPlaybackPolicy,
          httpRequestFactory: httpRequestFactory,
          iFrameAllow: iFrameAllow,
          iFrameSandbox: iFrameSandbox,
@@ -172,7 +187,244 @@ class WebWebViewControllerCreationParams
 
 /// An implementation of [PlatformWebViewController] using Flutter for Web API.
 class WebWebViewController extends PlatformWebViewController {
-  /// Constructs a [WebWebViewController].
+  @override
+  Future<void> setFullscreenDelegate(
+    WebViewFullscreenDelegate? delegate,
+  ) async {
+    if (_nativeDisposal.isDisposed) return;
+    await updateFullscreenDelegate(delegate);
+    final old = _nativeDisposal.fullscreenEventListener;
+    if (old != null) {
+      web.document.removeEventListener('fullscreenchange', old);
+    }
+    _nativeDisposal.fullscreenEventListener = null;
+    if (delegate == null) return;
+    if (!web.document.fullscreenEnabled) {
+      await updateFullscreenDelegate(null);
+      debugPrint(
+        'webview_all_web: the hosting browser does not allow fullscreen. Browser permissions and iframe policy must allow it.',
+      );
+      return;
+    }
+    final owner = WeakReference(this);
+    final listener = ((web.Event _) {
+      final controller = owner.target;
+      if (controller == null || controller._nativeDisposal.isDisposed) return;
+      final active =
+          web.document.fullscreenElement?.isSameNode(
+            controller._webWebViewParams.iFrame,
+          ) ==
+          true;
+      unawaited(
+        active
+            ? controller.notifyFullscreenEntered()
+            : controller.notifyFullscreenExited(),
+      );
+    }).toJS;
+    _nativeDisposal.fullscreenEventListener = listener;
+    web.document.addEventListener('fullscreenchange', listener);
+    if (web.document.fullscreenElement?.isSameNode(_webWebViewParams.iFrame) ==
+        true) {
+      await notifyFullscreenEntered();
+    }
+  }
+
+  @override
+  Future<bool> exitFullscreen() async {
+    if (_nativeDisposal.isDisposed ||
+        web.document.fullscreenElement?.isSameNode(_webWebViewParams.iFrame) !=
+            true) {
+      return false;
+    }
+    try {
+      await web.document.exitFullscreen().toDart;
+      return true;
+    } catch (error) {
+      debugPrint('webview_all_web: exiting iframe fullscreen failed: $error');
+      return false;
+    }
+  }
+
+  String? _pendingFetchPreviousUrl;
+
+  void _abortNavigationFetch() {
+    _nativeDisposal.navigationRequest?.abort();
+    _nativeDisposal.navigationRequest = null;
+    _pendingFetchPreviousUrl = null;
+  }
+
+  @override
+  Future<WebViewPrintJob?> printPage({String jobName = 'Web page'}) async {
+    if (jobName.trim().isEmpty || jobName.length > 256) {
+      debugPrint(
+        'webview_all_web: print job names must contain 1–256 characters.',
+      );
+      return null;
+    }
+    try {
+      final window = _tryReadAccessibleContentWindow();
+      if (window == null) {
+        debugPrint(
+          'webview_all_web: printing requires a same-origin iframe. Cross-origin documents must provide their own browser print action.',
+        );
+        return null;
+      }
+      window.callMethod<JSAny?>('print'.toJS);
+      return WebViewPrintJob(initialState: WebViewPrintState.requested);
+    } catch (error) {
+      debugPrint('webview_all_web: opening browser printing failed: $error');
+      return null;
+    }
+  }
+
+  @override
+  Future<WebViewBrowserCapabilities> getBrowserCapabilities() async {
+    var supportsFind = false;
+    if (_javaScriptMode == JavaScriptMode.unrestricted) {
+      try {
+        final window = _tryReadAccessibleContentWindow();
+        if (window != null) {
+          supportsFind = window
+              .getProperty<JSAny?>('find'.toJS)
+              .typeofEquals('function');
+        } else if (_hasIsolatedBridge && _webWebViewParams.iFrame.isConnected) {
+          await _isolatedBridgeReady!.future.timeout(
+            const Duration(seconds: 2),
+          );
+          final available = await runJavaScriptReturningResult(
+            'typeof window.find === "function"',
+          );
+          supportsFind = available == true || available == 'true';
+        }
+      } catch (_) {
+        // The browser may deny access or the document may have navigated.
+      }
+    }
+    return WebViewBrowserCapabilities(
+      fullscreenEvents: web.document.fullscreenEnabled,
+      printing: _tryReadAccessibleContentWindow() != null,
+      stopLoading: true,
+      navigationHistory: true,
+      historyNavigation: true,
+      historyIsEmulated: true,
+      findText: supportsFind,
+      findCaseSensitive: supportsFind,
+      findWithoutWrapping: supportsFind,
+      limitation:
+          'History covers controller-managed loads. Search and stopping the iframe itself require same-origin or plugin-controlled HTML; cross-origin frame loading remains controlled by the browser.',
+    );
+  }
+
+  @override
+  Future<void> stopLoading() async {
+    if (_nativeDisposal.isDisposed) return;
+    _navigationGeneration += 1;
+    _nativeDisposal.cancelNavigationPolicies();
+    if (_nativeDisposal.navigationRequest != null) {
+      _currentUrl = _pendingFetchPreviousUrl;
+      _navigationDelegate?.onUrlChange?.call(UrlChange(url: _currentUrl));
+    }
+    _abortNavigationFetch();
+    final window = _tryReadAccessibleContentWindow();
+    if (window != null) {
+      window.stop();
+    } else if (_hasIsolatedBridge &&
+        _isolatedBridgeReady?.isCompleted == true) {
+      await runJavaScript('window.stop();');
+    } else {
+      debugPrint(
+        'webview_all_web: pending plugin requests were cancelled; the browser does not expose stop() for this cross-origin or not-yet-ready iframe.',
+      );
+    }
+  }
+
+  @override
+  Future<WebViewNavigationHistory> getNavigationHistory() async =>
+      WebViewNavigationHistory(
+        currentIndex: _historyIndex,
+        items: _history.map((entry) => WebViewHistoryItem(url: entry.url)),
+      );
+
+  @override
+  Future<bool> goToHistoryIndex(int index) async {
+    if (index < 0 || index >= _history.length) return false;
+    if (index == _historyIndex) return true;
+    await _goToHistoryIndex(index);
+    return _historyIndex == index;
+  }
+
+  @override
+  Future<WebViewFindResult?> findText(
+    String text, {
+    bool forward = true,
+    bool caseSensitive = false,
+    bool wrapAround = true,
+  }) async {
+    if (!(await getBrowserCapabilities()).findText) {
+      debugPrint(
+        'webview_all_web: text search requires JavaScript and same-origin or plugin-controlled HTML.',
+      );
+      return null;
+    }
+    if (text.isEmpty) {
+      await clearFindMatches();
+      return const WebViewFindResult(matchFound: false);
+    }
+    return serializeTextSearch(() async {
+      try {
+        final window = _tryReadAccessibleContentWindow();
+        if (window != null) {
+          return WebViewFindResult(
+            matchFound: window.findTextInPage(
+              text,
+              caseSensitive,
+              !forward,
+              wrapAround,
+              false,
+              false,
+              false,
+            ),
+          );
+        }
+        final result = await runJavaScriptReturningResult(
+          'typeof window.find === "function" ? window.find(${jsonEncode(text)}, $caseSensitive, ${!forward}, $wrapAround, false, false, false) : null',
+        );
+        if (result == 'null') {
+          debugPrint(
+            'webview_all_web: this browser does not expose native text search.',
+          );
+          return null;
+        }
+        return WebViewFindResult(
+          matchFound: result == true || result == 'true',
+        );
+      } catch (error) {
+        debugPrint(
+          'webview_all_web: text search is unavailable in the current document: $error',
+        );
+        return null;
+      }
+    });
+  }
+
+  @override
+  Future<void> clearFindMatches() async {
+    if (!(await getBrowserCapabilities()).findText) {
+      debugPrint(
+        'webview_all_web: clearing text search requires same-origin or plugin-controlled HTML.',
+      );
+      return;
+    }
+    await serializeTextSearch(() async {
+      final window = _tryReadAccessibleContentWindow();
+      if (window != null) {
+        window.getSelection()?.removeAllRanges();
+      } else {
+        await runJavaScript('window.getSelection()?.removeAllRanges();');
+      }
+    });
+  }
+
   WebWebViewController(PlatformWebViewControllerCreationParams params)
     : super.implementation(
         params is WebWebViewControllerCreationParams
@@ -181,6 +433,11 @@ class WebWebViewController extends PlatformWebViewController {
                 params,
               ),
       ) {
+    if (params.mediaPlaybackPolicy != null) {
+      debugPrint(
+        'webview_all_web: per-view autoplay gesture configuration is unavailable; the engine retains its normal media playback policy.',
+      );
+    }
     final WeakReference<WebWebViewController> weakThis =
         WeakReference<WebWebViewController>(this);
     _customSandbox = _webWebViewParams.iFrame.getAttribute('sandbox');
@@ -276,12 +533,17 @@ class WebWebViewController extends PlatformWebViewController {
 
   @override
   Future<void> closeWebViewSession() async {
+    disposeJavaScriptHandlers();
     if (_nativeDisposal.isDisposed) return;
+    await exitFullscreen();
+    disposeBrowserLifecycleCallbacks();
     _downloadDelegateGeneration++;
     if (!_downloadDelegateCancelled.isCompleted) {
       _downloadDelegateCancelled.complete();
     }
     _downloadDelegate = null;
+    _webUserScripts.clear();
+    _javaScriptHandlerScripts.clear();
     _resetIsolatedBridge();
     _navigationDelegate = null;
     _finalizer.detach(this);
@@ -300,6 +562,9 @@ class WebWebViewController extends PlatformWebViewController {
   }
 
   int _navigationGeneration = 0;
+  int _nextUserScriptIdentifier = 0;
+  final Map<String, WebViewUserScript> _webUserScripts = {};
+  final Map<String, WebViewUserScript> _javaScriptHandlerScripts = {};
   bool _verticalScrollBarEnabled = true;
   bool _horizontalScrollBarEnabled = true;
   JavaScriptMode _javaScriptMode = JavaScriptMode.unrestricted;
@@ -777,6 +1042,8 @@ class WebWebViewController extends PlatformWebViewController {
   }
 
   String _prepareInlineHtml(String html) {
+    final bootstrap = _controlledJavaScriptBootstrap();
+    if (bootstrap.isNotEmpty) html = _injectIntoDocumentHead(html, bootstrap);
     if (_javaScriptMode == JavaScriptMode.unrestricted &&
         _currentSandboxAllowsScripts &&
         _currentSandboxCreatesOpaqueOrigin) {
@@ -1227,6 +1494,7 @@ class WebWebViewController extends PlatformWebViewController {
 
   @override
   Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
+    if (!params.world.isPage) return invokeAsyncJavaScriptInWorld(params);
     if (_javaScriptMode == JavaScriptMode.disabled) {
       throw StateError('JavaScript execution is disabled for this WebView.');
     }
@@ -1289,11 +1557,122 @@ class WebWebViewController extends PlatformWebViewController {
   }
 
   @override
+  Future<WebViewJavaScriptCapabilities> getJavaScriptCapabilities({
+    WebViewJavaScriptWorld world = WebViewJavaScriptWorld.page,
+  }) async => WebViewJavaScriptCapabilities(
+    supportsPromiseHandlers: _javaScriptMode == JavaScriptMode.unrestricted,
+    supportsTrustedOrigins: true,
+    supportsTrustedFrameInformation: true,
+    userScriptInjectionTimes: const {
+      WebViewUserScriptInjectionTime.documentEnd,
+    },
+    requiresControlledContent: true,
+    documentEndIsEmulated: true,
+    limitation:
+        'Web document-end scripts require HTML loaded by the plugin. Promise handlers require same-origin or plugin-controlled HTML; arbitrary cross-origin URLs and isolated worlds are unavailable.',
+  );
+
+  @override
   Future<bool> isUserScriptInjectionSupported(
-    WebViewUserScriptInjectionTime injectionTime,
+    WebViewUserScriptInjectionTime time,
+  ) async => time == WebViewUserScriptInjectionTime.documentEnd;
+
+  @override
+  Future<String> addUserScript(WebViewUserScript script) async {
+    if (_nativeDisposal.isDisposed) throw StateError('The WebView is closed.');
+    if (!script.world.isPage ||
+        script.injectionTime != WebViewUserScriptInjectionTime.documentEnd) {
+      throw UnsupportedError(
+        'Web supports document-end user scripts only in plugin-controlled HTML.',
+      );
+    }
+    if (!script.forMainFrameOnly) {
+      debugPrint(
+        'webview_all: Web user scripts apply only to the loaded HTML main document. Child frames cannot be injected reliably.',
+      );
+    }
+    final id = 'webview_all_web_script_${++_nextUserScriptIdentifier}';
+    _webUserScripts[id] = script;
+    debugPrint(
+      'webview_all: Web document-end scripts run only in HTML loaded by the plugin; ordinary URL loads cannot guarantee this injection timing.',
+    );
+    return id;
+  }
+
+  @override
+  Future<void> removeUserScript(String identifier) async {
+    _webUserScripts.remove(identifier);
+    _javaScriptHandlerScripts.remove(identifier);
+  }
+
+  @override
+  Future<void> removeAllUserScripts() async => _webUserScripts.clear();
+
+  @override
+  Future<String?> installJavaScriptBridgeScript(
+    WebViewUserScript script,
   ) async {
-    // Browser iframe APIs cannot guarantee execution before page scripts.
-    return false;
+    if (_nativeDisposal.isDisposed) throw StateError('The WebView is closed.');
+    final id = 'webview_all_web_bridge_${++_nextUserScriptIdentifier}';
+    _javaScriptHandlerScripts[id] = script;
+    try {
+      await _evaluateScriptInCurrentDocument(script.source);
+    } catch (_) {
+      _javaScriptHandlerScripts.remove(id);
+      rethrow;
+    }
+    return id;
+  }
+
+  @override
+  Future<void> runJavaScriptInWorld(
+    String source,
+    WebViewJavaScriptWorld world,
+  ) async {
+    if (!world.isPage) return super.runJavaScriptInWorld(source, world);
+    final window = _tryReadAccessibleContentWindow();
+    if (window != null) {
+      window.evaluateJavaScript(source);
+      return;
+    }
+    if (_hasIsolatedBridge) {
+      await _invokeIsolatedBridge(
+        'evaluate',
+        payload: {'script': source},
+        waitForDocumentLoad: false,
+      );
+    }
+  }
+
+  String _controlledJavaScriptBootstrap() {
+    if (_javaScriptHandlerScripts.isEmpty && _webUserScripts.isEmpty) return '';
+    if (_javaScriptMode != JavaScriptMode.unrestricted ||
+        !_currentSandboxAllowsScripts) {
+      return '';
+    }
+    final scripts = <String>[
+      for (final channel in _javaScriptChannels.values)
+        _javaScriptChannelScript(channel.name),
+      for (final script in _javaScriptHandlerScripts.values) script.source,
+      for (final script in _webUserScripts.values)
+        buildDocumentEndScript(
+          buildUserScriptSource(script, platformHandlesMainFrameOnly: true),
+        ),
+    ];
+    if (scripts.isEmpty) return '';
+    // Put the source in a JavaScript string, then create the script through the
+    // DOM. This preserves arbitrary source (including </script> and operators)
+    // without requiring unsafe-eval or letting HTML parse the source as markup.
+    final encoded = jsonEncode(scripts.join('\n'))
+        .replaceAll('<', r'\u003c')
+        .replaceAll('\u2028', r'\u2028')
+        .replaceAll('\u2029', r'\u2029');
+    return '''<script>(function() {
+      const script = document.createElement('script');
+      script.textContent = $encoded;
+      (document.head || document.documentElement).appendChild(script);
+      script.remove();
+    })();</script>''';
   }
 
   String _buildAsyncJavaScriptInvocation(JavaScriptInvocationParams params) {
@@ -1304,7 +1683,7 @@ class WebWebViewController extends PlatformWebViewController {
     return '''
 (async()=>{
   try {
-    const __arguments=${jsonEncode(params.arguments)};
+    const __arguments=JSON.parse(${jsonEncode(jsonEncode(params.arguments))});
     const value=await (async function($argumentNames){
 ${params.functionBody}
     })($argumentValues);
@@ -1674,6 +2053,9 @@ ${params.functionBody}
         'JavaScript channel "${channel.name}"',
         _javaScriptChannelScript(channel.name),
       );
+    }
+    for (final script in _javaScriptHandlerScripts.values) {
+      _installScriptBestEffort('JavaScript Promise bridge', script.source);
     }
   }
 
@@ -2224,9 +2606,14 @@ ${params.functionBody}
       return true;
     }
 
-    final NavigationDecision decision = await callback(
-      NavigationRequest(url: url, isMainFrame: true),
-    );
+    if (_nativeDisposal.isDisposed) return false;
+    final cancelled = _nativeDisposal.navigationPolicyCancelled.future;
+    final NavigationDecision decision = await Future.any([
+      Future.sync(
+        () => callback(NavigationRequest(url: url, isMainFrame: true)),
+      ),
+      cancelled.then((_) => NavigationDecision.prevent),
+    ]);
     return decision == NavigationDecision.navigate;
   }
 
@@ -2246,121 +2633,142 @@ ${params.functionBody}
 
     _beginNavigation(params.uri.toString());
 
-    final web.Response response;
+    _abortNavigationFetch();
+    final requestAbort = web.AbortController();
+    _nativeDisposal.navigationRequest = requestAbort;
+    _pendingFetchPreviousUrl = previousUrl;
     try {
-      response =
-          await _webWebViewParams.httpRequestFactory.request(
-                params.uri.toString(),
-                method: params.method.serialize(),
-                requestHeaders: params.headers,
-                sendData: params.body,
-              )
-              as web.Response;
-    } catch (error) {
-      if (generation == _navigationGeneration) {
-        _navigationDelegate?.onWebResourceError?.call(
-          WebResourceError(
-            errorCode: 0,
-            description: error.toString(),
-            errorType: WebResourceErrorType.connect,
-            isForMainFrame: true,
-            url: params.uri.toString(),
-          ),
-        );
+      final web.Response response;
+      try {
+        response =
+            await _webWebViewParams.httpRequestFactory.request(
+                  params.uri.toString(),
+                  method: params.method.serialize(),
+                  requestHeaders: params.headers,
+                  sendData: params.body,
+                  abortSignal: requestAbort.signal,
+                )
+                as web.Response;
+      } catch (error) {
+        if (generation == _navigationGeneration) {
+          _navigationDelegate?.onWebResourceError?.call(
+            WebResourceError(
+              errorCode: 0,
+              description: error.toString(),
+              errorType: WebResourceErrorType.connect,
+              isForMainFrame: true,
+              url: params.uri.toString(),
+            ),
+          );
+        }
+        rethrow;
       }
-      rethrow;
-    }
-    if (generation != _navigationGeneration) {
-      return;
-    }
-
-    final String requestedUrl = params.uri.toString();
-    final String responseUrl = response.url;
-    final Uri? parsedResponseUri = responseUrl.isEmpty
-        ? null
-        : Uri.tryParse(responseUrl);
-    final Uri effectiveUri =
-        parsedResponseUri != null && parsedResponseUri.hasScheme
-        ? parsedResponseUri
-        : params.uri;
-    final String effectiveUrl = effectiveUri.toString();
-    if (effectiveUrl != requestedUrl) {
-      final bool shouldFollowRedirect = await _shouldNavigate(effectiveUrl);
       if (generation != _navigationGeneration) {
         return;
       }
-      if (!shouldFollowRedirect) {
+
+      final String requestedUrl = params.uri.toString();
+      final String responseUrl = response.url;
+      final Uri? parsedResponseUri = responseUrl.isEmpty
+          ? null
+          : Uri.tryParse(responseUrl);
+      final Uri effectiveUri =
+          parsedResponseUri != null && parsedResponseUri.hasScheme
+          ? parsedResponseUri
+          : params.uri;
+      final String effectiveUrl = effectiveUri.toString();
+      if (effectiveUrl != requestedUrl) {
+        final bool shouldFollowRedirect = await _shouldNavigate(effectiveUrl);
+        if (generation != _navigationGeneration) {
+          return;
+        }
+        if (!shouldFollowRedirect) {
+          _currentUrl = previousUrl;
+          _navigationDelegate?.onUrlChange?.call(UrlChange(url: previousUrl));
+          return;
+        }
+      }
+
+      final Map<String, String> responseHeaders = _headersFromResponse(
+        response,
+      );
+      final String? contentTypeHeader = responseHeaders['content-type'];
+      final String header = contentTypeHeader ?? 'text/html';
+
+      final String? disposition = responseHeaders['content-disposition'];
+      if (response.status < 400 &&
+          disposition != null &&
+          disposition.split(';').first.trim().toLowerCase() == 'attachment') {
         _currentUrl = previousUrl;
         _navigationDelegate?.onUrlChange?.call(UrlChange(url: previousUrl));
+        if (identical(_nativeDisposal.navigationRequest, requestAbort)) {
+          _nativeDisposal.navigationRequest = null;
+          _pendingFetchPreviousUrl = null;
+        }
+        await _handleFetchedDownload(
+          response,
+          effectiveUrl,
+          responseHeaders,
+          generation,
+        );
         return;
       }
-    }
 
-    final Map<String, String> responseHeaders = _headersFromResponse(response);
-    final String? contentTypeHeader = responseHeaders['content-type'];
-    final String header = contentTypeHeader ?? 'text/html';
-
-    final String? disposition = responseHeaders['content-disposition'];
-    if (response.status < 400 &&
-        disposition != null &&
-        disposition.split(';').first.trim().toLowerCase() == 'attachment') {
-      _currentUrl = previousUrl;
-      _navigationDelegate?.onUrlChange?.call(UrlChange(url: previousUrl));
-      await _handleFetchedDownload(
-        response,
-        effectiveUrl,
-        responseHeaders,
-        generation,
-      );
-      return;
-    }
-
-    if (response.status >= 400) {
-      _navigationDelegate?.onHttpError?.call(
-        HttpResponseError(
-          request: WebWebResourceRequest._(
-            uri: params.uri,
-            method: params.method.serialize().toUpperCase(),
-            headers: params.headers,
-            isForMainFrame: true,
+      if (response.status >= 400) {
+        _navigationDelegate?.onHttpError?.call(
+          HttpResponseError(
+            request: WebWebResourceRequest._(
+              uri: params.uri,
+              method: params.method.serialize().toUpperCase(),
+              headers: params.headers,
+              isForMainFrame: true,
+            ),
+            response: WebWebResourceResponse._(
+              uri: effectiveUri,
+              statusCode: response.status,
+              headers: responseHeaders,
+              mimeType: _mimeTypeFromContentTypeHeader(contentTypeHeader),
+              reasonPhrase: response.statusText.isEmpty
+                  ? null
+                  : response.statusText,
+            ),
           ),
-          response: WebWebResourceResponse._(
-            uri: effectiveUri,
-            statusCode: response.status,
-            headers: responseHeaders,
-            mimeType: _mimeTypeFromContentTypeHeader(contentTypeHeader),
-            reasonPhrase: response.statusText.isEmpty
-                ? null
-                : response.statusText,
-          ),
-        ),
+        );
+      }
+
+      final ContentType contentType = ContentType.parse(header);
+      final Encoding encoding = Encoding.getByName(contentType.charset) ?? utf8;
+      final ByteBuffer responseBuffer =
+          (await response.arrayBuffer().toDart).toDart;
+      if (generation != _navigationGeneration) {
+        return;
+      }
+      final Uint8List responseBytes = responseBuffer.asUint8List();
+
+      final _XhrHistoryEntry entry = _XhrHistoryEntry(
+        url: effectiveUrl,
+        request: _copyLoadRequestParams(params),
+        responseBytes: responseBytes,
+        mimeType: contentType.mimeType ?? 'text/html',
+        encoding: encoding,
       );
-    }
-
-    final ContentType contentType = ContentType.parse(header);
-    final Encoding encoding = Encoding.getByName(contentType.charset) ?? utf8;
-    final ByteBuffer responseBuffer =
-        (await response.arrayBuffer().toDart).toDart;
-    if (generation != _navigationGeneration) {
-      return;
-    }
-    final Uint8List responseBytes = responseBuffer.asUint8List();
-
-    final _XhrHistoryEntry entry = _XhrHistoryEntry(
-      url: effectiveUrl,
-      request: _copyLoadRequestParams(params),
-      responseBytes: responseBytes,
-      mimeType: contentType.mimeType ?? 'text/html',
-      encoding: encoding,
-    );
-    _activateXhrEntry(entry, notifyNavigation: false);
-    if (effectiveUrl != requestedUrl) {
-      _navigationDelegate?.onUrlChange?.call(UrlChange(url: effectiveUrl));
-    }
-    if (updateHistory) {
-      _recordHistoryEntry(entry);
-    } else {
-      _replaceActiveHistoryEntry(entry);
+      _activateXhrEntry(entry, notifyNavigation: false);
+      if (effectiveUrl != requestedUrl) {
+        _navigationDelegate?.onUrlChange?.call(UrlChange(url: effectiveUrl));
+      }
+      if (updateHistory) {
+        _recordHistoryEntry(entry);
+      } else {
+        _replaceActiveHistoryEntry(entry);
+      }
+    } catch (_) {
+      if (generation != _navigationGeneration) return;
+      rethrow;
+    } finally {
+      if (identical(_nativeDisposal.navigationRequest, requestAbort)) {
+        _nativeDisposal.navigationRequest = null;
+        _pendingFetchPreviousUrl = null;
+      }
     }
   }
 
@@ -2740,6 +3148,8 @@ ${params.functionBody}
   }
 
   void _activateUrlEntry(_UrlHistoryEntry entry) {
+    _abortNavigationFetch();
+    cancelJavaScriptHandlerCalls();
     _beginNavigation(entry.url);
     _activeHistoryEntry = entry;
     _resetIsolatedBridge();
@@ -2751,6 +3161,8 @@ ${params.functionBody}
     _HtmlHistoryEntry entry, {
     bool notifyNavigation = true,
   }) {
+    _abortNavigationFetch();
+    cancelJavaScriptHandlerCalls();
     if (notifyNavigation) {
       _beginNavigation(entry.url);
     } else {
@@ -2765,6 +3177,8 @@ ${params.functionBody}
     _XhrHistoryEntry entry, {
     bool notifyNavigation = true,
   }) {
+    _abortNavigationFetch();
+    cancelJavaScriptHandlerCalls();
     if (notifyNavigation) {
       _beginNavigation(entry.url);
     } else {
@@ -2785,7 +3199,8 @@ ${params.functionBody}
         renderedBody = _injectIntoDocumentHead(
           responseBody,
           '${_baseElement(entry.url)}'
-          '${_isolatedBridgeBootstrap(_isolatedBridgeGeneration)}',
+          '${_isolatedBridgeBootstrap(_isolatedBridgeGeneration)}'
+          '${_controlledJavaScriptBootstrap()}',
         );
       } else {
         _resetIsolatedBridge();
@@ -3115,6 +3530,16 @@ class WebWebViewWidget extends PlatformWebViewWidget {
 }
 
 class _WebWebViewDisposal {
+  Completer<void> navigationPolicyCancelled = Completer<void>();
+  void cancelNavigationPolicies() {
+    if (!navigationPolicyCancelled.isCompleted) {
+      navigationPolicyCancelled.complete();
+    }
+    navigationPolicyCancelled = Completer<void>();
+  }
+
+  web.AbortController? navigationRequest;
+
   _WebWebViewDisposal({
     required this.iFrame,
     required this.messageEventListener,
@@ -3124,6 +3549,7 @@ class _WebWebViewDisposal {
 
   final web.HTMLIFrameElement iFrame;
   final web.EventListener messageEventListener;
+  web.EventListener? fullscreenEventListener;
   final StreamSubscription<web.Event> loadEventSubscription;
   final void Function() clearJavaScriptDialogBridge;
   web.EventListener? _scrollEventListener;
@@ -3178,6 +3604,16 @@ class _WebWebViewDisposal {
   }
 
   Future<void> _dispose() async {
+    if (fullscreenEventListener != null) {
+      web.document.removeEventListener(
+        'fullscreenchange',
+        fullscreenEventListener,
+      );
+      fullscreenEventListener = null;
+    }
+    cancelNavigationPolicies();
+    navigationRequest?.abort();
+    navigationRequest = null;
     for (final url in downloadObjectUrls) {
       web.URL.revokeObjectURL(url);
     }

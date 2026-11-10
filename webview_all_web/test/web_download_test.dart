@@ -42,6 +42,7 @@ void main() {
         method: anyNamed('method'),
         requestHeaders: anyNamed('requestHeaders'),
         sendData: anyNamed('sendData'),
+        abortSignal: anyNamed('abortSignal'),
       ),
     ).thenAnswer(
       (_) async => web.Response(
@@ -107,6 +108,7 @@ void main() {
           method: 'post',
           requestHeaders: {'Authorization': 'test'},
           sendData: body,
+          abortSignal: anyNamed('abortSignal'),
         ),
       ).called(1);
     },
@@ -159,6 +161,7 @@ void main() {
           method: 'post',
           requestHeaders: anyNamed('requestHeaders'),
           sendData: anyNamed('sendData'),
+          abortSignal: anyNamed('abortSignal'),
         ),
       ).called(2);
     },
@@ -283,6 +286,7 @@ void main() {
           method: anyNamed('method'),
           requestHeaders: anyNamed('requestHeaders'),
           sendData: anyNamed('sendData'),
+          abortSignal: anyNamed('abortSignal'),
         ),
       ).thenAnswer((_) async => response);
       final originalResults = <WebViewDownloadResult>[];

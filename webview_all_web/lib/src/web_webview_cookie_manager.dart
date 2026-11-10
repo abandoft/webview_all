@@ -13,6 +13,67 @@ class WebWebViewCookieManagerCreationParams
 }
 
 class WebWebViewCookieManager extends PlatformWebViewCookieManager {
+  String _decodeCookieValue(String value) {
+    try {
+      return Uri.decodeComponent(value);
+    } on ArgumentError {
+      return value;
+    }
+  }
+
+  @override
+  Future<WebViewCookieCapabilities>
+  getCapabilities() async => const WebViewCookieCapabilities(
+    deleteByIdentity: true,
+    limitation:
+        'Browser cookies are limited to the host document. HttpOnly cookies cannot be read, set or deleted; attributes are unavailable on reads.',
+  );
+
+  @override
+  Future<bool> deleteCookie({
+    required String name,
+    required String domain,
+    String path = '/',
+  }) async {
+    final cookie = WebViewCookie(
+      name: name,
+      value: '',
+      domain: domain,
+      path: path,
+      expires: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      isSecure: name.startsWith('__Secure-') || name.startsWith('__Host-')
+          ? true
+          : null,
+    );
+    if (domain.isNotEmpty &&
+        !_domainMatchesHost(domain, _currentDocumentUri.host)) {
+      debugPrint(
+        'webview_all_web: deleting cookies outside the host document domain is unavailable.',
+      );
+      return false;
+    }
+    if (name.startsWith('__Http-') || name.startsWith('__Host-Http-')) {
+      debugPrint(
+        'webview_all_web: HttpOnly-prefixed cookies cannot be deleted through document.cookie.',
+      );
+      return false;
+    }
+    if (domain.isNotEmpty &&
+        !domain.startsWith('.') &&
+        domain.toLowerCase() != _currentDocumentUri.host.toLowerCase()) {
+      debugPrint(
+        'webview_all_web: a host-only cookie can only be deleted from its own host. Use the stored leading-dot domain for a domain cookie.',
+      );
+      return false;
+    }
+    cookie.validate(allowEmptyDomain: true);
+    web.document.cookie = cookie.toSetCookieHeader(
+      encodeName: false,
+      includeDomain: domain.startsWith('.'),
+    );
+    return true;
+  }
+
   WebWebViewCookieManager(PlatformWebViewCookieManagerCreationParams params)
     : super.implementation(
         params is WebWebViewCookieManagerCreationParams
@@ -57,9 +118,13 @@ class WebWebViewCookieManager extends PlatformWebViewCookieManager {
 
   @override
   Future<void> setCookie(WebViewCookie cookie) async {
-    _validateCookieName(cookie.name);
-    _validateCookieAttribute('domain', cookie.domain);
-    _validateCookieAttribute('path', cookie.path);
+    cookie.validate(allowEmptyDomain: true);
+    if (cookie.isHttpOnly == true) {
+      debugPrint(
+        'webview_all_web: the browser cannot create HttpOnly cookies from Dart; the cookie was not set.',
+      );
+      return;
+    }
 
     if (cookie.path.isNotEmpty && !cookie.path.startsWith('/')) {
       throw ArgumentError.value(
@@ -77,18 +142,15 @@ class WebWebViewCookieManager extends PlatformWebViewCookieManager {
       );
     }
 
-    final StringBuffer buffer = StringBuffer(
-      '${cookie.name}=${Uri.encodeComponent(cookie.value)}',
+    web.document.cookie = cookie.toSetCookieHeader(
+      encodeName: false,
+      includeDomain:
+          cookie.domain.isNotEmpty &&
+          !(cookie.name.startsWith('__Host-') &&
+              !cookie.domain.startsWith('.') &&
+              cookie.domain.toLowerCase() ==
+                  _currentDocumentUri.host.toLowerCase()),
     );
-    if (cookie.domain.isNotEmpty) {
-      buffer.write('; domain=${cookie.domain}');
-    }
-    if (cookie.path.isNotEmpty) {
-      buffer.write('; path=${cookie.path}');
-    } else {
-      buffer.write('; path=/');
-    }
-    web.document.cookie = buffer.toString();
   }
 
   @override
@@ -177,6 +239,9 @@ class WebWebViewCookieManager extends PlatformWebViewCookieManager {
     if (domain != null) {
       cookie.write('; domain=$domain');
     }
+    if (name.startsWith('__Secure-') || name.startsWith('__Host-')) {
+      cookie.write('; Secure');
+    }
     web.document.cookie = cookie.toString();
   }
 
@@ -196,41 +261,5 @@ class WebWebViewCookieManager extends PlatformWebViewCookieManager {
     return requested.scheme.toLowerCase() == current.scheme.toLowerCase() &&
         requested.host.toLowerCase() == current.host.toLowerCase() &&
         requestedPath == currentPath;
-  }
-
-  void _validateCookieName(String name) {
-    if (name.isEmpty) {
-      throw ArgumentError.value(name, 'cookie.name', 'Cookie name is empty.');
-    }
-
-    if (RegExp(r'[\x00-\x20\x7F()<>@,;:\\"/\[\]?={}]+').hasMatch(name)) {
-      throw ArgumentError.value(
-        name,
-        'cookie.name',
-        'Cookie name contains characters rejected by browsers.',
-      );
-    }
-  }
-
-  void _validateCookieAttribute(String field, String value) {
-    if (value.isEmpty) {
-      return;
-    }
-
-    if (RegExp(r'[\x00-\x1F\x7F;]').hasMatch(value)) {
-      throw ArgumentError.value(
-        value,
-        'cookie.$field',
-        'Cookie $field contains characters rejected by browsers.',
-      );
-    }
-  }
-
-  String _decodeCookieValue(String value) {
-    try {
-      return Uri.decodeComponent(value);
-    } on ArgumentError {
-      return value;
-    }
   }
 }

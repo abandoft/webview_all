@@ -36,6 +36,38 @@ void main() {
 
   group('WebWebViewController', () {
     test(
+      'fullscreen delegation preserves iframe policy and safely ignores unrelated UI',
+      () async {
+        final params = WebWebViewControllerCreationParams(
+          iFrameAllow: 'autoplay',
+          iFrameAttributes: {'allowfullscreen': null},
+        );
+        final controller = WebWebViewController(params);
+        var entered = 0;
+        var exited = 0;
+        await controller.setFullscreenDelegate(
+          WebViewFullscreenDelegate(
+            onEnter: (_) {
+              entered++;
+            },
+            onExit: () {
+              exited++;
+            },
+          ),
+        );
+        expect(params.iFrame.getAttribute('allow'), 'autoplay');
+        expect(params.iFrame.hasAttribute('allowfullscreen'), isFalse);
+        expect(await controller.exitFullscreen(), isFalse);
+        await controller.setFullscreenDelegate(null);
+        await controller.closeWebViewSession();
+        expect(entered, 0);
+        expect(exited, 0);
+        await controller.setOnProcessFailed(
+          (_) => fail('Browsers do not expose process failures.'),
+        );
+      },
+    );
+    test(
       'unsupported application resources log without interrupting the app',
       () async {
         final controller = WebWebViewController(
@@ -728,6 +760,7 @@ void main() {
             method: anyNamed('method'),
             requestHeaders: anyNamed('requestHeaders'),
             sendData: anyNamed('sendData'),
+            abortSignal: anyNamed('abortSignal'),
           ),
         ).thenThrow(
           StateError('The `request` method should not have been called.'),
@@ -766,6 +799,7 @@ void main() {
             method: anyNamed('method'),
             requestHeaders: anyNamed('requestHeaders'),
             sendData: anyNamed('sendData'),
+            abortSignal: anyNamed('abortSignal'),
           ),
         ).thenAnswer((_) => Future<web.Response>.value(fakeResponse));
 
@@ -784,6 +818,7 @@ void main() {
             method: 'post',
             requestHeaders: <String, String>{'Foo': 'Bar'},
             sendData: Uint8List.fromList('test body'.codeUnits),
+            abortSignal: anyNamed('abortSignal'),
           ),
         );
 
@@ -820,6 +855,7 @@ void main() {
             method: anyNamed('method'),
             requestHeaders: anyNamed('requestHeaders'),
             sendData: anyNamed('sendData'),
+            abortSignal: anyNamed('abortSignal'),
           ),
         ).thenAnswer((_) async => fakeResponse);
 
@@ -873,6 +909,7 @@ void main() {
             method: anyNamed('method'),
             requestHeaders: anyNamed('requestHeaders'),
             sendData: anyNamed('sendData'),
+            abortSignal: anyNamed('abortSignal'),
           ),
         ).thenAnswer((_) async => fakeResponse);
 
@@ -919,6 +956,7 @@ void main() {
             method: anyNamed('method'),
             requestHeaders: anyNamed('requestHeaders'),
             sendData: anyNamed('sendData'),
+            abortSignal: anyNamed('abortSignal'),
           ),
         ).thenAnswer((_) async => response);
         await delegate.setOnNavigationRequest(
@@ -976,6 +1014,7 @@ void main() {
             method: anyNamed('method'),
             requestHeaders: anyNamed('requestHeaders'),
             sendData: anyNamed('sendData'),
+            abortSignal: anyNamed('abortSignal'),
           ),
         ).thenAnswer((_) => Future<web.Response>.value(fakeResponse));
 
@@ -1040,6 +1079,7 @@ void main() {
             method: anyNamed('method'),
             requestHeaders: anyNamed('requestHeaders'),
             sendData: anyNamed('sendData'),
+            abortSignal: anyNamed('abortSignal'),
           ),
         ).thenAnswer((_) => Future<web.Response>.value(fakeResponse));
 
@@ -1083,6 +1123,7 @@ void main() {
             method: anyNamed('method'),
             requestHeaders: anyNamed('requestHeaders'),
             sendData: anyNamed('sendData'),
+            abortSignal: anyNamed('abortSignal'),
           ),
         ).thenAnswer((_) => Future<web.Response>.value(fakeResponse));
 
@@ -1139,6 +1180,7 @@ void main() {
               method: anyNamed('method'),
               requestHeaders: anyNamed('requestHeaders'),
               sendData: anyNamed('sendData'),
+              abortSignal: anyNamed('abortSignal'),
             ),
           ).thenAnswer((_) => Future<web.Response>.value(fakeResponse));
 
@@ -1211,6 +1253,7 @@ void main() {
             method: anyNamed('method'),
             requestHeaders: anyNamed('requestHeaders'),
             sendData: anyNamed('sendData'),
+            abortSignal: anyNamed('abortSignal'),
           ),
         ).thenAnswer((_) => Future<web.Response>.value(fakeResponse));
 
@@ -1254,6 +1297,7 @@ void main() {
               method: anyNamed('method'),
               requestHeaders: anyNamed('requestHeaders'),
               sendData: anyNamed('sendData'),
+              abortSignal: anyNamed('abortSignal'),
             ),
           ).thenThrow(StateError('network down'));
 
@@ -1329,6 +1373,7 @@ void main() {
               method: anyNamed('method'),
               requestHeaders: anyNamed('requestHeaders'),
               sendData: anyNamed('sendData'),
+              abortSignal: anyNamed('abortSignal'),
             ),
           );
         },
@@ -1399,6 +1444,7 @@ void main() {
               method: anyNamed('method'),
               requestHeaders: anyNamed('requestHeaders'),
               sendData: anyNamed('sendData'),
+              abortSignal: anyNamed('abortSignal'),
             ),
           ).thenAnswer((_) async => response);
 
@@ -1426,6 +1472,7 @@ void main() {
               method: 'post',
               requestHeaders: const <String, String>{'X-Test': 'history'},
               sendData: anyNamed('sendData'),
+              abortSignal: anyNamed('abortSignal'),
             ),
           ).called(1);
         },
@@ -1483,6 +1530,7 @@ void main() {
             method: anyNamed('method'),
             requestHeaders: anyNamed('requestHeaders'),
             sendData: anyNamed('sendData'),
+            abortSignal: anyNamed('abortSignal'),
           ),
         ).thenAnswer(
           (_) async => web.Response(
@@ -1534,6 +1582,7 @@ void main() {
               method: anyNamed('method'),
               requestHeaders: anyNamed('requestHeaders'),
               sendData: anyNamed('sendData'),
+              abortSignal: anyNamed('abortSignal'),
             ),
           ).thenAnswer((Invocation invocation) {
             return invocation.positionalArguments.single ==
@@ -2960,6 +3009,7 @@ Future<void> _attachAndLoadReloadableHtml(
         method: anyNamed('method'),
         requestHeaders: anyNamed('requestHeaders'),
         sendData: anyNamed('sendData'),
+        abortSignal: anyNamed('abortSignal'),
       ),
     ).thenAnswer(
       (_) async => web.Response(

@@ -72,6 +72,7 @@ class HttpRequestFactory {
     String? mimeType,
     Map<String, String>? requestHeaders,
     Uint8List? sendData,
+    web.AbortSignal? abortSignal,
   }) async {
     final headers = <String, String>{
       if (mimeType != null) 'content-type': mimeType,
@@ -82,6 +83,7 @@ class HttpRequestFactory {
           url.toJS,
           web.RequestInit(
             method: method,
+            signal: abortSignal,
             body: sendData?.toJS,
             credentials: withCredentials ? 'include' : 'same-origin',
             headers: headers.jsify()! as web.HeadersInit,

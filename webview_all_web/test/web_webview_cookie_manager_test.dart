@@ -14,6 +14,32 @@ void main() {
     });
 
     test(
+      'deletes a known host-only cookie without changing its domain scope',
+      () async {
+        final name = 'host_delete_${DateTime.now().microsecondsSinceEpoch}';
+        await manager.setCookie(
+          WebViewCookie(name: name, value: 'host', domain: '', path: '/'),
+        );
+        expect(web.document.cookie, contains('$name=host'));
+        expect(
+          await manager.deleteCookie(
+            name: name,
+            domain: web.window.location.hostname,
+          ),
+          isTrue,
+        );
+        expect(web.document.cookie, isNot(contains('$name=')));
+        expect(
+          await manager.deleteCookie(
+            name: '__Http-unsupported',
+            domain: web.window.location.hostname,
+          ),
+          isFalse,
+        );
+      },
+    );
+
+    test(
       'sets and reads visible cookies for the current browser origin',
       () async {
         final String name =
