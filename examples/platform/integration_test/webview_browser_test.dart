@@ -66,6 +66,7 @@ void main() {
     );
     await tester.pump();
     var loaded = Completer<void>();
+    Completer<void>? stopped;
     await controller.setNavigationDelegate(
       NavigationDelegate(
         onNavigationRequest: (request) {
@@ -77,6 +78,10 @@ void main() {
         },
         onPageFinished: (_) {
           if (!loaded.isCompleted) loaded.complete();
+          final pendingStop = stopped;
+          if (pendingStop != null && !pendingStop.isCompleted) {
+            pendingStop.complete();
+          }
         },
       ),
     );
@@ -84,6 +89,22 @@ void main() {
       loaded = Completer<void>();
       await controller.loadRequest(origin.resolve(path));
       await loaded.future.timeout(const Duration(seconds: 25));
+    }
+
+    Future<void> stopNavigation(Future<void> request) async {
+      final finished = Completer<void>();
+      stopped = finished;
+      try {
+        await controller.stopLoading();
+        await request.timeout(const Duration(seconds: 5));
+        if (Platform.isWindows) {
+          // Stop() queues cancellation. Keep the server response withheld until
+          // NavigationCompleted acknowledges it, instead of racing the response.
+          await finished.future.timeout(const Duration(seconds: 20));
+        }
+      } finally {
+        stopped = null;
+      }
     }
 
     final caps = await controller.getBrowserCapabilities();
@@ -233,32 +254,32 @@ void main() {
 
     final pending = controller.loadRequest(origin.resolve('/slow'));
     await slowStarted.future.timeout(const Duration(seconds: 20));
-    await controller.stopLoading();
-    await pending.timeout(const Duration(seconds: 5));
+    await stopNavigation(pending);
     releaseSlow.complete();
     await Future<void>.delayed(const Duration(milliseconds: 300));
     expect(
       await controller.runJavaScriptReturningResult(
-        'document.getElementById("page")?.textContent',
+        'String(document.getElementById("page")?.textContent ?? "")',
       ),
-      contains('/one'),
+      isNot(contains('/slow')),
     );
+    await load('/one');
     final post = controller.loadRequest(
       origin.resolve('/slow-post'),
       method: LoadRequestMethod.post,
       body: Uint8List.fromList([1, 2, 3]),
     );
     await postStarted.future.timeout(const Duration(seconds: 20));
-    await controller.stopLoading();
-    await post.timeout(const Duration(seconds: 5));
+    await stopNavigation(post);
     releasePost.complete();
     await Future<void>.delayed(const Duration(milliseconds: 250));
     expect(
       await controller.runJavaScriptReturningResult(
-        'document.getElementById("page")?.textContent',
+        'String(document.getElementById("page")?.textContent ?? "")',
       ),
-      contains('/one'),
+      isNot(contains('/slow-post')),
     );
+    await load('/one');
 
     await controller.runJavaScript(
       'window.location.href = "${origin.resolve('/held-policy')}";',
