@@ -59,6 +59,7 @@ jobs:
         working-directory: examples/platform
         run: flutter test integration_test/webview_environment_test.dart -d windows
 
+      # Includes scroll callbacks after repeated document.open rewrites.
       - name: Run Windows integration tests
         if: matrix.flutter == '3.44.x'
         working-directory: examples/platform
@@ -110,13 +111,6 @@ jobs:
         if: matrix.flutter == '3.44.x'
         working-directory: examples/platform
         run: flutter test integration_test/webview_resource_test.dart -d windows
-
-      - name: Test WebView2 scrolling after document rewrites
-        if: matrix.flutter == '3.44.x'
-        shell: powershell
-        run: |
-          $sdk = (Resolve-Path 'examples/platform/build/windows/x64/packages/Microsoft.Web.WebView2').Path
-          & ./webview_all_windows/test/scroll_document_rewrite_test.ps1 -WebView2Sdk $sdk
 
       - name: Test profiles, navigation state and page tools
         if: matrix.flutter == '3.44.x'
