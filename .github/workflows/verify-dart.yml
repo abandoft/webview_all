@@ -45,6 +45,13 @@ jobs:
       - name: Verify generated channel namespaces
         run: python3 tool/normalize_pigeon_namespaces.py --check all
 
+      - name: Test OHOS native logic
+        if: matrix.flutter == '3.44.x'
+        working-directory: webview_all_ohos
+        run: |
+          npm install --prefix "$RUNNER_TEMP/webview-ohos-tests" --no-save --ignore-scripts --no-audit --no-fund typescript@5.6.3
+          NODE_PATH="$RUNNER_TEMP/webview-ohos-tests/node_modules" node --test test/*.cjs test/*.mjs
+
       - name: Analyze and test Dart packages
         shell: bash
         run: |
@@ -106,3 +113,10 @@ jobs:
             )
             echo "::endgroup::"
           done
+
+      - name: Verify packaged dependencies in a fresh hosted consumer
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/webview-package-verification"
+          "$RUNNER_TEMP/webview-package-verification/bin/pip" install --disable-pip-version-check PyYAML==6.0.3
+          "$RUNNER_TEMP/webview-package-verification/bin/python" tool/verify_package_bundle.py
