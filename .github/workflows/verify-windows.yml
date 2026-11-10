@@ -74,6 +74,38 @@ jobs:
         working-directory: examples/platform
         run: flutter test integration_test/webview_download_test.dart -d windows
 
+      - name: Test JavaScript handlers and isolated worlds
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_javascript_test.dart -d windows
+
+      - name: Test native history, text search and cookies
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_browser_test.dart -d windows
+
+      - name: Test page exports and selective website-data clearing
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_capture_data_test.dart -d windows
+
+      - name: Test fullscreen and renderer recovery
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: |
+          flutter test integration_test/webview_fullscreen_test.dart -d windows
+          flutter test integration_test/webview_process_test.dart -d windows
+
+      - name: Test native child-window attachment
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_new_window_test.dart -d windows
+
       - name: Test application resource URLs and byte ranges
         if: matrix.flutter == '3.44.x'
         working-directory: examples/platform
@@ -85,3 +117,17 @@ jobs:
         run: |
           $sdk = (Resolve-Path 'examples/platform/build/windows/x64/packages/Microsoft.Web.WebView2').Path
           & ./webview_all_windows/test/scroll_document_rewrite_test.ps1 -WebView2Sdk $sdk
+
+      - name: Test profiles, navigation state and page tools
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: |
+          flutter test integration_test/webview_advanced_browser_test.dart -d windows
+          flutter test integration_test/webview_profile_management_test.dart -d windows
+
+      - name: Test native rules, request decisions and custom schemes
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_network_test.dart -d windows

@@ -81,6 +81,30 @@ jobs:
           xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
             flutter test integration_test/webview_session_test.dart -d linux
 
+      - name: Test JavaScript handlers and isolated worlds
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 flutter test integration_test/webview_javascript_test.dart -d linux
+
+      - name: Test native history, text search and cookies
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 flutter test integration_test/webview_browser_test.dart -d linux
+
+      - name: Test native child-window attachment
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 flutter test integration_test/webview_new_window_test.dart -d linux
+
+      - name: Test page exports and selective website-data clearing
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 flutter test integration_test/webview_capture_data_test.dart -d linux
+
       - name: Test application resource URLs, ranges and streaming
         if: matrix.flutter == '3.44.x'
         working-directory: examples/platform
@@ -103,3 +127,17 @@ jobs:
         run: |
           xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
             flutter test integration_test/webview_download_test.dart -d linux
+
+      - name: Test profiles, navigation state and page tools
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: |
+          xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 flutter test integration_test/webview_advanced_browser_test.dart -d linux
+          xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 flutter test integration_test/webview_profile_management_test.dart -d linux
+
+      - name: Test native rules, request decisions and custom schemes
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 flutter test integration_test/webview_network_test.dart -d linux
