@@ -24,6 +24,11 @@ public class WebViewClientProxyApi extends PigeonApiWebViewClient {
   /** Implementation of {@link WebViewClient} that passes arguments of callback methods to Dart. */
   public static class WebViewClientImpl extends WebViewClient {
     @Override
+    @androidx.annotation.RequiresApi(26)
+    public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+      return BrowserOperations.rendererGone(view, detail);
+    }
+    @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
       return ResourceBridge.intercept(view, request);
     }
@@ -42,6 +47,8 @@ public class WebViewClientProxyApi extends PigeonApiWebViewClient {
 
     @Override
     public void onPageStarted(@NonNull WebView view, @NonNull String url, @NonNull Bitmap favicon) {
+      BrowserOperations.markNavigation(view);
+      WebViewProxyApi.resetFindState(view);
       api.getPigeonRegistrar()
           .runOnMainThread(() -> api.onPageStarted(this, view, url, reply -> null));
     }

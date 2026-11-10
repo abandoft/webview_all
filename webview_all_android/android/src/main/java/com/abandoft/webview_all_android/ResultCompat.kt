@@ -20,6 +20,12 @@ class ResultCompat<T>(val result: Result<T>) {
 
   companion object {
     @JvmStatic
+    fun <T> failure(error: Throwable, callback: Any) {
+      val castedCallback = callback as (Result<T>) -> Unit
+      castedCallback(Result.failure(error))
+    }
+
+    @JvmStatic
     fun <T> success(value: T, callback: Any) {
       val castedCallback: (Result<T>) -> Unit = callback as (Result<T>) -> Unit
       castedCallback(Result.success(value))

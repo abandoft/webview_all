@@ -20,6 +20,7 @@ public class WebviewAllAndroidPlugin implements FlutterPlugin, ActivityAware {
 
   private FlutterPluginBinding pluginBinding;
   private ProxyApiRegistrar proxyApiRegistrar;
+  private BrowserOperations browserOperations;
   private ResourceBridge.Registration resourceRegistration;
 
   /**
@@ -48,12 +49,17 @@ public class WebviewAllAndroidPlugin implements FlutterPlugin, ActivityAware {
             VIEW_TYPE, new FlutterViewFactory(proxyApiRegistrar.getInstanceManager()));
 
     proxyApiRegistrar.setUp();
+    browserOperations = new BrowserOperations(proxyApiRegistrar, binding.getBinaryMessenger());
     resourceRegistration =
         new ResourceBridge.Registration(proxyApiRegistrar, binding.getBinaryMessenger());
   }
 
   @Override
   public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+    if (browserOperations != null) {
+      browserOperations.close();
+      browserOperations = null;
+    }
     if (resourceRegistration != null) {
       resourceRegistration.close();
       resourceRegistration = null;

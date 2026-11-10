@@ -18,6 +18,11 @@ import kotlin.jvm.functions.Function1;
  * Dart instance or handle method calls on the associated native class or an instance of the class.
  */
 public class CookieManagerProxyApi extends PigeonApiCookieManager {
+  @Override public CookieManager forProfile(@NonNull String name) {
+    if (!name.matches("[A-Za-z0-9_-]{1,64}") || !androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.MULTI_PROFILE))
+      throw new UnsupportedOperationException("Named-profile cookies are unavailable.");
+    return androidx.webkit.ProfileStore.getInstance().getOrCreateProfile("webview_all_" + name).getCookieManager();
+  }
   public CookieManagerProxyApi(@NonNull ProxyApiRegistrar pigeonRegistrar) {
     super(pigeonRegistrar);
   }
@@ -56,5 +61,18 @@ public class CookieManagerProxyApi extends PigeonApiCookieManager {
   @Override
   public @NonNull String getCookies(@NonNull CookieManager pigeon_instance, @NonNull String url) {
     return pigeon_instance.getCookie(url);
+  }
+
+  @Override
+  public boolean supportsCookieInfo(@NonNull CookieManager manager) {
+    return androidx.webkit.WebViewFeature.isFeatureSupported(
+        androidx.webkit.WebViewFeature.GET_COOKIE_INFO);
+  }
+
+  @Override
+  public java.util.List<String> getCookieInfo(
+      @NonNull CookieManager manager, @NonNull String url) {
+    if (!supportsCookieInfo(manager)) return null;
+    return androidx.webkit.CookieManagerCompat.getCookieInfo(manager, url);
   }
 }

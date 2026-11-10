@@ -81,6 +81,30 @@ void main() {
       expect(result.failures.values, everyElement(isNot(contains('\n'))));
     },
   );
+
+  test(
+    'selective storage clearing never invokes broad WebStorage deletion',
+    () async {
+      final storage = _FakeWebStorage(modernSupported: true);
+      final cookies = _FakeCookieManager();
+      final view = _FakeWebView();
+      final manager = AndroidWebViewDataManager(
+        const PlatformWebViewDataManagerCreationParams(),
+        webStorage: storage,
+        cookieManager: cookies,
+        webViewFactory: () => view,
+      );
+      final result = await manager.clearWebsiteData(
+        dataTypes: {WebViewDataType.cookies, WebViewDataType.localStorage},
+      );
+      expect(result.clearedDataTypes, {WebViewDataType.cookies});
+      expect(result.unsupportedDataTypes, {WebViewDataType.localStorage});
+      expect(cookies.calls, 1);
+      expect(storage.modernCalls, 0);
+      expect(storage.legacyCalls, 0);
+      expect(view.clearCalls, 0);
+    },
+  );
 }
 
 // Mutable counters make native call assertions explicit.

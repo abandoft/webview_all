@@ -288,6 +288,7 @@ abstract class ConsoleMessage {
   ),
 )
 abstract class CookieManager {
+  CookieManager.forProfile(String name);
   @static
   late CookieManager instance;
 
@@ -309,6 +310,11 @@ abstract class CookieManager {
   ///
   /// Note: Any cookies set with the "Partitioned" attribute will only be returned for the top-level partition of url.
   String? getCookies(String url);
+
+  bool supportsCookieInfo();
+
+  /// Canonical Set-Cookie entries, or null when the provider lacks this API.
+  List<String>? getCookieInfo(String url);
 }
 
 /// A View that displays web pages.
@@ -318,7 +324,7 @@ abstract class CookieManager {
   kotlinOptions: KotlinProxyApiOptions(fullClassName: 'android.webkit.WebView'),
 )
 abstract class WebView extends View {
-  WebView();
+  WebView({String? profileName, List<String>? customSchemes});
 
   /// This is called in response to an internal scroll in this view (i.e., the
   /// view scrolled its own contents).
@@ -366,6 +372,14 @@ abstract class WebView extends View {
   /// Reloads the current URL.
   void reload();
 
+  void stopLoading();
+  Map<String, Object?> getNavigationHistory();
+  bool goToHistoryIndex(int index);
+
+  @async
+  Map<String, Object?>? findText(String text, bool forward);
+  void clearFindMatches();
+
   /// Clears the resource cache.
   void clearCache(bool includeDiskFiles);
 
@@ -376,6 +390,22 @@ abstract class WebView extends View {
 
   /// Whether the installed WebView supports document-start script injection.
   bool isDocumentStartJavaScriptSupported();
+
+  bool isJavaScriptWorldSupported();
+
+  bool isJavaScriptMessageMetadataSupported();
+
+  void addUserJavaScript(
+    String identifier,
+    String source,
+    bool documentEnd,
+    String? worldName,
+  );
+
+  @async
+  String? evaluateJavaScriptInWorld(String source, String worldName);
+
+  void addJavaScriptChannelInWorld(JavaScriptChannel channel, String worldName);
 
   /// Adds a script that runs before the document begins loading.
   void addDocumentStartJavaScript(String identifier, String source);
@@ -650,6 +680,7 @@ abstract class DownloadListener {
   ),
 )
 abstract class WebChromeClient {
+  void setPopupWindowPolicy(int policy);
   WebChromeClient();
 
   /// Tell the host application the current progress of loading a page.
@@ -826,6 +857,7 @@ abstract class FlutterAssetManager {
   ),
 )
 abstract class WebStorage {
+  WebStorage.forProfile(String name);
   @static
   late WebStorage instance;
 
@@ -838,6 +870,9 @@ abstract class WebStorage {
   /// the operation.
   @async
   bool deleteBrowsingData();
+
+  @async
+  String? deleteBrowsingDataForSite(String site);
 }
 
 /// Parameters used in the `WebChromeClient.onShowFileChooser` method.

@@ -4,8 +4,10 @@
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'dart:async' as _i5;
+import 'dart:typed_data' as _i8;
 import 'dart:ui' as _i4;
 
+import 'package:flutter/widgets.dart' as _i9;
 import 'package:mockito/mockito.dart' as _i1;
 import 'package:mockito/src/dummies.dart' as _i7;
 import 'package:webview_all_android/src/android_webkit.g.dart' as _i2;
@@ -47,13 +49,70 @@ class _FakePlatformWebViewControllerCreationParams_2 extends _i1.SmartFake
   ) : super(parent, parentInvocation);
 }
 
-class _FakeObject_3 extends _i1.SmartFake implements Object {
-  _FakeObject_3(Object parent, Invocation parentInvocation)
+class _FakeWebViewResourceCapabilities_3 extends _i1.SmartFake
+    implements _i3.WebViewResourceCapabilities {
+  _FakeWebViewResourceCapabilities_3(Object parent, Invocation parentInvocation)
     : super(parent, parentInvocation);
 }
 
-class _FakeOffset_4 extends _i1.SmartFake implements _i4.Offset {
-  _FakeOffset_4(Object parent, Invocation parentInvocation)
+class _FakeWebViewResourceBridge_4 extends _i1.SmartFake
+    implements _i3.WebViewResourceBridge {
+  _FakeWebViewResourceBridge_4(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeWebViewNetworkCapabilities_5 extends _i1.SmartFake
+    implements _i3.WebViewNetworkCapabilities {
+  _FakeWebViewNetworkCapabilities_5(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeWebViewBrowserCapabilities_6 extends _i1.SmartFake
+    implements _i3.WebViewBrowserCapabilities {
+  _FakeWebViewBrowserCapabilities_6(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeWebViewNavigationHistory_7 extends _i1.SmartFake
+    implements _i3.WebViewNavigationHistory {
+  _FakeWebViewNavigationHistory_7(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeObject_8 extends _i1.SmartFake implements Object {
+  _FakeObject_8(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakePlatformWebViewCookieManager_9 extends _i1.SmartFake
+    implements _i3.PlatformWebViewCookieManager {
+  _FakePlatformWebViewCookieManager_9(
+    Object parent,
+    Invocation parentInvocation,
+  ) : super(parent, parentInvocation);
+}
+
+class _FakePlatformWebViewDataManager_10 extends _i1.SmartFake
+    implements _i3.PlatformWebViewDataManager {
+  _FakePlatformWebViewDataManager_10(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeWebViewJavaScriptCapabilities_11 extends _i1.SmartFake
+    implements _i3.WebViewJavaScriptCapabilities {
+  _FakeWebViewJavaScriptCapabilities_11(
+    Object parent,
+    Invocation parentInvocation,
+  ) : super(parent, parentInvocation);
+}
+
+class _FakeOffset_12 extends _i1.SmartFake implements _i4.Offset {
+  _FakeOffset_12(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
+class _FakeFuture_13<T1> extends _i1.SmartFake implements _i5.Future<T1> {
+  _FakeFuture_13(Object parent, Invocation parentInvocation)
     : super(parent, parentInvocation);
 }
 
@@ -114,6 +173,22 @@ class MockCookieManager extends _i1.Mock implements _i2.CookieManager {
           as _i5.Future<String?>);
 
   @override
+  _i5.Future<bool> supportsCookieInfo() =>
+      (super.noSuchMethod(
+            Invocation.method(#supportsCookieInfo, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<List<String>?> getCookieInfo(String? url) =>
+      (super.noSuchMethod(
+            Invocation.method(#getCookieInfo, [url]),
+            returnValue: _i5.Future<List<String>?>.value(),
+          )
+          as _i5.Future<List<String>?>);
+
+  @override
   _i2.CookieManager pigeon_copy() =>
       (super.noSuchMethod(
             Invocation.method(#pigeon_copy, []),
@@ -135,9 +210,36 @@ class MockAndroidWebViewController extends _i1.Mock
   }
 
   @override
+  String get resourceUrlScheme =>
+      (super.noSuchMethod(
+            Invocation.getter(#resourceUrlScheme),
+            returnValue: _i7.dummyValue<String>(
+              this,
+              Invocation.getter(#resourceUrlScheme),
+            ),
+          )
+          as String);
+
+  @override
   int get webViewIdentifier =>
       (super.noSuchMethod(Invocation.getter(#webViewIdentifier), returnValue: 0)
           as int);
+
+  @override
+  bool get hasFullscreenDelegate =>
+      (super.noSuchMethod(
+            Invocation.getter(#hasFullscreenDelegate),
+            returnValue: false,
+          )
+          as bool);
+
+  @override
+  bool get isFullscreenActive =>
+      (super.noSuchMethod(
+            Invocation.getter(#isFullscreenActive),
+            returnValue: false,
+          )
+          as bool);
 
   @override
   _i3.PlatformWebViewControllerCreationParams get params =>
@@ -149,6 +251,339 @@ class MockAndroidWebViewController extends _i1.Mock
             ),
           )
           as _i3.PlatformWebViewControllerCreationParams);
+
+  @override
+  _i3.WebViewResourceCapabilities get resourceCapabilities =>
+      (super.noSuchMethod(
+            Invocation.getter(#resourceCapabilities),
+            returnValue: _FakeWebViewResourceCapabilities_3(
+              this,
+              Invocation.getter(#resourceCapabilities),
+            ),
+          )
+          as _i3.WebViewResourceCapabilities);
+
+  @override
+  bool get supportsStreamingResources =>
+      (super.noSuchMethod(
+            Invocation.getter(#supportsStreamingResources),
+            returnValue: false,
+          )
+          as bool);
+
+  @override
+  bool get nativeResourceBodies =>
+      (super.noSuchMethod(
+            Invocation.getter(#nativeResourceBodies),
+            returnValue: false,
+          )
+          as bool);
+
+  @override
+  _i3.WebViewResourceBridge get resourceBridge =>
+      (super.noSuchMethod(
+            Invocation.getter(#resourceBridge),
+            returnValue: _FakeWebViewResourceBridge_4(
+              this,
+              Invocation.getter(#resourceBridge),
+            ),
+          )
+          as _i3.WebViewResourceBridge);
+
+  @override
+  bool get nativeNetworkBodies =>
+      (super.noSuchMethod(
+            Invocation.getter(#nativeNetworkBodies),
+            returnValue: false,
+          )
+          as bool);
+
+  @override
+  Set<String> get declaredCustomSchemes =>
+      (super.noSuchMethod(
+            Invocation.getter(#declaredCustomSchemes),
+            returnValue: <String>{},
+          )
+          as Set<String>);
+
+  @override
+  _i5.Future<bool> clearNavigationHistory() =>
+      (super.noSuchMethod(
+            Invocation.method(#clearNavigationHistory, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<_i3.WebViewNetworkCapabilities> getNetworkCapabilities() =>
+      (super.noSuchMethod(
+            Invocation.method(#getNetworkCapabilities, []),
+            returnValue: _i5.Future<_i3.WebViewNetworkCapabilities>.value(
+              _FakeWebViewNetworkCapabilities_5(
+                this,
+                Invocation.method(#getNetworkCapabilities, []),
+              ),
+            ),
+          )
+          as _i5.Future<_i3.WebViewNetworkCapabilities>);
+
+  @override
+  _i5.Future<bool> configureContentRules(List<Map<String, Object?>>? rules) =>
+      (super.noSuchMethod(
+            Invocation.method(#configureContentRules, [rules]),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<bool> configureNetworkBridge(
+    Map<String, Object?>? configuration,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#configureNetworkBridge, [configuration]),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<_i3.PlatformWebViewController?> createRelatedController() =>
+      (super.noSuchMethod(
+            Invocation.method(#createRelatedController, []),
+            returnValue: _i5.Future<_i3.PlatformWebViewController?>.value(),
+          )
+          as _i5.Future<_i3.PlatformWebViewController?>);
+
+  @override
+  _i5.Future<_i3.WebViewNavigationState?> saveNavigationState() =>
+      (super.noSuchMethod(
+            Invocation.method(#saveNavigationState, []),
+            returnValue: _i5.Future<_i3.WebViewNavigationState?>.value(),
+          )
+          as _i5.Future<_i3.WebViewNavigationState?>);
+
+  @override
+  _i5.Future<bool> restoreNavigationState(_i3.WebViewNavigationState? state) =>
+      (super.noSuchMethod(
+            Invocation.method(#restoreNavigationState, [state]),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<void> setFullscreenDelegate(
+    _i3.WebViewFullscreenDelegate? delegate,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#setFullscreenDelegate, [delegate]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<bool> exitFullscreen() =>
+      (super.noSuchMethod(
+            Invocation.method(#exitFullscreen, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<void> setOnProcessFailed(
+    _i5.FutureOr<void> Function(_i3.WebViewProcessFailure)? callback,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#setOnProcessFailed, [callback]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> setNewWindowDelegate(
+    _i5.FutureOr<void> Function(
+      _i3.WebViewNewWindowRequest<_i3.PlatformWebViewController>,
+    )?
+    delegate,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#setNewWindowDelegate, [delegate]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> setOnWindowCloseRequested(_i4.VoidCallback? callback) =>
+      (super.noSuchMethod(
+            Invocation.method(#setOnWindowCloseRequested, [callback]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i8.Uint8List?> createArchive({
+    required _i3.WebViewArchiveFormat? format,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#createArchive, [], {#format: format}),
+            returnValue: _i5.Future<_i8.Uint8List?>.value(),
+          )
+          as _i5.Future<_i8.Uint8List?>);
+
+  @override
+  _i5.Future<_i3.WebViewPrintJob?> printPage({String? jobName = 'Web page'}) =>
+      (super.noSuchMethod(
+            Invocation.method(#printPage, [], {#jobName: jobName}),
+            returnValue: _i5.Future<_i3.WebViewPrintJob?>.value(),
+          )
+          as _i5.Future<_i3.WebViewPrintJob?>);
+
+  @override
+  _i5.Future<_i8.Uint8List?> takeScreenshot({
+    _i3.WebViewScreenshotOptions? options =
+        const _i3.WebViewScreenshotOptions(),
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#takeScreenshot, [], {#options: options}),
+            returnValue: _i5.Future<_i8.Uint8List?>.value(),
+          )
+          as _i5.Future<_i8.Uint8List?>);
+
+  @override
+  _i5.Future<_i8.Uint8List?> createPdf({_i3.WebViewPdfOptions? options}) =>
+      (super.noSuchMethod(
+            Invocation.method(#createPdf, [], {#options: options}),
+            returnValue: _i5.Future<_i8.Uint8List?>.value(),
+          )
+          as _i5.Future<_i8.Uint8List?>);
+
+  @override
+  _i5.Future<_i3.WebViewBrowserCapabilities> getBrowserCapabilities() =>
+      (super.noSuchMethod(
+            Invocation.method(#getBrowserCapabilities, []),
+            returnValue: _i5.Future<_i3.WebViewBrowserCapabilities>.value(
+              _FakeWebViewBrowserCapabilities_6(
+                this,
+                Invocation.method(#getBrowserCapabilities, []),
+              ),
+            ),
+          )
+          as _i5.Future<_i3.WebViewBrowserCapabilities>);
+
+  @override
+  _i5.Future<void> stopLoading() =>
+      (super.noSuchMethod(
+            Invocation.method(#stopLoading, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i3.WebViewNavigationHistory> getNavigationHistory() =>
+      (super.noSuchMethod(
+            Invocation.method(#getNavigationHistory, []),
+            returnValue: _i5.Future<_i3.WebViewNavigationHistory>.value(
+              _FakeWebViewNavigationHistory_7(
+                this,
+                Invocation.method(#getNavigationHistory, []),
+              ),
+            ),
+          )
+          as _i5.Future<_i3.WebViewNavigationHistory>);
+
+  @override
+  _i5.Future<bool> goToHistoryIndex(int? index) =>
+      (super.noSuchMethod(
+            Invocation.method(#goToHistoryIndex, [index]),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<_i3.WebViewFindResult?> findText(
+    String? text, {
+    bool? forward = true,
+    bool? caseSensitive = false,
+    bool? wrapAround = true,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #findText,
+              [text],
+              {
+                #forward: forward,
+                #caseSensitive: caseSensitive,
+                #wrapAround: wrapAround,
+              },
+            ),
+            returnValue: _i5.Future<_i3.WebViewFindResult?>.value(),
+          )
+          as _i5.Future<_i3.WebViewFindResult?>);
+
+  @override
+  _i5.Future<void> clearFindMatches() =>
+      (super.noSuchMethod(
+            Invocation.method(#clearFindMatches, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> setPopupPolicy(_i3.WebViewPopupWindowPolicy? policy) =>
+      (super.noSuchMethod(
+            Invocation.method(#setPopupPolicy, [policy]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> setFileSelector(_i3.WebViewFileSelector? selector) =>
+      (super.noSuchMethod(
+            Invocation.method(#setFileSelector, [selector]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> configureResourceBridge(
+    String? channel,
+    String? host,
+    bool? enabled,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#configureResourceBridge, [
+              channel,
+              host,
+              enabled,
+            ]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> prepareSession() =>
+      (super.noSuchMethod(
+            Invocation.method(#prepareSession, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> setDownloadDelegate(_i3.WebViewDownloadDelegate? delegate) =>
+      (super.noSuchMethod(
+            Invocation.method(#setDownloadDelegate, [delegate]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
 
   @override
   _i5.Future<void> setAllowFileAccess(bool? allow) =>
@@ -298,7 +733,7 @@ class MockAndroidWebViewController extends _i1.Mock
       (super.noSuchMethod(
             Invocation.method(#runJavaScriptReturningResult, [javaScript]),
             returnValue: _i5.Future<Object>.value(
-              _FakeObject_3(
+              _FakeObject_8(
                 this,
                 Invocation.method(#runJavaScriptReturningResult, [javaScript]),
               ),
@@ -317,11 +752,67 @@ class MockAndroidWebViewController extends _i1.Mock
           as _i5.Future<Object?>);
 
   @override
+  _i3.PlatformWebViewCookieManager createSessionCookieManager() =>
+      (super.noSuchMethod(
+            Invocation.method(#createSessionCookieManager, []),
+            returnValue: _FakePlatformWebViewCookieManager_9(
+              this,
+              Invocation.method(#createSessionCookieManager, []),
+            ),
+          )
+          as _i3.PlatformWebViewCookieManager);
+
+  @override
+  _i3.PlatformWebViewDataManager createSessionDataManager() =>
+      (super.noSuchMethod(
+            Invocation.method(#createSessionDataManager, []),
+            returnValue: _FakePlatformWebViewDataManager_10(
+              this,
+              Invocation.method(#createSessionDataManager, []),
+            ),
+          )
+          as _i3.PlatformWebViewDataManager);
+
+  @override
+  _i5.Future<bool> isOffscreenWebViewSupported() =>
+      (super.noSuchMethod(
+            Invocation.method(#isOffscreenWebViewSupported, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<void> closeOffscreenWebView() =>
+      (super.noSuchMethod(
+            Invocation.method(#closeOffscreenWebView, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i3.WebViewJavaScriptCapabilities> getJavaScriptCapabilities({
+    _i3.WebViewJavaScriptWorld? world = _i3.WebViewJavaScriptWorld.page,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(#getJavaScriptCapabilities, [], {#world: world}),
+            returnValue: _i5.Future<_i3.WebViewJavaScriptCapabilities>.value(
+              _FakeWebViewJavaScriptCapabilities_11(
+                this,
+                Invocation.method(#getJavaScriptCapabilities, [], {
+                  #world: world,
+                }),
+              ),
+            ),
+          )
+          as _i5.Future<_i3.WebViewJavaScriptCapabilities>);
+
+  @override
   _i5.Future<bool> isUserScriptInjectionSupported(
-    _i3.WebViewUserScriptInjectionTime? injectionTime,
+    _i3.WebViewUserScriptInjectionTime? time,
   ) =>
       (super.noSuchMethod(
-            Invocation.method(#isUserScriptInjectionSupported, [injectionTime]),
+            Invocation.method(#isUserScriptInjectionSupported, [time]),
             returnValue: _i5.Future<bool>.value(false),
           )
           as _i5.Future<bool>);
@@ -338,6 +829,29 @@ class MockAndroidWebViewController extends _i1.Mock
             ),
           )
           as _i5.Future<String>);
+
+  @override
+  _i5.Future<Object?> evaluateJavaScriptInWorld(
+    String? source,
+    _i3.WebViewJavaScriptWorld? world,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#evaluateJavaScriptInWorld, [source, world]),
+            returnValue: _i5.Future<Object?>.value(),
+          )
+          as _i5.Future<Object?>);
+
+  @override
+  _i5.Future<void> addJavaScriptChannelInWorld(
+    _i3.JavaScriptChannelParams? params,
+    _i3.WebViewJavaScriptWorld? world,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#addJavaScriptChannelInWorld, [params, world]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
 
   @override
   _i5.Future<void> removeUserScript(String? identifier) =>
@@ -410,7 +924,7 @@ class MockAndroidWebViewController extends _i1.Mock
       (super.noSuchMethod(
             Invocation.method(#getScrollPosition, []),
             returnValue: _i5.Future<_i4.Offset>.value(
-              _FakeOffset_4(this, Invocation.method(#getScrollPosition, [])),
+              _FakeOffset_12(this, Invocation.method(#getScrollPosition, [])),
             ),
           )
           as _i5.Future<_i4.Offset>);
@@ -709,4 +1223,387 @@ class MockAndroidWebViewController extends _i1.Mock
             returnValueForMissingStub: _i5.Future<void>.value(),
           )
           as _i5.Future<void>);
+
+  @override
+  _i5.Future<bool> setContentRules(List<_i3.WebViewContentRule>? rules) =>
+      (super.noSuchMethod(
+            Invocation.method(#setContentRules, [rules]),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<bool> setRequestDelegate(_i3.WebViewRequestDelegate? delegate) =>
+      (super.noSuchMethod(
+            Invocation.method(#setRequestDelegate, [delegate]),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<bool> setCustomSchemeDelegate(
+    _i3.WebViewResourceDelegate? delegate,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#setCustomSchemeDelegate, [delegate]),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<bool> setContextMenuEnabled(bool? enabled) =>
+      (super.noSuchMethod(
+            Invocation.method(#setContextMenuEnabled, [enabled]),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<bool> setAudioMuted(bool? muted) =>
+      (super.noSuchMethod(
+            Invocation.method(#setAudioMuted, [muted]),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<bool> pauseMedia() =>
+      (super.noSuchMethod(
+            Invocation.method(#pauseMedia, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<bool> setMediaPlaybackSuspended(bool? suspended) =>
+      (super.noSuchMethod(
+            Invocation.method(#setMediaPlaybackSuspended, [suspended]),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<_i3.WebViewPrintJob?> startNativePrint(
+    String? jobName,
+    _i5.Future<Object?> Function(String, Map<String, Object?>)? invoke,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#startNativePrint, [jobName, invoke]),
+            returnValue: _i5.Future<_i3.WebViewPrintJob?>.value(),
+          )
+          as _i5.Future<_i3.WebViewPrintJob?>);
+
+  @override
+  bool acceptsNavigationState(
+    _i3.WebViewNavigationState? state,
+    String? platform,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#acceptsNavigationState, [state, platform]),
+            returnValue: false,
+          )
+          as bool);
+
+  @override
+  _i5.Future<T> browserOperation<T>(
+    String? name,
+    T? fallback,
+    _i5.Future<T> Function()? operation,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#browserOperation, [name, fallback, operation]),
+            returnValue:
+                _i7.ifNotNull(
+                  _i7.dummyValueOrNull<T>(
+                    this,
+                    Invocation.method(#browserOperation, [
+                      name,
+                      fallback,
+                      operation,
+                    ]),
+                  ),
+                  (T v) => _i5.Future<T>.value(v),
+                ) ??
+                _FakeFuture_13<T>(
+                  this,
+                  Invocation.method(#browserOperation, [
+                    name,
+                    fallback,
+                    operation,
+                  ]),
+                ),
+          )
+          as _i5.Future<T>);
+
+  @override
+  _i5.Future<bool> exitDocumentFullscreen() =>
+      (super.noSuchMethod(
+            Invocation.method(#exitDocumentFullscreen, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<void> updateFullscreenDelegate(
+    _i3.WebViewFullscreenDelegate? delegate,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#updateFullscreenDelegate, [delegate]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> notifyFullscreenEntered({_i9.Widget? content}) =>
+      (super.noSuchMethod(
+            Invocation.method(#notifyFullscreenEntered, [], {
+              #content: content,
+            }),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> notifyFullscreenExited() =>
+      (super.noSuchMethod(
+            Invocation.method(#notifyFullscreenExited, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  void updateProcessFailureCallback(
+    _i5.FutureOr<void> Function(_i3.WebViewProcessFailure)? callback,
+  ) => super.noSuchMethod(
+    Invocation.method(#updateProcessFailureCallback, [callback]),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void disposeBrowserLifecycleCallbacks() => super.noSuchMethod(
+    Invocation.method(#disposeBrowserLifecycleCallbacks, []),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  _i5.Future<void> notifyProcessFailed(_i3.WebViewProcessFailure? failure) =>
+      (super.noSuchMethod(
+            Invocation.method(#notifyProcessFailed, [failure]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<T> serializeTextSearch<T>(_i5.Future<T> Function()? operation) =>
+      (super.noSuchMethod(
+            Invocation.method(#serializeTextSearch, [operation]),
+            returnValue:
+                _i7.ifNotNull(
+                  _i7.dummyValueOrNull<T>(
+                    this,
+                    Invocation.method(#serializeTextSearch, [operation]),
+                  ),
+                  (T v) => _i5.Future<T>.value(v),
+                ) ??
+                _FakeFuture_13<T>(
+                  this,
+                  Invocation.method(#serializeTextSearch, [operation]),
+                ),
+          )
+          as _i5.Future<T>);
+
+  @override
+  _i5.Future<_i8.Uint8List?> capturePageData(
+    String? operation,
+    _i5.Future<_i8.Uint8List?> Function()? capture,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#capturePageData, [operation, capture]),
+            returnValue: _i5.Future<_i8.Uint8List?>.value(),
+          )
+          as _i5.Future<_i8.Uint8List?>);
+
+  @override
+  _i5.Future<_i8.Uint8List?> captureScreenshot(
+    _i3.WebViewScreenshotOptions? options,
+    _i5.Future<_i8.Uint8List?> Function()? capture,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#captureScreenshot, [options, capture]),
+            returnValue: _i5.Future<_i8.Uint8List?>.value(),
+          )
+          as _i5.Future<_i8.Uint8List?>);
+
+  @override
+  _i5.Future<bool> addJavaScriptHandler(
+    _i3.WebViewJavaScriptHandlerParams? params,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#addJavaScriptHandler, [params]),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<void> removeJavaScriptHandler(
+    String? name, {
+    _i3.WebViewJavaScriptWorld? world = _i3.WebViewJavaScriptWorld.page,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #removeJavaScriptHandler,
+              [name],
+              {#world: world},
+            ),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<void> removeAllJavaScriptHandlers() =>
+      (super.noSuchMethod(
+            Invocation.method(#removeAllJavaScriptHandlers, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  void prepareJavaScriptForNavigation() => super.noSuchMethod(
+    Invocation.method(#prepareJavaScriptForNavigation, []),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void cancelJavaScriptHandlerCalls() => super.noSuchMethod(
+    Invocation.method(#cancelJavaScriptHandlerCalls, []),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  void disposeJavaScriptHandlers() => super.noSuchMethod(
+    Invocation.method(#disposeJavaScriptHandlers, []),
+    returnValueForMissingStub: null,
+  );
+
+  @override
+  bool isJavaScriptBridgeScript(String? identifier) =>
+      (super.noSuchMethod(
+            Invocation.method(#isJavaScriptBridgeScript, [identifier]),
+            returnValue: false,
+          )
+          as bool);
+
+  @override
+  _i5.Future<String?> installJavaScriptBridgeScript(
+    _i3.WebViewUserScript? script,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#installJavaScriptBridgeScript, [script]),
+            returnValue: _i5.Future<String?>.value(),
+          )
+          as _i5.Future<String?>);
+
+  @override
+  _i5.Future<Object?> invokeAsyncJavaScriptInWorld(
+    _i3.JavaScriptInvocationParams? params,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#invokeAsyncJavaScriptInWorld, [params]),
+            returnValue: _i5.Future<Object?>.value(),
+          )
+          as _i5.Future<Object?>);
+
+  @override
+  _i5.Future<void> runJavaScriptInWorld(
+    String? source,
+    _i3.WebViewJavaScriptWorld? world,
+  ) =>
+      (super.noSuchMethod(
+            Invocation.method(#runJavaScriptInWorld, [source, world]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  String buildDocumentEndScript(String? source) =>
+      (super.noSuchMethod(
+            Invocation.method(#buildDocumentEndScript, [source]),
+            returnValue: _i7.dummyValue<String>(
+              this,
+              Invocation.method(#buildDocumentEndScript, [source]),
+            ),
+          )
+          as String);
+
+  @override
+  _i5.Future<void> setResourceDelegate(_i3.WebViewResourceDelegate? delegate) =>
+      (super.noSuchMethod(
+            Invocation.method(#setResourceDelegate, [delegate]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  Uri? getResourceUri(String? path) =>
+      (super.noSuchMethod(Invocation.method(#getResourceUri, [path])) as Uri?);
+
+  @override
+  _i5.Future<void> closeWebViewSession() =>
+      (super.noSuchMethod(
+            Invocation.method(#closeWebViewSession, []),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  String buildUserScriptSource(
+    _i3.WebViewUserScript? userScript, {
+    required bool? platformHandlesMainFrameOnly,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #buildUserScriptSource,
+              [userScript],
+              {#platformHandlesMainFrameOnly: platformHandlesMainFrameOnly},
+            ),
+            returnValue: _i7.dummyValue<String>(
+              this,
+              Invocation.method(
+                #buildUserScriptSource,
+                [userScript],
+                {#platformHandlesMainFrameOnly: platformHandlesMainFrameOnly},
+              ),
+            ),
+          )
+          as String);
+
+  @override
+  _i5.Future<void>? disposeResourceBridge() =>
+      (super.noSuchMethod(
+            Invocation.method(#disposeResourceBridge, []),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>?);
+
+  @override
+  _i3.WebViewResourceBridge? networkBridgeForChannel(String? name) =>
+      (super.noSuchMethod(Invocation.method(#networkBridgeForChannel, [name]))
+          as _i3.WebViewResourceBridge?);
+
+  @override
+  _i5.Future<void>? disposeNetworkBridges() =>
+      (super.noSuchMethod(
+            Invocation.method(#disposeNetworkBridges, []),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>?);
 }

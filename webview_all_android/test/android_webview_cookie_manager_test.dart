@@ -16,6 +16,134 @@ import 'android_webview_cookie_manager_test.mocks.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test(
+    'cookie deletion preserves host/domain identity and secure prefixes',
+    () async {
+      final native = MockCookieManager();
+      when(native.setCookie(any, any)).thenAnswer((_) async {});
+      final manager = AndroidWebViewCookieManager(
+        const PlatformWebViewCookieManagerCreationParams(),
+        cookieManager: native,
+      );
+      await manager.deleteCookie(
+        name: 'host',
+        domain: 'example.test',
+        path: '/account',
+      );
+      await manager.deleteCookie(
+        name: 'domain',
+        domain: '.example.test',
+        path: '/account',
+      );
+      await manager.deleteCookie(
+        name: '__Host-Http-auth',
+        domain: 'example.test',
+      );
+      final headers = verify(
+        native.setCookie('https://example.test/account', captureAny),
+      ).captured.cast<String>();
+      expect(headers[0], isNot(contains('domain=')));
+      expect(headers[1], contains('domain=.example.test'));
+      final prefixed =
+          verify(
+                native.setCookie('https://example.test/', captureAny),
+              ).captured.single
+              as String;
+      expect(prefixed, contains('; Secure'));
+      expect(prefixed, contains('; HttpOnly'));
+      expect(prefixed, isNot(contains('domain=')));
+      await manager.setCookie(
+        const WebViewCookie(
+          name: '__Host-auth',
+          value: 'value',
+          domain: 'example.test',
+          isSecure: true,
+        ),
+      );
+      final created =
+          verify(
+                native.setCookie('https://example.test/', captureAny),
+              ).captured.single
+              as String;
+      expect(created, contains('; Secure'));
+      expect(created, isNot(contains('domain=')));
+    },
+  );
+
+  test('native Max-Age cannot overflow DateTime or wrap into the past', () async {
+    final native = MockCookieManager();
+    when(native.supportsCookieInfo()).thenAnswer((_) async => true);
+    when(native.getCookieInfo(any)).thenAnswer(
+      (_) async => [
+        'future=value; Domain=example.test; Path=/; Max-Age=9223372036854775807',
+        'expired=value; Domain=example.test; Path=/; Max-Age=-9223372036854775808',
+      ],
+    );
+    final manager = AndroidWebViewCookieManager(
+      const PlatformWebViewCookieManagerCreationParams(),
+      cookieManager: native,
+    );
+    final values = await manager.getCookies(Uri.parse('https://example.test/'));
+    expect(values[0].expires!.millisecondsSinceEpoch, 8640000000000000);
+    expect(values[1].expires!.millisecondsSinceEpoch, 0);
+    expect(values.every((v) => v.isSession == false), isTrue);
+  });
+
+  test('provider metadata preserves cookie identities, flags and dates', () async {
+    final native = MockCookieManager();
+    when(native.supportsCookieInfo()).thenAnswer((_) async => true);
+    final url = Uri.parse('https://example.test/account/page');
+    when(native.getCookieInfo(url.toString())).thenAnswer(
+      (_) async => [
+        'session=a=b; Path=/account; Domain=.example.test; Secure; HttpOnly; SameSite=Lax',
+        'session=second; Path=/; Domain=example.test; Expires=Wed, 21 Oct 2037 07:28:00 GMT; SameSite=Strict',
+        'encoded=a%3Bb%3Dc; Path=/',
+      ],
+    );
+    final manager = AndroidWebViewCookieManager(
+      const PlatformWebViewCookieManagerCreationParams(),
+      cookieManager: native,
+    );
+    final cookies = await manager.getCookies(url);
+    expect(cookies.map((c) => c.name), ['session', 'session', 'encoded']);
+    expect(cookies[0].value, 'a=b');
+    expect(cookies[0].path, '/account');
+    expect(cookies[0].domain, '.example.test');
+    expect(cookies[0].isSecure, true);
+    expect(cookies[0].isHttpOnly, true);
+    expect(cookies[0].sameSite, WebViewCookieSameSite.lax);
+    expect(cookies[0].isSession, true);
+    expect(cookies[1].expires, DateTime.utc(2037, 10, 21, 7, 28));
+    expect(cookies[1].isSession, false);
+    expect(cookies[2].value, 'a;b=c');
+    expect(
+      (await manager.getCapabilities()).readableAttributes,
+      contains(WebViewCookieAttribute.httpOnly),
+    );
+    verifyNever(native.getCookies(any));
+  });
+
+  test(
+    'metadata failure falls back without dropping existing cookies',
+    () async {
+      final native = MockCookieManager();
+      when(native.supportsCookieInfo()).thenAnswer((_) async => true);
+      when(
+        native.getCookieInfo(any),
+      ).thenThrow(StateError('Unavailable provider'));
+      when(native.getCookies(any)).thenAnswer((_) async => 'name=value');
+      final manager = AndroidWebViewCookieManager(
+        const PlatformWebViewCookieManagerCreationParams(),
+        cookieManager: native,
+      );
+      final cookies = await manager.getCookies(
+        Uri.parse('https://example.test/'),
+      );
+      expect(cookies.single.value, 'value');
+      expect(cookies.single.isHttpOnly, isNull);
+    },
+  );
+
   test('clearCookies should call android_webview.clearCookies', () async {
     final android_webview.CookieManager mockCookieManager = MockCookieManager();
 
@@ -79,7 +207,10 @@ void main() {
       );
 
       verify(
-        mockCookieManager.setCookie('flutter.dev', 'foo%26=bar%40; path=/'),
+        mockCookieManager.setCookie(
+          'https://flutter.dev/',
+          'foo%26=bar%40; path=/; domain=flutter.dev',
+        ),
       );
     },
   );

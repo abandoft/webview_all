@@ -24,6 +24,13 @@ import 'weak_reference_utils.dart';
 const String _androidWebViewPlatformViewType =
     'com.abandoft.webview_all_android/webview';
 
+final Expando<int> _androidNavigationPolicyEpoch = Expando<int>();
+
+void _invalidateAndroidNavigationPolicy(LoadRequestCallback request) {
+  _androidNavigationPolicyEpoch[request] =
+      (_androidNavigationPolicyEpoch[request] ?? 0) + 1;
+}
+
 final Expando<Set<VoidCallback>> _androidNavigationStartCallbacks =
     Expando<Set<VoidCallback>>();
 
@@ -153,10 +160,21 @@ class AndroidWebViewControllerCreationParams
   /// Creates a new [AndroidWebViewControllerCreationParams] instance.
   AndroidWebViewControllerCreationParams({
     WebViewSessionMode sessionMode = WebViewSessionMode.shared,
+    WebViewMediaPlaybackPolicy? mediaPlaybackPolicy,
+    String? profileName,
+    List<String> customSchemes = const [],
     @visibleForTesting android_webview.WebStorage? androidWebStorage,
   }) : androidWebStorage =
-           androidWebStorage ?? android_webview.WebStorage.instance,
-       super(sessionMode: sessionMode) {
+           androidWebStorage ??
+           (profileName == null
+               ? android_webview.WebStorage.instance
+               : android_webview.WebStorage.forProfile(name: profileName)),
+       super(
+         sessionMode: sessionMode,
+         mediaPlaybackPolicy: mediaPlaybackPolicy,
+         profileName: profileName,
+         customSchemes: customSchemes,
+       ) {
     if (sessionMode == WebViewSessionMode.isolatedIncognito) {
       debugPrint(
         'webview_all_android: independent private stores are unavailable; incognito supports limited per-view handling without data isolation.',
@@ -176,8 +194,10 @@ class AndroidWebViewControllerCreationParams
   }) {
     return AndroidWebViewControllerCreationParams(
       sessionMode: params.sessionMode,
-      androidWebStorage:
-          androidWebStorage ?? android_webview.WebStorage.instance,
+      profileName: params.profileName,
+      customSchemes: params.customSchemes,
+      mediaPlaybackPolicy: params.mediaPlaybackPolicy,
+      androidWebStorage: androidWebStorage,
     );
   }
 
@@ -203,7 +223,495 @@ class AndroidWebViewPermissionResourceType
 
 /// Implementation of the [PlatformWebViewController] with the Android WebView API.
 class AndroidWebViewController extends PlatformWebViewController
-    with WebViewResourceControllerMixin {
+    with WebViewResourceControllerMixin, WebViewNetworkControllerMixin {
+  late final LoadRequestCallback _navigationLoadRequest = loadRequest;
+
+  static const _browserChannel = MethodChannel(
+    'com.abandoft.webview_all_android/browser',
+  );
+
+  @override
+  Future<bool> clearNavigationHistory() =>
+      browserOperation('clearNavigationHistory', false, () async {
+        if (_offscreenCloseFuture != null) return false;
+        await _webView.getUrl();
+        return await _browserChannel.invokeMethod<bool>(
+              'clearNavigationHistory',
+              {'webViewId': webViewIdentifier},
+            ) ??
+            false;
+      });
+
+  @override
+  Future<WebViewNetworkCapabilities>
+  getNetworkCapabilities() async => const WebViewNetworkCapabilities(
+    contentRules: true,
+    httpInterception: true,
+    customSchemes: true,
+    streamingResponses: true,
+    limitation:
+        'Android rejects custom-scheme fetch/XHR before interception; use getResourceUri for JavaScript fetch. Native navigation/subresources expose URL/method/headers/main-frame status, without request bodies or reliable native resource types. Interception does not cover redirects, blob/javascript URLs or service-worker requests.',
+  );
+  @override
+  Future<bool> configureContentRules(List<Map<String, Object?>> rules) async {
+    if (_offscreenCloseFuture != null) return false;
+    await _webView.getUrl();
+    return await _browserChannel.invokeMethod<bool>('setContentRules', {
+          'webViewId': webViewIdentifier,
+          'rules': rules,
+        }) ??
+        false;
+  }
+
+  @override
+  Future<bool> configureNetworkBridge(
+    Map<String, Object?> configuration,
+  ) async {
+    if (_offscreenCloseFuture != null) return false;
+    await _webView.getUrl();
+    return await _browserChannel.invokeMethod<bool>('configureNetworkBridge', {
+          'webViewId': webViewIdentifier,
+          ...configuration,
+        }) ??
+        false;
+  }
+
+  @override
+  Future<PlatformWebViewController?> createRelatedController() =>
+      browserOperation<PlatformWebViewController?>(
+        'createRelatedController',
+        null,
+        () async {
+          if (_offscreenCloseFuture != null) return null;
+          final child = AndroidWebViewController(params);
+          try {
+            await child._webView.getUrl();
+            await child.prepareSession();
+            return child;
+          } catch (_) {
+            await child.closeWebViewSession();
+            rethrow;
+          }
+        },
+      );
+
+  @override
+  Future<WebViewNavigationState?> saveNavigationState() =>
+      browserOperation<WebViewNavigationState?>(
+        'saveNavigationState',
+        null,
+        () async {
+          if (_offscreenCloseFuture != null) return null;
+          await _webView.getUrl();
+          final id = await _browserChannel.invokeMethod<String>(
+            'saveNavigationState',
+            {'webViewId': webViewIdentifier},
+          );
+          return id == null
+              ? null
+              : WebViewNavigationState(
+                  platform: 'android',
+                  identifier: id,
+                  onDispose: () => _browserChannel.invokeMethod<void>(
+                    'releaseNavigationState',
+                    {'stateId': id},
+                  ),
+                );
+        },
+      );
+
+  @override
+  Future<bool> restoreNavigationState(
+    WebViewNavigationState state,
+  ) => browserOperation('restoreNavigationState', false, () async {
+    if (_offscreenCloseFuture != null ||
+        !acceptsNavigationState(state, 'android')) {
+      return false;
+    }
+    if (!_freshWindowTarget) {
+      debugPrint(
+        'webview_all_android: navigation state requires a fresh WebView before its first navigation. Create a related session in the same profile; the current page was retained.',
+      );
+      return false;
+    }
+    await _webView.getUrl();
+    prepareJavaScriptForNavigation();
+    final restored =
+        await _browserChannel.invokeMethod<bool>('restoreNavigationState', {
+          'webViewId': webViewIdentifier,
+          'stateId': state.identifier,
+        }) ??
+        false;
+    if (restored) _freshWindowTarget = false;
+    return restored;
+  });
+
+  static final _windowControllers =
+      <int, WeakReference<AndroidWebViewController>>{};
+  static bool _browserReceiverInstalled = false;
+  FutureOr<void> Function(WebViewNewWindowRequest<PlatformWebViewController>)?
+  _newWindowDelegate;
+  VoidCallback? _onWindowCloseRequested;
+  bool _freshWindowTarget = true;
+  WebViewPopupWindowPolicy _popupPolicy =
+      WebViewPopupWindowPolicy.platformDefault;
+  Future<void> Function()? _exitCustomView;
+  WeakReference<BuildContext>? _fullscreenBuildContext;
+  bool _usingUnifiedFullscreen = false;
+  Future<bool> _supportsProcessFailures() async {
+    try {
+      return await _browserChannel.invokeMethod<bool>(
+            'supportsProcessFailures',
+          ) ==
+          true;
+    } catch (error) {
+      debugPrint(
+        'webview_all_android: renderer process notifications are unavailable: $error',
+      );
+      return false;
+    }
+  }
+
+  void _finishCustomView() {
+    if (_exitCustomView == null && !_usingUnifiedFullscreen) return;
+    _exitCustomView = null;
+    if (_usingUnifiedFullscreen) {
+      _usingUnifiedFullscreen = false;
+      unawaited(notifyFullscreenExited());
+    } else {
+      try {
+        _onHideCustomWidgetCallback?.call();
+      } catch (error) {
+        debugPrint(
+          'webview_all_android: hiding the fullscreen view failed: $error',
+        );
+      }
+    }
+  }
+
+  @override
+  Future<void> setFullscreenDelegate(WebViewFullscreenDelegate? delegate) =>
+      updateFullscreenDelegate(delegate);
+
+  @override
+  Future<bool> exitFullscreen() async {
+    final exit = _exitCustomView;
+    if (exit == null) return false;
+    try {
+      await exit();
+      _finishCustomView();
+      return true;
+    } catch (error) {
+      debugPrint('webview_all_android: exiting fullscreen failed: $error');
+      return false;
+    }
+  }
+
+  @override
+  Future<void> setOnProcessFailed(
+    FutureOr<void> Function(WebViewProcessFailure)? callback,
+  ) async {
+    if (_offscreenCloseFuture != null) return;
+    if (!await _supportsProcessFailures()) {
+      debugPrint(
+        'webview_all_android: renderer process notifications require Android 8 (API 26). The callback was not installed.',
+      );
+      return;
+    }
+    await _webView.getUrl();
+    _observeWindowEvents();
+    updateProcessFailureCallback(callback);
+    await _browserChannel.invokeMethod<void>('observeProcessFailures', {
+      'webViewId': webViewIdentifier,
+    });
+  }
+
+  void _observeWindowEvents() {
+    _windowControllers.removeWhere((_, reference) => reference.target == null);
+    _windowControllers[webViewIdentifier] = WeakReference(this);
+    if (_browserReceiverInstalled) return;
+    _browserReceiverInstalled = true;
+    _browserChannel.setMethodCallHandler((call) async {
+      final args = Map<Object?, Object?>.from(call.arguments as Map);
+      final owner =
+          _windowControllers[(args['webViewId'] as num?)?.toInt()]?.target;
+      if (call.method == 'processFailed') {
+        if (owner != null && owner._offscreenCloseFuture == null) {
+          owner._finishCustomView();
+          await owner.notifyProcessFailed(
+            WebViewProcessFailure(
+              kind: WebViewProcessFailureKind.rendererExited,
+              recovery: WebViewProcessRecovery.recreate,
+              didCrash: args['didCrash'] as bool?,
+              description:
+                  'Android removed the failed renderer. Create a new controller; this WebView cannot be reused.',
+            ),
+          );
+        }
+        return;
+      }
+      if (call.method == 'windowCloseRequested') {
+        if (owner?._offscreenCloseFuture == null) {
+          try {
+            owner?._onWindowCloseRequested?.call();
+          } catch (error) {
+            debugPrint(
+              'webview_all_android: window-close callback failed: $error',
+            );
+          }
+        }
+        return;
+      }
+      if (call.method != 'newWindowRequested') return;
+      final id = args['requestId'];
+      final request = WebViewNewWindowRequest<PlatformWebViewController>(
+        isUserGesture: args['isUserGesture'] as bool?,
+        isDialog: args['isDialog'] as bool?,
+        onCreateController: () async {
+          if (owner == null || owner._offscreenCloseFuture != null) return null;
+          final child = AndroidWebViewController(owner.params);
+          try {
+            await child._webView.getUrl();
+          } catch (_) {
+            try {
+              await child.closeWebViewSession();
+            } catch (_) {}
+            rethrow;
+          }
+          return child;
+        },
+        onAttach: (child) async {
+          if (owner == null ||
+              owner._offscreenCloseFuture != null ||
+              owner._popupPolicy == WebViewPopupWindowPolicy.deny ||
+              child is! AndroidWebViewController ||
+              child == owner ||
+              child.params.sessionMode != owner.params.sessionMode ||
+              !child._freshWindowTarget) {
+            await _browserChannel.invokeMethod('rejectNewWindow', {
+              'requestId': id,
+            });
+            debugPrint(
+              'webview_all_android: a child must be a fresh Android controller in the opener\'s session mode.',
+            );
+            return false;
+          }
+          child._freshWindowTarget = false;
+          await child._webView.getUrl();
+          return await _browserChannel.invokeMethod<bool>('attachNewWindow', {
+                'requestId': id,
+                'childWebViewId': child.webViewIdentifier,
+              }) ??
+              false;
+        },
+        onReject: () => _browserChannel.invokeMethod<void>('rejectNewWindow', {
+          'requestId': id,
+        }),
+      );
+      await dispatchWebViewNewWindowRequest(
+        owner?._offscreenCloseFuture == null ? owner?._newWindowDelegate : null,
+        request,
+      );
+    });
+  }
+
+  @override
+  Future<void> setNewWindowDelegate(
+    FutureOr<void> Function(WebViewNewWindowRequest<PlatformWebViewController>)?
+    delegate,
+  ) async {
+    if (_offscreenCloseFuture != null) return;
+    await _webView.getUrl();
+    _observeWindowEvents();
+    final previous = _newWindowDelegate;
+    _newWindowDelegate = delegate;
+    try {
+      await _browserChannel.invokeMethod<void>('setNewWindowDelegateEnabled', {
+        'webViewId': webViewIdentifier,
+        'enabled':
+            delegate != null && _popupPolicy != WebViewPopupWindowPolicy.deny,
+      });
+    } catch (error) {
+      _newWindowDelegate = previous;
+      debugPrint(
+        'webview_all_android: new-window delegation is unavailable: $error',
+      );
+    }
+  }
+
+  @override
+  Future<void> setOnWindowCloseRequested(VoidCallback? callback) async {
+    if (_offscreenCloseFuture != null) return;
+    await _webView.getUrl();
+    _observeWindowEvents();
+    _onWindowCloseRequested = callback;
+    await _browserChannel.invokeMethod<void>('observeWindowClose', {
+      'webViewId': webViewIdentifier,
+    });
+  }
+
+  @override
+  Future<Uint8List?> createArchive({required WebViewArchiveFormat format}) {
+    if (format != WebViewArchiveFormat.mhtml) {
+      return super.createArchive(format: format);
+    }
+    return capturePageData('Page archive', () async {
+      if (_offscreenCloseFuture != null) return null;
+      await _webView.getUrl();
+      return _browserChannel.invokeMethod<Uint8List>('createArchive', {
+        'webViewId': webViewIdentifier,
+        'format': format.name,
+      });
+    });
+  }
+
+  @override
+  Future<WebViewPrintJob?> printPage({String jobName = 'Web page'}) async {
+    if (_offscreenCloseFuture != null) return null;
+    await _webView.getUrl();
+    return startNativePrint(
+      jobName,
+      (method, args) => _browserChannel.invokeMethod<Object?>(method, {
+        ...args,
+        'webViewId': webViewIdentifier,
+      }),
+    );
+  }
+
+  @override
+  Future<Uint8List?> takeScreenshot({
+    WebViewScreenshotOptions options = const WebViewScreenshotOptions(),
+  }) => captureScreenshot(
+    options,
+    () => _offscreenCloseFuture != null
+        ? Future<Uint8List?>.value()
+        : _browserChannel.invokeMethod<Uint8List>('takeScreenshot', {
+            'webViewId': webViewIdentifier,
+          }),
+  );
+
+  @override
+  Future<Uint8List?> createPdf({WebViewPdfOptions? options}) async {
+    debugPrint(
+      'webview_all_android: direct PDF byte export is unavailable through public WebView APIs; Android printing requires the system print flow.',
+    );
+    return null;
+  }
+
+  @override
+  Future<WebViewBrowserCapabilities> getBrowserCapabilities() async =>
+      WebViewBrowserCapabilities(
+        newWindowDelegate: true,
+        windowCloseRequests: true,
+        fullscreenEvents: true,
+        fullscreenCustomContent: true,
+        processFailureEvents: await _supportsProcessFailures(),
+        clearHistory: true,
+        navigationState: true,
+        navigationStateRequiresNewView: true,
+        viewportScreenshot: true,
+        archiveFormats: const {WebViewArchiveFormat.mhtml},
+
+        printing: true,
+        printJobState: true,
+        printCancellation: true,
+        screenshotRegion: true,
+        screenshotScale: true,
+        stopLoading: true,
+        mediaPlaybackPolicyAtCreation: true,
+        navigationHistory: true,
+        historyNavigation: true,
+        findText: true,
+        findMatchCount: true,
+        fileSelector: true,
+        mediaPlaybackRequiresUserGesture: true,
+        popupWindowPolicies: {
+          WebViewPopupWindowPolicy.platformDefault,
+          WebViewPopupWindowPolicy.deny,
+          WebViewPopupWindowPolicy.sameView,
+        },
+        limitation: 'Android text search is case-insensitive and wraps around.',
+      );
+
+  @override
+  Future<void> stopLoading() {
+    _invalidateAndroidNavigationPolicy(_navigationLoadRequest);
+    return _webView.stopLoading();
+  }
+
+  @override
+  Future<WebViewNavigationHistory> getNavigationHistory() async =>
+      WebViewNavigationHistory.fromMap(await _webView.getNavigationHistory());
+
+  @override
+  Future<bool> goToHistoryIndex(int index) => _webView.goToHistoryIndex(index);
+
+  @override
+  Future<WebViewFindResult?> findText(
+    String text, {
+    bool forward = true,
+    bool caseSensitive = false,
+    bool wrapAround = true,
+  }) async {
+    if (caseSensitive || !wrapAround) {
+      debugPrint(
+        'webview_all_android: native text search supports case-insensitive matching with wrapping only; the requested search was skipped.',
+      );
+      return null;
+    }
+    if (text.isEmpty) {
+      await clearFindMatches();
+      return const WebViewFindResult(matchFound: false, matchCount: 0);
+    }
+    return serializeTextSearch(() async {
+      final result = await _webView
+          .findText(text, forward)
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () async {
+              await _webView.clearFindMatches();
+              debugPrint(
+                'webview_all_android: text search did not complete within 10 seconds.',
+              );
+              return null;
+            },
+          );
+      return result == null ? null : WebViewFindResult.fromMap(result);
+    });
+  }
+
+  @override
+  Future<void> clearFindMatches() =>
+      serializeTextSearch(() => _webView.clearFindMatches());
+
+  @override
+  Future<void> setPopupPolicy(WebViewPopupWindowPolicy policy) async {
+    _popupPolicy = policy;
+    await _webChromeClient.setPopupWindowPolicy(policy.index);
+    if (_newWindowDelegate != null && _offscreenCloseFuture == null) {
+      await _browserChannel.invokeMethod<void>('setNewWindowDelegateEnabled', {
+        'webViewId': webViewIdentifier,
+        'enabled': policy != WebViewPopupWindowPolicy.deny,
+      });
+    }
+  }
+
+  @override
+  Future<void> setFileSelector(WebViewFileSelector? selector) =>
+      setOnShowFileSelector(
+        selector == null
+            ? null
+            : (params) => invokeWebViewFileSelector(
+                selector,
+                WebViewFileSelectorParams(
+                  mode: WebViewFileSelectorMode.values[params.mode.index],
+                  acceptTypes: params.acceptTypes,
+                  isCaptureEnabled: params.isCaptureEnabled,
+                  filenameHint: params.filenameHint,
+                ),
+              ),
+      );
+
   @override
   String get resourceUrlScheme => 'https';
 
@@ -239,6 +747,11 @@ class AndroidWebViewController extends PlatformWebViewController
     if (params.sessionMode == WebViewSessionMode.incognito) {
       _limitedIncognitoReady = _webView.enableLimitedIncognito();
     }
+    if (params.mediaPlaybackPolicy case final policy?) {
+      _webView.settings.setMediaPlaybackRequiresUserGesture(
+        policy == WebViewMediaPlaybackPolicy.requireUserGesture,
+      );
+    }
     _webView.settings.setDomStorageEnabled(true);
     _webView.settings.setJavaScriptCanOpenWindowsAutomatically(true);
     _webView.settings.setSupportMultipleWindows(true);
@@ -265,6 +778,7 @@ class AndroidWebViewController extends PlatformWebViewController
 
   @override
   Future<void> prepareSession() async {
+    await _webView.getUrl();
     await _limitedIncognitoReady;
   }
 
@@ -276,6 +790,8 @@ class AndroidWebViewController extends PlatformWebViewController
 
   /// The native [android_webview.WebView] being controlled.
   late final android_webview.WebView _webView = android_webview.WebView(
+    profileName: params.profileName,
+    customSchemes: params.customSchemes,
     onScrollChanged: withWeakReferenceTo(this, (
       WeakReference<AndroidWebViewController> weakReference,
     ) {
@@ -350,34 +866,72 @@ class AndroidWebViewController extends PlatformWebViewController
       ) {
         final AndroidWebViewController? webViewController =
             weakReference.target;
-        if (webViewController == null) {
-          callback.onCustomViewHidden();
+        if (webViewController == null ||
+            webViewController._offscreenCloseFuture != null ||
+            webViewController._exitCustomView != null) {
+          unawaited(
+            callback.onCustomViewHidden().catchError((Object error) {
+              debugPrint(
+                'webview_all_android: releasing the unused fullscreen view failed: $error',
+              );
+            }),
+          );
+          return;
+        }
+        var hidden = false;
+        Future<void> exit() async {
+          if (hidden) return;
+          hidden = true;
+          await callback.onCustomViewHidden();
+        }
+
+        void exitSafely() {
+          unawaited(
+            exit().catchError((Object error) {
+              debugPrint(
+                'webview_all_android: releasing the fullscreen view failed: $error',
+              );
+            }),
+          );
+        }
+
+        webViewController._exitCustomView = exit;
+        final content = AndroidCustomViewWidget.private(
+          controller: webViewController,
+          customView: view,
+        );
+        webViewController._usingUnifiedFullscreen =
+            webViewController.hasFullscreenDelegate;
+        if (webViewController._usingUnifiedFullscreen) {
+          unawaited(
+            webViewController.notifyFullscreenEntered(content: content),
+          );
           return;
         }
         final OnShowCustomWidgetCallback? onShowCallback =
             webViewController._onShowCustomWidgetCallback;
         if (onShowCallback == null) {
-          callback.onCustomViewHidden();
+          exitSafely();
+          webViewController._exitCustomView = null;
           return;
         }
-        onShowCallback(
-          AndroidCustomViewWidget.private(
-            controller: webViewController,
-            customView: view,
-          ),
-          () => callback.onCustomViewHidden(),
-        );
+        try {
+          onShowCallback(content, exitSafely);
+        } catch (error) {
+          debugPrint(
+            'webview_all_android: the custom fullscreen callback failed: $error',
+          );
+          exitSafely();
+        }
       };
     }),
     onHideCustomView: withWeakReferenceTo(this, (
       WeakReference<AndroidWebViewController> weakReference,
     ) {
       return (android_webview.WebChromeClient instance) {
-        final OnHideCustomWidgetCallback? onHideCustomViewCallback =
-            weakReference.target?._onHideCustomWidgetCallback;
-        if (onHideCustomViewCallback != null) {
-          onHideCustomViewCallback();
-        }
+        final owner = weakReference.target;
+        if (owner == null) return;
+        owner._finishCustomView();
       };
     }),
     onShowFileChooser: withWeakReferenceTo(this, (
@@ -542,7 +1096,9 @@ class AndroidWebViewController extends PlatformWebViewController
     WeakReference<AndroidWebViewController> weakReference,
   ) {
     return () {
-      weakReference.target?._cancelPendingAsyncJavaScriptInvocations();
+      final controller = weakReference.target;
+      controller?._cancelPendingAsyncJavaScriptInvocations();
+      controller?.cancelJavaScriptHandlerCalls();
     };
   });
   int _nextAsyncJavaScriptInvocationIdentifier = 0;
@@ -724,6 +1280,7 @@ class AndroidWebViewController extends PlatformWebViewController
 
   @override
   Future<void> loadFileWithParams(LoadFileParams params) async {
+    _freshWindowTarget = false;
     switch (params) {
       case final AndroidLoadFileParams params:
         await _prepareForNavigation();
@@ -741,6 +1298,7 @@ class AndroidWebViewController extends PlatformWebViewController
 
   @override
   Future<void> loadFlutterAsset(String key) async {
+    _freshWindowTarget = false;
     final String assetFilePath = await _flutterAssetManager
         .getAssetFilePathByName(key);
     final List<String> pathElements = assetFilePath.split('/');
@@ -762,12 +1320,14 @@ class AndroidWebViewController extends PlatformWebViewController
 
   @override
   Future<void> loadHtmlString(String html, {String? baseUrl}) async {
+    _freshWindowTarget = false;
     await _prepareForNavigation();
     return _webView.loadDataWithBaseUrl(baseUrl, html, 'text/html', null, null);
   }
 
   @override
   Future<void> loadRequest(LoadRequestParams params) async {
+    _freshWindowTarget = false;
     if (!params.uri.hasScheme) {
       throw ArgumentError('WebViewRequest#uri is required to have a scheme.');
     }
@@ -839,6 +1399,7 @@ class AndroidWebViewController extends PlatformWebViewController
   Future<void> setPlatformNavigationDelegate(
     covariant AndroidNavigationDelegate handler,
   ) async {
+    _invalidateAndroidNavigationPolicy(_navigationLoadRequest);
     final AndroidNavigationDelegate? previousDelegate =
         _currentNavigationDelegate;
     if (previousDelegate != null) {
@@ -851,7 +1412,7 @@ class AndroidWebViewController extends PlatformWebViewController
       _navigationStartCallback,
     );
     await Future.wait(<Future<void>>[
-      handler.setOnLoadRequest(loadRequest),
+      handler.setOnLoadRequest(_navigationLoadRequest),
       _webView.setWebViewClient(handler.androidWebViewClient),
       _webView.setDownloadListener(
         _downloadDelegate == null
@@ -883,6 +1444,7 @@ class AndroidWebViewController extends PlatformWebViewController
 
   @override
   Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
+    if (!params.world.isPage) return invokeAsyncJavaScriptInWorld(params);
     await _asyncJavaScriptBridgeReady;
     final String identifier = _createAndroidOpaqueIdentifier(
       'async_${++_nextAsyncJavaScriptInvocationIdentifier}',
@@ -921,12 +1483,28 @@ class AndroidWebViewController extends PlatformWebViewController
   PlatformWebViewCookieManager createSessionCookieManager() =>
       AndroidWebViewCookieManager(
         const PlatformWebViewCookieManagerCreationParams(),
+        cookieManager: params.profileName == null
+            ? null
+            : android_webview.CookieManager.forProfile(
+                name: params.profileName!,
+              ),
       );
 
   @override
   PlatformWebViewDataManager createSessionDataManager() =>
       AndroidWebViewDataManager(
         const PlatformWebViewDataManagerCreationParams(),
+        webStorage: params.profileName == null
+            ? null
+            : android_webview.WebStorage.forProfile(name: params.profileName!),
+        cookieManager: params.profileName == null
+            ? null
+            : android_webview.CookieManager.forProfile(
+                name: params.profileName!,
+              ),
+        webViewFactory: params.profileName == null
+            ? null
+            : () => android_webview.WebView(profileName: params.profileName),
       );
 
   @override
@@ -938,6 +1516,21 @@ class AndroidWebViewController extends PlatformWebViewController
   }
 
   Future<void> _closeOffscreenWebView() async {
+    if (_exitCustomView != null) await exitFullscreen();
+    disposeBrowserLifecycleCallbacks();
+    _fullscreenBuildContext = null;
+    _onShowCustomWidgetCallback = null;
+    _onHideCustomWidgetCallback = null;
+    final identifier = android_webview.PigeonInstanceManager.instance
+        .getIdentifier(_webView);
+    if (identifier != null) {
+      _windowControllers.remove(identifier);
+    }
+    _newWindowDelegate = null;
+    _onWindowCloseRequested = null;
+    disposeJavaScriptHandlers();
+    final networkDisposal = disposeNetworkBridges();
+    if (networkDisposal != null) await networkDisposal;
     final resourceDisposal = disposeResourceBridge();
     if (resourceDisposal != null) await resourceDisposal;
     _downloadDelegateGeneration++;
@@ -970,31 +1563,86 @@ class AndroidWebViewController extends PlatformWebViewController
   }
 
   @override
-  Future<bool> isUserScriptInjectionSupported(
-    WebViewUserScriptInjectionTime injectionTime,
-  ) {
-    if (injectionTime != WebViewUserScriptInjectionTime.documentStart) {
-      return Future<bool>.value(false);
-    }
-    return _webView.isDocumentStartJavaScriptSupported();
+  Future<WebViewJavaScriptCapabilities> getJavaScriptCapabilities({
+    WebViewJavaScriptWorld world = WebViewJavaScriptWorld.page,
+  }) async {
+    final start = await _webView.isDocumentStartJavaScriptSupported();
+    final isolated = await _webView.isJavaScriptWorldSupported();
+    final metadata = await _webView.isJavaScriptMessageMetadataSupported();
+    return WebViewJavaScriptCapabilities(
+      supportsPromiseHandlers: world.isPage ? start : isolated,
+      supportsIsolatedWorlds: isolated,
+      supportsTrustedOrigins: world.isPage ? metadata : isolated,
+      supportsTrustedFrameInformation: world.isPage ? metadata : isolated,
+      documentEndIsEmulated: !isolated,
+      userScriptInjectionTimes: (world.isPage ? start : isolated)
+          ? const {
+              WebViewUserScriptInjectionTime.documentStart,
+              WebViewUserScriptInjectionTime.documentEnd,
+            }
+          : const {},
+      limitation:
+          'Availability depends on Android System WebView. Handlers currently run in the main document; register isolated worlds before loading it.',
+    );
   }
 
   @override
+  Future<bool> isUserScriptInjectionSupported(
+    WebViewUserScriptInjectionTime time,
+  ) => _webView.isDocumentStartJavaScriptSupported();
+
+  @override
   Future<String> addUserScript(WebViewUserScript userScript) async {
-    if (!await isUserScriptInjectionSupported(userScript.injectionTime)) {
-      throw UnsupportedError(
-        'The installed Android System WebView does not support '
-        'document-start script injection.',
-      );
-    }
-    final String identifier = 'webview_all_${++_nextUserScriptIdentifier}';
-    final String source = buildUserScriptSource(
+    final identifier = 'webview_all_${++_nextUserScriptIdentifier}';
+    final source = buildUserScriptSource(
       userScript,
       platformHandlesMainFrameOnly: false,
     );
-    await _webView.addDocumentStartJavaScript(identifier, source);
+    if (userScript.world.isPage &&
+        userScript.injectionTime ==
+            WebViewUserScriptInjectionTime.documentStart) {
+      if (!await _webView.isDocumentStartJavaScriptSupported()) {
+        throw UnsupportedError(
+          'Document-start scripts are unavailable in this Android System WebView.',
+        );
+      }
+      await _webView.addDocumentStartJavaScript(identifier, source);
+    } else {
+      await _webView.addUserJavaScript(
+        identifier,
+        source,
+        userScript.injectionTime == WebViewUserScriptInjectionTime.documentEnd,
+        userScript.world.name,
+      );
+    }
     _userScriptIdentifiers.add(identifier);
     return identifier;
+  }
+
+  @override
+  Future<Object?> evaluateJavaScriptInWorld(
+    String source,
+    WebViewJavaScriptWorld world,
+  ) async {
+    final raw = world.isPage
+        ? await _webView.evaluateJavascript(source)
+        : await _webView.evaluateJavaScriptInWorld(source, world.name!);
+    return raw == null ? null : jsonDecode(raw);
+  }
+
+  @override
+  Future<void> addJavaScriptChannelInWorld(
+    JavaScriptChannelParams params,
+    WebViewJavaScriptWorld world,
+  ) async {
+    if (world.isPage) return addJavaScriptChannel(params);
+    final nativeParams =
+        AndroidJavaScriptChannelParams.fromJavaScriptChannelParams(params);
+    await _webView.addJavaScriptChannelInWorld(
+      nativeParams._javaScriptChannel,
+      world.name!,
+    );
+    _javaScriptChannelParams[params.name] = nativeParams;
   }
 
   @override
@@ -1008,11 +1656,11 @@ class AndroidWebViewController extends PlatformWebViewController
 
   @override
   Future<void> removeAllUserScripts() async {
-    if (_userScriptIdentifiers.isEmpty) {
-      return;
+    for (final identifier in _userScriptIdentifiers.toList()) {
+      if (!isJavaScriptBridgeScript(identifier)) {
+        await removeUserScript(identifier);
+      }
     }
-    await _webView.removeAllDocumentStartJavaScripts();
-    _userScriptIdentifiers.clear();
   }
 
   @override
@@ -1080,6 +1728,8 @@ class AndroidWebViewController extends PlatformWebViewController
   }
 
   Future<void> _prepareForNavigation() async {
+    _invalidateAndroidNavigationPolicy(_navigationLoadRequest);
+    prepareJavaScriptForNavigation();
     _cancelPendingAsyncJavaScriptInvocations();
     await _asyncJavaScriptBridgeReady;
   }
@@ -1146,7 +1796,7 @@ class AndroidWebViewController extends PlatformWebViewController
     return '''
 (()=>{
   const __identifier=${jsonEncode(identifier)};
-  const __arguments=${jsonEncode(params.arguments)};
+  const __arguments=JSON.parse(${jsonEncode(jsonEncode(params.arguments))});
   const __post=(payload)=>window.$_asyncJavaScriptChannelName.postMessage(JSON.stringify(payload));
   const __postError=(error)=>__post({
     identifier:__identifier,
@@ -1213,6 +1863,7 @@ ${params.functionBody}
   }
 
   /// Sets the restrictions that apply on automatic media playback.
+  @override
   Future<void> setMediaPlaybackRequiresUserGesture(bool require) {
     return _webView.settings.setMediaPlaybackRequiresUserGesture(require);
   }
@@ -1315,6 +1966,9 @@ ${params.functionBody}
     required OnShowCustomWidgetCallback? onShowCustomWidget,
     required OnHideCustomWidgetCallback? onHideCustomWidget,
   }) async {
+    if (_exitCustomView != null && !_usingUnifiedFullscreen) {
+      await exitFullscreen();
+    }
     _onShowCustomWidgetCallback = onShowCustomWidget;
     _onHideCustomWidgetCallback = onHideCustomWidget;
   }
@@ -1870,20 +2524,38 @@ class AndroidWebViewWidget extends PlatformWebViewWidget {
   // been set.
   void _trySetDefaultOnShowCustomWidgetCallbacks(BuildContext context) {
     final controller = _androidParams.controller as AndroidWebViewController;
+    controller._fullscreenBuildContext = WeakReference(context);
 
     if (controller._onShowCustomWidgetCallback == null) {
+      Route<void>? fullscreenRoute;
+      NavigatorState? fullscreenNavigator;
+      final owner = WeakReference(controller);
       controller.setCustomWidgetCallbacks(
         onShowCustomWidget:
             (Widget widget, OnHideCustomWidgetCallback callback) {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (BuildContext context) => widget,
-                  fullscreenDialog: true,
-                ),
+              final currentContext =
+                  owner.target?._fullscreenBuildContext?.target;
+              if (currentContext == null || !currentContext.mounted) {
+                callback();
+                return;
+              }
+              final navigator = Navigator.of(currentContext);
+              final route = MaterialPageRoute<void>(
+                builder: (BuildContext context) => widget,
+                fullscreenDialog: true,
               );
+              fullscreenRoute = route;
+              fullscreenNavigator = navigator;
+              unawaited(navigator.push(route).whenComplete(callback));
             },
         onHideCustomWidget: () {
-          Navigator.of(context).pop();
+          final route = fullscreenRoute;
+          final navigator = fullscreenNavigator;
+          fullscreenRoute = null;
+          fullscreenNavigator = null;
+          if (route != null && route.isActive && navigator?.mounted == true) {
+            navigator!.removeRoute(route);
+          }
         },
       );
     }
@@ -2105,6 +2777,10 @@ class AndroidNavigationDelegate extends PlatformNavigationDelegate {
         }
       },
       onPageStarted: (_, android_webview.WebView webView, String url) {
+        final loadRequest = weakThis.target?._onLoadRequest;
+        if (loadRequest != null) {
+          _invalidateAndroidNavigationPolicy(loadRequest);
+        }
         final AndroidNavigationDelegate? delegate = weakThis.target;
         if (delegate != null) {
           for (final VoidCallback callback in List<VoidCallback>.of(
@@ -2344,6 +3020,12 @@ class AndroidNavigationDelegate extends PlatformNavigationDelegate {
       return;
     }
 
+    final policyEpoch =
+        (_androidNavigationPolicyEpoch[onLoadRequest] ?? 0) +
+        (isForMainFrame ? 1 : 0);
+    if (isForMainFrame) {
+      _androidNavigationPolicyEpoch[onLoadRequest] = policyEpoch;
+    }
     FutureOr<NavigationDecision> returnValue;
     try {
       returnValue = onNavigationRequest(
@@ -2355,6 +3037,9 @@ class AndroidNavigationDelegate extends PlatformNavigationDelegate {
     }
 
     void handleDecision(NavigationDecision decision) {
+      if (policyEpoch != (_androidNavigationPolicyEpoch[onLoadRequest] ?? 0)) {
+        return;
+      }
       if (decision == NavigationDecision.navigate) {
         _runAndroidAsyncCallbackSafely(
           'approved navigation load',

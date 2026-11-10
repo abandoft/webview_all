@@ -1,3 +1,5 @@
+import 'package:flutter/services.dart';
+
 // Copyright 2013 The Flutter Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
@@ -10,6 +12,12 @@ import 'android_webview_data_manager.dart';
 
 /// Implementation of [WebViewPlatform] using the WebKit API.
 class AndroidWebViewPlatform extends WebViewPlatform {
+  @override
+  PlatformWebViewProfileManager createPlatformWebViewProfileManager() =>
+      PlatformWebViewProfileManager.channel(
+        'com.abandoft.webview_all_android/browser',
+      );
+
   @override
   Set<WebViewSessionMode> get supportedSessionModes => const {
     WebViewSessionMode.shared,
@@ -29,7 +37,20 @@ class AndroidWebViewPlatform extends WebViewPlatform {
         "Android disables cache use and form saving and clears this view's history. Cookies and website storage remain shared and persistent; ordinary cookies are not automatically cleared. Independent private stores are unavailable.",
     scopedCookies: true,
     scopedWebsiteData: true,
+    relatedControllers: true,
+    namedProfiles: await _supportsNamedProfiles(),
   );
+
+  Future<bool> _supportsNamedProfiles() async {
+    try {
+      return await const MethodChannel(
+            'com.abandoft.webview_all_android/browser',
+          ).invokeMethod<bool>('supportsNamedProfiles') ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Registers this class as the default instance of [WebViewPlatform].
   static void registerWith() {

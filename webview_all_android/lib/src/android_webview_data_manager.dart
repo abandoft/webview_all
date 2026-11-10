@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:webview_platform_interface/webview_platform_interface.dart';
 
@@ -49,6 +50,72 @@ class AndroidWebViewDataManager extends PlatformWebViewDataManager {
     WebViewDataType.localStorage,
     WebViewDataType.webSql,
   };
+
+  @override
+  Future<WebViewDataCapabilities> getCapabilities() async {
+    var complete = false;
+    try {
+      complete =
+          await const MethodChannel(
+            'com.abandoft.webview_all_android/browser',
+          ).invokeMethod<bool>('supportsCompleteDataClearing') ??
+          false;
+    } catch (error) {
+      debugPrint(
+        'webview_all_android: full data-clearing capability could not be queried: $error',
+      );
+    }
+    return WebViewDataCapabilities(
+      scopedClearingGroups: {
+        if (complete) WebViewDataScope.site: [WebViewDataType.values.toSet()],
+      },
+      clearingGroups: [
+        {WebViewDataType.cookies},
+        {WebViewDataType.cache},
+        if (complete) WebViewDataType.values.toSet(),
+      ],
+      limitation:
+          'Android supports independent cookie/cache clearing. Other categories require a full clear on WebViews with DELETE_BROWSING_DATA support.',
+    );
+  }
+
+  @override
+  Future<WebViewDataClearingResult> clearWebsiteDataFor(
+    WebViewDataTarget target, {
+    required Set<WebViewDataType> dataTypes,
+  }) => clearScopedData(target, dataTypes, (types) async {
+    final site = await _webStorage.deleteBrowsingDataForSite(target.value);
+    if (site == null) {
+      throw UnsupportedError(
+        'The provider does not support site-wide data removal.',
+      );
+    }
+    debugPrint(
+      'webview_all_android: removed browsing data for site $site, including site-owned and embedded partitioned data.',
+    );
+  });
+
+  @override
+  Future<WebViewDataClearingResult> clearWebsiteData({
+    required Set<WebViewDataType> dataTypes,
+  }) {
+    if (dataTypes.containsAll(WebViewDataType.values)) {
+      return clearAllWebsiteData();
+    }
+    return clearDataCategories(dataTypes, {
+      WebViewDataType.cookies: () async {
+        await _cookieManager.removeAllCookies();
+      },
+      WebViewDataType.cache: () async {
+        final view = _webViewFactory();
+        try {
+          await view.clearCache(true);
+        } finally {
+          await view.destroy();
+        }
+      },
+    });
+  }
 
   @override
   Future<WebViewDataClearingResult> clearAllWebsiteData() async {

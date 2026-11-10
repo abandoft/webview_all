@@ -53,7 +53,7 @@ public class WebViewTest {
   public void pigeon_defaultConstructor() {
     final PigeonApiWebView api = new TestProxyApiRegistrar().getPigeonApiWebView();
 
-    assertTrue(api.pigeon_defaultConstructor() instanceof WebViewProxyApi.WebViewPlatformView);
+    assertTrue(api.pigeon_defaultConstructor(null, java.util.Collections.emptyList()) instanceof WebViewProxyApi.WebViewPlatformView);
   }
 
   @Test

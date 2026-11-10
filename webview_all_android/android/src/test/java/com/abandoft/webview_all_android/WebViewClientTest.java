@@ -25,6 +25,20 @@ import org.junit.Test;
 
 public class WebViewClientTest {
   @Test
+  public void rendererGoneIsHandledAndDestroysOnlyTheAffectedView() {
+    final WebViewClientProxyApi api = mock(WebViewClientProxyApi.class);
+    final WebViewClientImpl client = new WebViewClientImpl(api);
+    final WebView view = mock(WebView.class);
+    final android.view.ViewGroup parent = mock(android.view.ViewGroup.class);
+    final android.webkit.RenderProcessGoneDetail detail = mock(android.webkit.RenderProcessGoneDetail.class);
+    when(view.getParent()).thenReturn(parent);
+    when(detail.didCrash()).thenReturn(true);
+    assertTrue(client.onRenderProcessGone(view, detail));
+    verify(parent).removeView(view);
+    verify(view).destroy();
+  }
+
+  @Test
   public void onPageStarted() {
     final WebViewClientProxyApi mockApi = mock(WebViewClientProxyApi.class);
     when(mockApi.getPigeonRegistrar()).thenReturn(new TestProxyApiRegistrar());

@@ -201,6 +201,8 @@ void main() {
         }) => MockWebChromeClient();
     android_webview.PigeonOverrides.webView_new =
         ({
+          String? profileName,
+          List<String>? customSchemes,
           dynamic Function(
             android_webview.WebView,
             int left,
@@ -1344,6 +1346,30 @@ void main() {
 
       onHideCustomViewHandle(mockWebChromeClient);
       expect(hideCustomViewCalled, true);
+
+      WebViewFullscreenRequest? fullscreen;
+      var exited = 0;
+      await controller.setFullscreenDelegate(
+        WebViewFullscreenDelegate(
+          onEnter: (request) {
+            fullscreen = request;
+          },
+          onExit: () {
+            exited++;
+          },
+        ),
+      );
+      final nativeExit = _FullscreenExitCallback();
+      onShowCustomViewHandle(mockWebChromeClient, testView, nativeExit);
+      expect(fullscreen?.content, isA<AndroidCustomViewWidget>());
+      expect(await fullscreen!.exit(), isTrue);
+      expect(await fullscreen!.exit(), isTrue);
+      expect(nativeExit.hidden, 1);
+      onHideCustomViewHandle(mockWebChromeClient);
+      onHideCustomViewHandle(mockWebChromeClient);
+      await Future<void>.delayed(Duration.zero);
+      expect(exited, 1);
+      expect(await controller.exitFullscreen(), isFalse);
     });
 
     test('setOnPlatformPermissionRequest', () async {
@@ -2773,6 +2799,8 @@ void main() {
         android_webview.CustomViewCallback callback,
       )?
       onShowCustomViewCallback;
+      void Function(android_webview.WebChromeClient)? onHideCustomViewCallback;
+      final navigatorKey = GlobalKey<NavigatorState>();
 
       final android_webview.WebView mockWebView = MockWebView();
       android_webview.PigeonInstanceManager.instance.addDartCreatedInstance(
@@ -2801,6 +2829,7 @@ void main() {
               dynamic onJsPrompt,
             }) {
               onShowCustomViewCallback = onShowCustomView;
+              onHideCustomViewCallback = onHideCustomView;
               return mockWebChromeClient;
             },
         mockWebView: mockWebView,
@@ -2829,6 +2858,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          navigatorKey: navigatorKey,
           home: Builder(
             builder: (BuildContext context) => webViewWidget.build(context),
           ),
@@ -2836,14 +2866,53 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      onShowCustomViewCallback!(
-        MockWebChromeClient(),
-        mockWebView,
-        android_webview.CustomViewCallback.pigeon_detached(),
-      );
+      final nativeExit = _FullscreenExitCallback();
+      onShowCustomViewCallback!(MockWebChromeClient(), mockWebView, nativeExit);
       await tester.pumpAndSettle();
 
       expect(find.byType(AndroidCustomViewWidget), findsOneWidget);
+      unawaited(
+        navigatorKey.currentState!.push(
+          MaterialPageRoute<void>(
+            builder: (_) => const Scaffold(body: Text('Unrelated route')),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      onHideCustomViewCallback!(mockWebChromeClient);
+      await tester.pumpAndSettle();
+      expect(find.text('Unrelated route'), findsOneWidget);
+      expect(find.byType(AndroidCustomViewWidget), findsNothing);
+      expect(nativeExit.hidden, 1);
+      navigatorKey.currentState!.pop();
+      await tester.pumpAndSettle();
+      final backExit = _FullscreenExitCallback();
+      onShowCustomViewCallback!(mockWebChromeClient, mockWebView, backExit);
+      await tester.pumpAndSettle();
+      navigatorKey.currentState!.pop();
+      await tester.pumpAndSettle();
+      expect(backExit.hidden, 1);
+      onHideCustomViewCallback!(mockWebChromeClient);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigatorKey,
+          home: Builder(builder: (context) => webViewWidget.build(context)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final remountedExit = _FullscreenExitCallback();
+      onShowCustomViewCallback!(
+        mockWebChromeClient,
+        mockWebView,
+        remountedExit,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(AndroidCustomViewWidget), findsOneWidget);
+      navigatorKey.currentState!.pop();
+      await tester.pumpAndSettle();
+      expect(remountedExit.hidden, 1);
+      onHideCustomViewCallback!(mockWebChromeClient);
     });
 
     testWidgets('PlatformView is recreated when the controller changes', (
@@ -3075,6 +3144,16 @@ void main() {
       );
     });
   });
+}
+
+class _FullscreenExitCallback extends android_webview.CustomViewCallback {
+  _FullscreenExitCallback() : super.pigeon_detached();
+  final _hidden = [0];
+  int get hidden => _hidden.single;
+  @override
+  Future<void> onCustomViewHidden() async {
+    _hidden[0]++;
+  }
 }
 
 class TestWebViewClient extends android_webview.WebViewClient {

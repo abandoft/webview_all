@@ -80,9 +80,42 @@ final class ResourceBridge {
   private volatile String host = "";
   private volatile boolean enabled;
   private volatile int generation;
+  private String kind = "resource", channelName;
+  private java.util.List<String> patterns = Collections.emptyList();
+  private java.util.List<String> schemes = Collections.emptyList();
+  private boolean caseSensitive;
+
+  static boolean configureNetwork(WebView view, BinaryMessenger messenger, Map<?, ?> args) {
+    if (!(view instanceof WebViewProxyApi.WebViewPlatformView) || args == null || !(args.get("channel") instanceof String)) return false;
+    WebViewProxyApi.WebViewPlatformView owner = (WebViewProxyApi.WebViewPlatformView) view;
+    String kind = (String) args.get("kind"), name = (String) args.get("channel");
+    if (!"http".equals(kind) && !"schemes".equals(kind)) return false;
+    ResourceBridge previous = "http".equals(kind) ? owner.networkBridge : owner.schemeBridge;
+    if (!Boolean.TRUE.equals(args.get("enabled"))) {
+      if (previous != null && name.equals(previous.channelName)) previous.close();
+      return true;
+    }
+    Object selectors = args.get("http".equals(kind) ? "urlPatterns" : "schemes");
+    if (!(selectors instanceof java.util.List)) return false;
+    java.util.List<String> values = new java.util.ArrayList<>();
+    for (Object value : (java.util.List<?>) selectors) {
+      if (!(value instanceof String) || ("http".equals(kind) ? !NetworkControl.validPattern((String) value) : !owner.declaredCustomSchemes.contains(value))) return false;
+      values.add((String) value);
+    }
+    if (values.isEmpty() || values.size() > 256) return false;
+    ResourceBridge bridge = new ResourceBridge();
+    bridge.kind = kind; bridge.caseSensitive = Boolean.TRUE.equals(args.get("caseSensitive"));
+    if ("http".equals(kind)) bridge.patterns = Collections.unmodifiableList(values);
+    else bridge.schemes = Collections.unmodifiableList(values);
+    bridge.configure(messenger, name, "", true);
+    if ("http".equals(kind)) owner.networkBridge = bridge; else owner.schemeBridge = bridge;
+    if (previous != null) previous.close();
+    return true;
+  }
 
   private void configure(BinaryMessenger messenger, String name, String host, boolean enabled) {
     generation++;
+    this.channelName = name;
     channel = new MethodChannel(messenger, name);
     this.host = host;
     this.enabled = enabled;
@@ -90,17 +123,32 @@ final class ResourceBridge {
 
   static WebResourceResponse intercept(WebView view, WebResourceRequest request) {
     if (!(view instanceof WebViewProxyApi.WebViewPlatformView)) return null;
-    ResourceBridge bridge = ((WebViewProxyApi.WebViewPlatformView) view).resourceBridge;
+    if (NetworkControl.blocks(view, request)) return empty(403);
+    WebViewProxyApi.WebViewPlatformView owner = (WebViewProxyApi.WebViewPlatformView) view;
+    ResourceBridge bridge = owner.resourceBridge;
+    WebResourceResponse response = bridge == null ? null : bridge.intercept(request);
+    if (response != null) return response;
+    bridge = owner.schemeBridge;
+    response = bridge == null ? null : bridge.intercept(request);
+    if (response != null) return response;
+    bridge = owner.networkBridge;
     return bridge == null ? null : bridge.intercept(request);
   }
 
   private WebResourceResponse intercept(WebResourceRequest request) {
     Uri uri = request.getUrl();
-    if (!"https".equals(uri.getScheme())
+    if ("http".equals(kind)) {
+      if (!("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))) return null;
+      boolean selected = false;
+      for (String pattern : patterns) if (NetworkControl.matches(pattern, uri.toString(), caseSensitive)) { selected = true; break; }
+      if (!selected) return null;
+    } else if ("schemes".equals(kind)) {
+      if (!schemes.contains(uri.getScheme())) return null;
+    } else if (!"https".equals(uri.getScheme())
         || !host.equals(uri.getHost())
         || uri.getPort() != -1
         || uri.getUserInfo() != null) return null;
-    if (!enabled) return empty(404);
+    if (!enabled) return "http".equals(kind) ? null : empty(404);
     final MethodChannel target = channel;
     final int expectedGeneration = generation;
     final String id = UUID.randomUUID().toString();
@@ -109,6 +157,8 @@ final class ResourceBridge {
     args.put("uri", uri.toString());
     args.put("method", request.getMethod());
     args.put("headers", request.getRequestHeaders());
+    args.put("isForMainFrame", request.isForMainFrame());
+    args.put("bodyAvailable", false);
     try {
       Object value = invoke(target, "open", args);
       if (!(value instanceof Map) || generation != expectedGeneration || !enabled) {
@@ -116,6 +166,7 @@ final class ResourceBridge {
         return empty(404);
       }
       Map<?, ?> response = (Map<?, ?>) value;
+      if ("http".equals(kind) && Boolean.TRUE.equals(response.get("passThrough"))) return null;
       int status = ((Number) response.get("statusCode")).intValue();
       String mimeType = (String) response.get("mimeType");
       Map<String, String> headers = new HashMap<>();

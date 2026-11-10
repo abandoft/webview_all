@@ -18,6 +18,11 @@ import kotlin.jvm.functions.Function1;
  * <p>Handles creating {@link WebStorage}s that intercommunicate with a paired Dart object.
  */
 public class WebStorageProxyApi extends PigeonApiWebStorage {
+  @Override public WebStorage forProfile(@NonNull String name) {
+    if (!name.matches("[A-Za-z0-9_-]{1,64}") || !androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.MULTI_PROFILE))
+      throw new UnsupportedOperationException("Named-profile website data is unavailable.");
+    return androidx.webkit.ProfileStore.getInstance().getOrCreateProfile("webview_all_" + name).getWebStorage();
+  }
   /** Creates a host API that handles creating {@link WebStorage} and invoke its methods. */
   public WebStorageProxyApi(@NonNull ProxyApiRegistrar pigeonRegistrar) {
     super(pigeonRegistrar);
@@ -32,6 +37,18 @@ public class WebStorageProxyApi extends PigeonApiWebStorage {
   @Override
   public void deleteAllData(@NonNull WebStorage pigeon_instance) {
     pigeon_instance.deleteAllData();
+  }
+  @Override public void deleteBrowsingDataForSite(@NonNull WebStorage storage, @NonNull String site,
+      @NonNull Function1<? super Result<String>, Unit> callback) {
+    if (!WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) {
+      ResultCompat.success(null, callback); return;
+    }
+    try {
+      String[] normalized = new String[1];
+      normalized[0] = WebStorageCompat.deleteBrowsingDataForSite(storage, site,
+          () -> new android.os.Handler(android.os.Looper.getMainLooper()).post(
+              () -> ResultCompat.success(normalized[0], callback)));
+    } catch (RuntimeException error) { ResultCompat.failure(error, callback); }
   }
 
   @Override

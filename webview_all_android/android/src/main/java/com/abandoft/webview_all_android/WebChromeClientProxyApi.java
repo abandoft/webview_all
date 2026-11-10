@@ -29,6 +29,10 @@ import java.util.Objects;
  * <p>Handles creating {@link WebChromeClient}s that intercommunicate with a paired Dart object.
  */
 public class WebChromeClientProxyApi extends PigeonApiWebChromeClient {
+  @Override
+  public void setPopupWindowPolicy(@NonNull WebChromeClientImpl instance, long policy) {
+    instance.denyPopupWindows = policy == 1;
+  }
   /**
    * Implementation of {@link WebChromeClient} that passes arguments of callback methods to Dart.
    */
@@ -242,7 +246,13 @@ public class WebChromeClientProxyApi extends PigeonApiWebChromeClient {
    * window.
    */
   public static class SecureWebChromeClient extends WebChromeClient {
+    boolean denyPopupWindows = false;
     @Nullable WebViewClient webViewClient;
+
+    @Override
+    public void onCloseWindow(WebView window) {
+      BrowserOperations.windowCloseRequested(window);
+    }
 
     @Override
     public boolean onCreateWindow(
@@ -250,6 +260,11 @@ public class WebChromeClientProxyApi extends PigeonApiWebChromeClient {
         boolean isDialog,
         boolean isUserGesture,
         @NonNull Message resultMsg) {
+      if (denyPopupWindows)
+        return false;
+      Boolean handled = BrowserOperations.requestWindow(view, isDialog, isUserGesture, resultMsg);
+      if (handled != null)
+        return handled;
       return onCreateWindow(view, resultMsg, new WebView(view.getContext()));
     }
 
