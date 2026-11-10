@@ -12,11 +12,15 @@ class OffscreenWebViewSession {
 
   /// Creates an offscreen session with default controller parameters.
   static Future<OffscreenWebViewSession> create({
+    WebViewMediaPlaybackPolicy? mediaPlaybackPolicy,
     void Function(WebViewPermissionRequest request)? onPermissionRequest,
   }) async {
     _verifyPlatformSupport();
     return _fromOwnedController(
-      WebViewController(onPermissionRequest: onPermissionRequest),
+      WebViewController(
+        mediaPlaybackPolicy: mediaPlaybackPolicy,
+        onPermissionRequest: onPermissionRequest,
+      ),
     );
   }
 

@@ -28,6 +28,21 @@ import 'package:webview_platform_interface/webview_platform_interface.dart';
 /// }
 /// ```
 class WebViewCookieManager {
+  /// Queries readable cookie attributes and individual-deletion support.
+  Future<WebViewCookieCapabilities> getCapabilities() =>
+      platform.getCapabilities();
+
+  /// Deletes a cookie by its stored name, domain and path.
+  ///
+  /// Returns true when the operation completes, including when no cookie
+  /// existed, or false when unsupported. URL-only read APIs cannot recover
+  /// the stored domain/path; keep the identity used when creating the cookie.
+  Future<bool> deleteCookie({
+    required String name,
+    required String domain,
+    String path = '/',
+  }) => platform.deleteCookie(name: name, domain: domain, path: path);
+
   /// Constructs a [WebViewCookieManager].
   ///
   /// See [WebViewCookieManager.fromPlatformCreationParams] for setting
@@ -85,7 +100,8 @@ class WebViewCookieManager {
 
   /// Sets a cookie in this manager's store.
   ///
-  /// This is a no op on iOS versions below 11.
+  /// Optional security and expiry attributes follow the platform store policy.
+  /// Inspect [getCapabilities] before depending on metadata returned by reads.
   Future<void> setCookie(WebViewCookie cookie) => platform.setCookie(cookie);
 
   /// Gets cookies visible for [domain] from this manager's store.

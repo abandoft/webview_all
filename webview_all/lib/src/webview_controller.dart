@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -41,6 +42,131 @@ import 'webview_widget.dart';
 /// }
 /// ```
 class WebViewController {
+  Future<WebViewNetworkCapabilities> getNetworkCapabilities() =>
+      platform.getNetworkCapabilities();
+  Future<bool> setContentRules(List<WebViewContentRule> rules) =>
+      platform.setContentRules(rules);
+  Future<bool> setRequestDelegate(WebViewRequestDelegate? delegate) =>
+      platform.setRequestDelegate(delegate);
+  Future<bool> setCustomSchemeDelegate(WebViewResourceDelegate? delegate) =>
+      platform.setCustomSchemeDelegate(delegate);
+  Future<Uint8List?> createArchive({required WebViewArchiveFormat format}) =>
+      platform.createArchive(format: format);
+  Future<bool> setContextMenuEnabled(bool enabled) =>
+      platform.setContextMenuEnabled(enabled);
+  Future<bool> setAudioMuted(bool muted) => platform.setAudioMuted(muted);
+  Future<bool> pauseMedia() => platform.pauseMedia();
+  Future<bool> setMediaPlaybackSuspended(bool suspended) =>
+      platform.setMediaPlaybackSuspended(suspended);
+  Future<WebViewPrintJob?> printPage({String jobName = 'Web page'}) =>
+      platform.printPage(jobName: jobName);
+  Future<bool> clearNavigationHistory() => platform.clearNavigationHistory();
+  Future<WebViewNavigationState?> saveNavigationState() =>
+      platform.saveNavigationState();
+  Future<bool> restoreNavigationState(WebViewNavigationState state) =>
+      platform.restoreNavigationState(state);
+
+  /// Receives native fullscreen events. The app owns fullscreen layout and UI.
+  Future<void> setFullscreenDelegate(WebViewFullscreenDelegate? delegate) =>
+      platform.setFullscreenDelegate(delegate);
+
+  Future<bool> exitFullscreen() => platform.exitFullscreen();
+
+  /// Reports engine failures and the available recovery action; never reloads.
+  Future<void> setOnProcessFailed(
+    FutureOr<void> Function(WebViewProcessFailure)? callback,
+  ) => platform.setOnProcessFailed(callback);
+
+  /// Handles native popup requests. Use request.createController(), configure
+  /// the child, then await request.attach(child) before displaying it. The app
+  /// owns its UI and lifetime. Returning without attaching rejects the popup. Null restores the
+  /// configured popup policy; deny always takes priority.
+  Future<void> setNewWindowDelegate(
+    FutureOr<void> Function(WebViewNewWindowRequest<WebViewController>)?
+    delegate,
+  ) => platform.setNewWindowDelegate(
+    delegate == null
+        ? null
+        : (request) => delegate(
+            request.map(
+              (controller) => controller.platform,
+              fromPlatform: WebViewController.fromPlatform,
+            ),
+          ),
+  );
+
+  /// Called when a child page requests window.close; remove and dispose its view.
+  Future<void> setOnWindowCloseRequested(VoidCallback? callback) =>
+      platform.setOnWindowCloseRequested(callback);
+
+  /// Captures the native page viewport as PNG, excluding Flutter overlays.
+  /// Wait until page layout has settled. Unsupported engines warn and return null.
+  Future<Uint8List?> takeScreenshot({
+    WebViewScreenshotOptions options = const WebViewScreenshotOptions(),
+  }) => platform.takeScreenshot(options: options);
+
+  /// Returns PDF bytes using native layout defaults. Pagination can vary between
+  /// engines. Unsupported engines warn and return null; the app saves the data.
+  Future<Uint8List?> createPdf({WebViewPdfOptions? options}) =>
+      platform.createPdf(options: options);
+
+  /// Queries browser operations available in the current engine and document.
+  Future<WebViewBrowserCapabilities> getBrowserCapabilities() =>
+      platform.getBrowserCapabilities();
+
+  /// Stops loading and cancels pending plugin-managed navigation requests.
+  ///
+  /// Does not cancel a download that the application has already accepted.
+  Future<void> stopLoading() => platform.stopLoading();
+
+  /// Returns a snapshot of this view's back/forward list, or null if unavailable.
+  Future<WebViewNavigationHistory?> getNavigationHistory() =>
+      platform.getNavigationHistory();
+
+  /// Navigates to an index in the current history; returns false if unavailable
+  /// or out of range. Query history again after navigation changes the list.
+  Future<bool> goToHistoryIndex(int index) => platform.goToHistoryIndex(index);
+
+  /// Finds rendered text. Repeating the same query advances the selected match.
+  ///
+  /// An empty query clears matches. Unsupported options warn and return null;
+  /// inspect [getBrowserCapabilities] for support. Match counts and the selected
+  /// index are null when the engine cannot report them.
+  Future<WebViewFindResult?> findText(
+    String text, {
+    bool forward = true,
+    bool caseSensitive = false,
+    bool wrapAround = true,
+  }) => platform.findText(
+    text,
+    forward: forward,
+    caseSensitive: caseSensitive,
+    wrapAround: wrapAround,
+  );
+
+  /// Clears text-search state and highlights when supported.
+  Future<void> clearFindMatches() => platform.clearFindMatches();
+
+  /// Sets how requests to open another browsing window are handled.
+  ///
+  /// Unsupported policies warn and leave the current policy in place.
+  Future<void> setPopupPolicy(WebViewPopupWindowPolicy policy) =>
+      platform.setPopupPolicy(policy);
+
+  /// Handles file inputs; return an empty list to cancel a request.
+  ///
+  /// Passing null restores platform defaults. Unsupported platforms warn;
+  /// available request metadata varies by engine.
+  Future<void> setFileSelector(WebViewFileSelector? selector) =>
+      platform.setFileSelector(selector);
+
+  /// Changes whether media playback requires a user gesture when supported.
+  ///
+  /// On Apple platforms, choose [WebViewMediaPlaybackPolicy] at creation.
+  /// Browser, site and operating-system autoplay restrictions still apply.
+  Future<void> setMediaPlaybackRequiresUserGesture(bool require) =>
+      platform.setMediaPlaybackRequiresUserGesture(require);
+
   /// Features supported by application resource URLs on this platform.
   WebViewResourceCapabilities get resourceCapabilities =>
       platform.resourceCapabilities;
@@ -85,10 +211,16 @@ class WebViewController {
   ///
   /// See [WebViewController.fromPlatformCreationParams] for setting parameters
   /// for a specific platform.
+  ///
+  /// [mediaPlaybackPolicy] applies at creation where supported. Null preserves
+  /// engine defaults; query [getBrowserCapabilities] for runtime support.
   WebViewController({
+    WebViewMediaPlaybackPolicy? mediaPlaybackPolicy,
     void Function(WebViewPermissionRequest request)? onPermissionRequest,
   }) : this.fromPlatformCreationParams(
-         const PlatformWebViewControllerCreationParams(),
+         PlatformWebViewControllerCreationParams(
+           mediaPlaybackPolicy: mediaPlaybackPolicy,
+         ),
          onPermissionRequest: onPermissionRequest,
        );
 
@@ -290,14 +422,91 @@ class WebViewController {
     String functionBody, {
     Map<String, Object?> arguments = const <String, Object?>{},
     Duration timeout = const Duration(seconds: 30),
+    WebViewJavaScriptWorld world = WebViewJavaScriptWorld.page,
   }) {
-    return platform.callAsyncJavaScript(
-      JavaScriptInvocationParams(
-        functionBody: functionBody,
-        arguments: arguments,
-        timeout: timeout,
-      ),
+    final invocation = JavaScriptInvocationParams(
+      functionBody: functionBody,
+      arguments: arguments,
+      timeout: timeout,
+      world: world,
     );
+    if (world.isPage) return platform.callAsyncJavaScript(invocation);
+    return _callAsyncJavaScriptInWorld(invocation);
+  }
+
+  Future<Object?> _callAsyncJavaScriptInWorld(
+    JavaScriptInvocationParams params,
+  ) async {
+    if (!(await getJavaScriptCapabilities(
+      world: params.world,
+    )).supportsWorld(params.world)) {
+      debugPrint(
+        'webview_all: callAsyncJavaScript was skipped because the requested isolated world is unavailable.',
+      );
+      return null;
+    }
+    return platform.callAsyncJavaScript(params);
+  }
+
+  /// Engine capabilities, including content restrictions on Web.
+  Future<WebViewJavaScriptCapabilities> getJavaScriptCapabilities({
+    WebViewJavaScriptWorld world = WebViewJavaScriptWorld.page,
+  }) => platform.getJavaScriptCapabilities(world: world);
+
+  /// Registers a JSON-compatible Dart callback exposed through
+  /// `await window.webviewAll.callHandler(name, ...arguments)`.
+  ///
+  /// Register handlers before user scripts and before loading the document.
+  /// Returns false with a warning when the world or policy cannot be enforced.
+  /// Existing string JavaScript channels retain their behavior.
+  Future<bool> addJavaScriptHandler(
+    String name, {
+    required WebViewJavaScriptHandler onCall,
+    required WebViewJavaScriptAccessPolicy accessPolicy,
+    WebViewJavaScriptWorld world = WebViewJavaScriptWorld.page,
+    Duration timeout = const Duration(seconds: 30),
+  }) => platform.addJavaScriptHandler(
+    WebViewJavaScriptHandlerParams(
+      name: name,
+      onCall: onCall,
+      accessPolicy: accessPolicy,
+      world: world,
+      timeout: timeout,
+    ),
+  );
+
+  Future<void> removeJavaScriptHandler(
+    String name, {
+    WebViewJavaScriptWorld world = WebViewJavaScriptWorld.page,
+  }) => platform.removeJavaScriptHandler(name, world: world);
+
+  Future<void> removeAllJavaScriptHandlers() =>
+      platform.removeAllJavaScriptHandlers();
+
+  /// Registers a script, warning and returning null for unsupported features.
+  /// Actual registration failures are reported with a warning as well.
+  Future<String?> tryAddUserScript(WebViewUserScript userScript) async {
+    if (userScript.source.trim().isEmpty) {
+      throw ArgumentError.value(
+        userScript.source,
+        'source',
+        'The script must not be empty.',
+      );
+    }
+    try {
+      final caps = await getJavaScriptCapabilities(world: userScript.world);
+      if (!caps.supportsWorld(userScript.world) ||
+          !caps.userScriptInjectionTimes.contains(userScript.injectionTime)) {
+        debugPrint(
+          'webview_all: User script was skipped: ${userScript.injectionTime.name}, world=${userScript.world.name ?? 'page'}. ${caps.limitation ?? 'The requested capability is unavailable.'}',
+        );
+        return null;
+      }
+      return await platform.addUserScript(userScript);
+    } catch (error) {
+      debugPrint('webview_all: User script was skipped: $error');
+      return null;
+    }
   }
 
   /// Whether this controller can operate without a [WebViewWidget].
@@ -328,6 +537,12 @@ class WebViewController {
       throw UnsupportedError(
         '${userScript.injectionTime.name} user-script injection is not '
         'supported on the current platform.',
+      );
+    }
+    if (!userScript.world.isPage &&
+        !(await getJavaScriptCapabilities()).supportsWorld(userScript.world)) {
+      throw UnsupportedError(
+        'The requested isolated world is unavailable. Use tryAddUserScript to skip unsupported scripts with a warning.',
       );
     }
     return platform.addUserScript(userScript);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:webview_all/webview_all.dart';
@@ -74,6 +75,53 @@ void main() {
   });
 
   test(
+    'session cookie deletion stays scoped and creation preserves media policy',
+    () async {
+      final a = (await WebViewSession.create(
+        mode: WebViewSessionMode.isolatedIncognito,
+        mediaPlaybackPolicy: WebViewMediaPlaybackPolicy.allowWithoutUserGesture,
+      ))!;
+      final b = (await WebViewSession.create(
+        mode: WebViewSessionMode.isolatedIncognito,
+      ))!;
+      expect(
+        a.controller.platform.params.mediaPlaybackPolicy,
+        WebViewMediaPlaybackPolicy.allowWithoutUserGesture,
+      );
+      final cookies = a.cookieManager;
+      expect((await cookies.getCapabilities()).deleteByIdentity, isTrue);
+      const cookie = WebViewCookie(
+        name: 'session',
+        value: 'v',
+        domain: 'example.test',
+      );
+      await cookies.setCookie(cookie);
+      await b.cookieManager.setCookie(cookie);
+      expect(
+        await cookies.deleteCookie(name: cookie.name, domain: cookie.domain),
+        isTrue,
+      );
+      expect(
+        await cookies.getCookies(domain: Uri.parse('https://example.test/')),
+        isEmpty,
+      );
+      expect(
+        await b.cookieManager.getCookies(
+          domain: Uri.parse('https://example.test/'),
+        ),
+        [cookie],
+      );
+      await a.close();
+      expect(() => cookies.getCapabilities(), throwsStateError);
+      expect(
+        () => cookies.deleteCookie(name: cookie.name, domain: cookie.domain),
+        throwsStateError,
+      );
+      await b.close();
+    },
+  );
+
+  test(
     'close is idempotent and cached managers cannot act after close',
     () async {
       final session = (await WebViewSession.create())!;
@@ -87,6 +135,11 @@ void main() {
       expect(() => session.controller, throwsStateError);
       expect(() => cookies.clearCookies(), throwsStateError);
       expect(() => data.clearAllWebsiteData(), throwsStateError);
+      expect(() => data.getCapabilities(), throwsStateError);
+      expect(
+        () => data.clearWebsiteData(dataTypes: {WebViewDataType.cookies}),
+        throwsStateError,
+      );
     },
   );
 
@@ -142,6 +195,95 @@ void main() {
     await session.close();
   });
 
+  test(
+    'profile keeps its native owner until the last session closes',
+    () async {
+      final profile = (await WebViewProfile.create(
+        mode: WebViewSessionMode.isolatedIncognito,
+      ))!;
+      final a = (await profile.createSession())!,
+          b = (await profile.createSession())!;
+      final anchor = platform.controllers.first;
+      await a.cookieManager.setCookie(
+        const WebViewCookie(
+          name: 'account',
+          value: 'one',
+          domain: 'example.test',
+        ),
+      );
+      expect(
+        (await b.cookieManager.getCookies(
+          domain: Uri.parse('https://example.test'),
+        )).single.value,
+        'one',
+      );
+      await a.close();
+      expect(anchor.closes, 0);
+      await profile.close();
+      expect(anchor.closes, 0);
+      expect(await profile.createSession(), isNull);
+      expect(
+        (await b.cookieManager.getCookies(
+          domain: Uri.parse('https://example.test'),
+        )).single.value,
+        'one',
+      );
+      await b.close();
+      await profile.whenReleased;
+      expect(anchor.closes, 1);
+      await profile.close();
+      await a.close();
+      await b.close();
+      expect(platform.controllers.every((c) => c.closes == 1), isTrue);
+    },
+  );
+
+  test(
+    'invalid or unsupported named profiles never create a fallback store',
+    () async {
+      expect(await WebViewProfile.create(name: '../account'), isNull);
+      platform.namedProfiles = false;
+      expect(await WebViewProfile.create(name: 'account'), isNull);
+      expect(platform.controllers, isEmpty);
+      platform.namedProfiles = true;
+      final profile = (await WebViewProfile.create(
+        name: 'account',
+        customSchemes: ['appfixture'],
+      ))!;
+      expect(platform.controllers.single.params.profileName, 'account');
+      expect(platform.controllers.single.params.customSchemes, ['appfixture']);
+      await profile.close();
+    },
+  );
+
+  test(
+    'closing a profile during creation releases the late child and its owner',
+    () async {
+      final profile = (await WebViewProfile.create())!;
+      platform.relatedGate = Completer<void>();
+      final child = profile.createSession();
+      await profile.close();
+      expect(platform.controllers.single.closes, 0);
+      platform.relatedGate!.complete();
+      expect(await child, isNull);
+      await profile.whenReleased;
+      expect(platform.controllers.length, 2);
+      expect(platform.controllers.every((c) => c.closes == 1), isTrue);
+    },
+  );
+
+  test(
+    'failed profile child preparation releases the reservation exactly once',
+    () async {
+      final profile = (await WebViewProfile.create())!;
+      platform.failPreparation = true;
+      expect(await profile.createSession(), isNull);
+      await profile.close();
+      await profile.whenReleased;
+      expect(platform.controllers.every((c) => c.closes == 1), isTrue);
+    },
+  );
+
   test('public title callback reaches the platform delegate', () async {
     final titles = <String>[];
     final delegate = NavigationDelegate(onTitleChange: titles.add);
@@ -157,6 +299,8 @@ class _Platform extends WebViewPlatform {
       WebViewIncognitoSupport.nativeStore;
   bool failPreparation = false;
   bool queryError = false;
+  bool namedProfiles = true;
+  Completer<void>? relatedGate;
   final controllers = <_Controller>[];
   @override
   Set<WebViewSessionMode> get supportedSessionModes => modes;
@@ -169,6 +313,8 @@ class _Platform extends WebViewPlatform {
       canClose: true,
       scopedCookies: true,
       scopedWebsiteData: true,
+      namedProfiles: namedProfiles,
+      relatedControllers: true,
     );
   }
 
@@ -178,6 +324,13 @@ class _Platform extends WebViewPlatform {
   ) {
     final controller = _Controller(params, failPreparation);
     controllers.add(controller);
+    controller.relatedFactory = () async {
+      await relatedGate?.future;
+      final child = createPlatformWebViewController(params) as _Controller;
+      child.cookies = controller.cookies;
+      child.data = controller.data;
+      return child;
+    };
     return controller;
   }
 
@@ -190,8 +343,12 @@ class _Platform extends WebViewPlatform {
 class _Controller extends PlatformWebViewController {
   _Controller(super.params, this.fail) : super.implementation();
   final bool fail;
-  final cookies = _Cookies();
-  final data = _Data();
+  var cookies = _Cookies();
+  var data = _Data();
+  Future<PlatformWebViewController?> Function()? relatedFactory;
+  @override
+  Future<PlatformWebViewController?> createRelatedController() =>
+      relatedFactory!();
   bool prepared = false;
   int closes = 0;
   void Function()? onClose;
@@ -217,6 +374,23 @@ class _Cookies extends PlatformWebViewCookieManager {
   _Cookies()
     : super.implementation(const PlatformWebViewCookieManagerCreationParams());
   final values = <WebViewCookie>[];
+  @override
+  Future<WebViewCookieCapabilities> getCapabilities() async =>
+      const WebViewCookieCapabilities(deleteByIdentity: true);
+
+  @override
+  Future<bool> deleteCookie({
+    required String name,
+    required String domain,
+    String path = '/',
+  }) async {
+    values.removeWhere(
+      (cookie) =>
+          cookie.name == name && cookie.domain == domain && cookie.path == path,
+    );
+    return true;
+  }
+
   @override
   Future<void> setCookie(WebViewCookie cookie) async {
     values.add(cookie);
