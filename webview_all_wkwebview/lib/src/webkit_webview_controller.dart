@@ -784,10 +784,38 @@ class WebKitWebViewController extends PlatformWebViewController
       });
 
   @override
+  Future<bool> setPageZoom(double factor) async {
+    if (!acceptsPageZoom(factor)) return false;
+    return browserOperation('setPageZoom', false, () async {
+      if (_offscreenCloseFuture != null) {
+        throw StateError('This WebKit WebView controller has been closed.');
+      }
+      await _webView.getUrl();
+      if (_offscreenCloseFuture != null) {
+        throw StateError('This WebKit WebView controller has been closed.');
+      }
+      final applied =
+          await _browserChannel.invokeMethod<bool>('setPageZoom', {
+            'webViewId': webViewIdentifier,
+            'factor': factor,
+          }) ??
+          false;
+      if (!applied) {
+        debugPrint(
+          'webview_all_wkwebview: native page zoom is unavailable in this '
+          'engine or the view is closed. The page scale was retained.',
+        );
+      }
+      return applied;
+    });
+  }
+
+  @override
   Future<WebViewBrowserCapabilities> getBrowserCapabilities() async {
     await _webView.getUrl();
     bool fullscreen = false;
     bool navigationState = false;
+    bool pageZoom = false;
     try {
       final nativeCaps = await _browserChannel.invokeMapMethod<String, Object?>(
         'browserCapabilities',
@@ -795,6 +823,7 @@ class WebKitWebViewController extends PlatformWebViewController
       );
       fullscreen = nativeCaps?['fullscreenEvents'] == true;
       navigationState = nativeCaps?['navigationState'] == true;
+      pageZoom = nativeCaps?['pageZoom'] == true;
     } catch (_) {
       /* An older host may not expose auxiliary browser operations. */
     }
@@ -817,6 +846,7 @@ class WebKitWebViewController extends PlatformWebViewController
       pdfExport: true,
       pdfPageLayout: true,
       stopLoading: true,
+      pageZoom: pageZoom,
       mediaPlaybackPolicyAtCreation: true,
       navigationHistory: true,
       historyNavigation: true,

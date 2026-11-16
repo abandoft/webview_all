@@ -42,6 +42,15 @@ Future<void> _disposeFinalizedLinuxWebView(
 
 class LinuxWebViewController extends PlatformWebViewController
     with WebViewResourceControllerMixin, WebViewNetworkControllerMixin {
+  @override
+  Future<bool> setPageZoom(double factor) async {
+    if (!acceptsPageZoom(factor)) return false;
+    return browserOperation('setPageZoom', false, () async {
+      await setZoomFactor(factor);
+      return true;
+    });
+  }
+
   WebViewFileSelector? _fileSelector;
   FutureOr<void> Function(WebViewNewWindowRequest<PlatformWebViewController>)?
   _newWindowDelegate;
@@ -397,6 +406,7 @@ class LinuxWebViewController extends PlatformWebViewController
         processFailureEvents: true,
         navigationState: true,
         stopLoading: true,
+        pageZoom: true,
         viewportScreenshot: true,
         archiveFormats: const {WebViewArchiveFormat.mhtml},
         contextMenuControl: true,

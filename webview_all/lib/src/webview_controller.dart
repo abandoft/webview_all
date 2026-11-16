@@ -42,6 +42,15 @@ import 'webview_widget.dart';
 /// }
 /// ```
 class WebViewController {
+  /// Sets native absolute page zoom, where 1.0 is 100%.
+  ///
+  /// Accepts finite factors from 0.25 to 5.0. Engine layout and rounding differ.
+  /// This is independent of [enableZoom] and text-only zoom. Unsupported engines,
+  /// invalid values and native failures warn and return false. A failed result
+  /// does not confirm native state. No CSS or pinch-zoom substitute is applied.
+  /// Query [getBrowserCapabilities] for support.
+  Future<bool> setPageZoom(double factor) => platform.setPageZoom(factor);
+
   Future<WebViewNetworkCapabilities> getNetworkCapabilities() =>
       platform.getNetworkCapabilities();
   Future<bool> setContentRules(List<WebViewContentRule> rules) =>

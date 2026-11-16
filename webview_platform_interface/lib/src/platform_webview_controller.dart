@@ -28,6 +28,27 @@ import 'javascript_world_invocation.dart';
 /// `implements` this interface will be broken by newly added
 /// [PlatformWebViewController] methods.
 abstract class PlatformWebViewController extends PlatformInterface {
+  /// Sets native page zoom. Unsupported engines retain their current scale.
+  Future<bool> setPageZoom(double factor) async {
+    if (!acceptsPageZoom(factor)) return false;
+    debugPrint(
+      'webview_all: native absolute page zoom is unavailable on this platform. '
+      'The page scale was retained; pinch zoom, text zoom and CSS replacements '
+      'were not applied.',
+    );
+    return false;
+  }
+
+  @protected
+  bool acceptsPageZoom(double factor) {
+    if (factor.isFinite && factor >= 0.25 && factor <= 5) return true;
+    debugPrint(
+      'webview_all: setPageZoom requires a finite factor between 0.25 and 5.0 '
+      '(1.0 is 100%). Received $factor; the page scale was retained.',
+    );
+    return false;
+  }
+
   Future<WebViewNetworkCapabilities> getNetworkCapabilities() async =>
       const WebViewNetworkCapabilities();
   Future<bool> setContentRules(List<WebViewContentRule> rules) async {

@@ -973,6 +973,9 @@ void main() {
       ).called(1);
       verify(mockWebView.removeObserver(mockWebView, 'URL')).called(1);
       verify(mockWebView.removeObserver(mockWebView, 'canGoBack')).called(1);
+      clearInteractions(mockWebView);
+      expect(await controller.setPageZoom(2), isFalse);
+      verifyZeroInteractions(mockWebView);
     });
 
     test('runJavaScript', () {

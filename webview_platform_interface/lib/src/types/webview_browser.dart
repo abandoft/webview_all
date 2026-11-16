@@ -47,6 +47,7 @@ class WebViewBrowserCapabilities {
     this.viewportScreenshot = false,
     this.pdfExport = false,
     this.stopLoading = false,
+    this.pageZoom = false,
     this.navigationHistory = false,
     this.historyNavigation = false,
     this.historyIsEmulated = false,
@@ -100,6 +101,9 @@ class WebViewBrowserCapabilities {
   final bool pdfExport;
 
   final bool stopLoading;
+
+  /// Native absolute page zoom, independently of pinch gestures and text zoom.
+  final bool pageZoom;
   final bool navigationHistory;
   final bool historyNavigation;
 

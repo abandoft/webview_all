@@ -156,6 +156,15 @@ class WindowsNavigationDelegateCreationParams
 class WindowsWebViewController extends PlatformWebViewController
     with WebViewResourceControllerMixin, WebViewNetworkControllerMixin {
   @override
+  Future<bool> setPageZoom(double factor) async {
+    if (!acceptsPageZoom(factor)) return false;
+    return browserOperation('setPageZoom', false, () async {
+      await setZoomFactor(factor);
+      return true;
+    });
+  }
+
+  @override
   Future<WebViewBrowserCapabilities> getBrowserCapabilities() async {
     await _ensureInitialized();
     final find = await _webviewController.supportsFind();
@@ -163,6 +172,7 @@ class WindowsWebViewController extends PlatformWebViewController
     final newWindows = await _webviewController.supportsNewWindows();
     return WebViewBrowserCapabilities(
       stopLoading: true,
+      pageZoom: true,
       newWindowDelegate: newWindows,
       windowCloseRequests: true,
       fullscreenEvents: true,

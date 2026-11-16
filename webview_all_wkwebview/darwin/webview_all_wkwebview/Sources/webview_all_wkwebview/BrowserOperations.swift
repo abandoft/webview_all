@@ -99,6 +99,16 @@ final class BrowserOperationsChannel {
       }
       let record = self.observe(view)
       switch call.method {
+      case "setPageZoom":
+        guard let factor = args["factor"] as? Double,
+          factor.isFinite, factor >= 0.25, factor <= 5.0
+        else {
+          result(false)
+          return
+        }
+        view.pageZoom = CGFloat(factor)
+        result(true)
+        return
       case "setContentRules":
         record.setContentRules(args["rules"] as? [[String: Any]] ?? [], result: result)
         return
@@ -192,11 +202,11 @@ final class BrowserOperationsChannel {
         return
       case "browserCapabilities":
         if #available(iOS 16.0, macOS 13.0, *) {
-          result(["fullscreenEvents": true, "navigationState": true])
+          result(["fullscreenEvents": true, "navigationState": true, "pageZoom": true])
         } else if #available(iOS 15.0, macOS 12.0, *) {
-          result(["fullscreenEvents": false, "navigationState": true])
+          result(["fullscreenEvents": false, "navigationState": true, "pageZoom": true])
         } else {
-          result(["fullscreenEvents": false, "navigationState": false])
+          result(["fullscreenEvents": false, "navigationState": false, "pageZoom": true])
         }
         return
       case "setFullscreenDelegateEnabled":

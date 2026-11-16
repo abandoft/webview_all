@@ -10,6 +10,30 @@ import XCTest
 #endif
 
 final class BrowserOperationsTests: XCTestCase {
+  @MainActor func testPageZoomIsAbsoluteAndRejectsInvalidFactors() {
+    let messenger = BrowserMessenger()
+    let registrar = ProxyAPIRegistrar(binaryMessenger: messenger)
+    let channel = BrowserOperationsChannel(registrar: registrar, messenger: messenger)
+    defer { channel.close() }
+    let view = WKWebView(frame: .zero)
+    let identifier = registrar.instanceManager.addHostCreatedInstance(view)
+    let capabilities = messenger.call("browserCapabilities", args: ["webViewId": identifier])
+      as? [String: Bool]
+    XCTAssertEqual(capabilities?["pageZoom"], true)
+    for factor in [0.25, 3.0, 3.0, 1.0] {
+      XCTAssertEqual(
+        messenger.call("setPageZoom", args: ["webViewId": identifier, "factor": factor]) as? Bool,
+        true)
+      XCTAssertEqual(view.pageZoom, CGFloat(factor))
+    }
+    for factor in [0.0, -1.0, Double.nan, Double.infinity, 0.249, 5.001] {
+      XCTAssertEqual(
+        messenger.call("setPageZoom", args: ["webViewId": identifier, "factor": factor]) as? Bool,
+        false)
+      XCTAssertEqual(view.pageZoom, 1.0)
+    }
+  }
+
   @MainActor func testNavigationStateMatchesProfilesWithoutMergingPrivateStores() {
     let privateStore = WKWebsiteDataStore.nonPersistent()
     XCTAssertTrue(BrowserOperationsChannel.canRestoreBetween(privateStore, privateStore))
@@ -90,10 +114,15 @@ private final class BrowserMessenger: TestBinaryMessenger {
     if channel == "com.abandoft.webview_all_wkwebview/browser" { browserHandler = handler }
     return 0
   }
-  func call(_ method: String, args: [String: Any]) {
+  @discardableResult
+  func call(_ method: String, args: [String: Any]) -> Any? {
     let message = FlutterStandardMethodCodec.sharedInstance().encode(
       FlutterMethodCall(methodName: method, arguments: args))
-    browserHandler?(message) { _ in }
+    var reply: Any?
+    browserHandler?(message) { data in
+      if let data { reply = FlutterStandardMethodCodec.sharedInstance().decodeEnvelope(data) }
+    }
+    return reply
   }
   override func send(
     onChannel channel: String, message: Data?, binaryReply callback: FlutterBinaryReply? = nil
