@@ -1,3 +1,9 @@
+## 1.5.1
+
+* Add native page zoom on iOS, macOS, Windows, and Linux.
+* Add Android controls for algorithmic darkening, DOM storage, and cache policy.
+* Add an example for rewriting selected webpage form requests.
+
 ## 1.5.0
 
 * Add asynchronous JavaScript communication, user script injection, and isolated execution worlds.
