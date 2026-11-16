@@ -60,3 +60,10 @@ if (controller.platform is WindowsWebViewController) {
 主要类型：`WebWebViewController`、`WebWebViewWidget`、`WebNavigationDelegate`、`WebWebViewCookieManager`、`WebWebViewDataManager`、`WebWebResourceRequest`、`WebWebResourceResponse`、`WebWebViewPermissionRequest`、`WebPlatformSslAuthError`、`HttpRequestFactory`、`ContentType`。
 
 重要 API：`setIFrameAttribute`、`setIFrameAllow`、`setIFrameSandbox`、`setIFrameReferrerPolicy`、fetch-backed request。
+
+## Android 视图设置（1.5.1+）
+
+`AndroidWebViewController.setAlgorithmicDarkeningAllowed`、`setDomStorageEnabled`
+和 `setCacheMode` 使用 Android 原生设置。算法暗化需要运行时支持；DOM 存储开关
+不删除数据；缓存策略不等于清理缓存。详见 [Android](/webview_all/zh/platforms/android/)。
+网页整页缩放使用通用的 `WebViewController.setPageZoom`，不支持的平台会打印说明。

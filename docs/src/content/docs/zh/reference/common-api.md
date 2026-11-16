@@ -70,6 +70,7 @@ JavaScript：
 | `setVerticalScrollBarEnabled` / `setHorizontalScrollBarEnabled` | `Future<void>` |
 | `supportsSetScrollBarsEnabled()` | `Future<bool>` |
 | `enableZoom` | `Future<void>` |
+| `setPageZoom(double factor)` | `Future<bool>` |
 | `setBackgroundColor` | `Future<void>` |
 | `setUserAgent` / `getUserAgent` | `Future<void>` / `Future<String?>` |
 | `setOverScrollMode` | `Future<void>` |
@@ -188,3 +189,11 @@ Cookie 属性和定向删除见 [Cookie 指南](/webview_all/zh/guides/cookies/)
 | `getNetworkCapabilities`, `setContentRules` | 原生内容规则、受支持的动作与条件及运行时能力。 |
 | `setRequestDelegate`, `setCustomSchemeDelegate` | HTTP 决策及创建时声明的自定义协议。 |
 | `setContextMenuEnabled`, `setAudioMuted`, `pauseMedia`, `setMediaPlaybackSuspended` | 可用的原生菜单和媒体控制。 |
+
+## 网页缩放
+
+自 1.5.1 起，`setPageZoom` 在 iOS、macOS、Windows 和 Linux 设置原生整页缩放。
+`1.0` 表示 100%，允许 `0.25` 到 `5.0`；通过
+`(await controller.getBrowserCapabilities()).pageZoom` 查询支持情况。它与 `enableZoom` 的手势开关、
+文字缩放及 Flutter 视图尺寸无关，各引擎的排版和取整可能不同。
+不支持、参数无效或调用失败时打印说明并返回 `false`。

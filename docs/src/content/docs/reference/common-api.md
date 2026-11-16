@@ -86,6 +86,7 @@ View state:
 | `setHorizontalScrollBarEnabled(bool enabled)` | `Future<void>` |
 | `supportsSetScrollBarsEnabled()` | `Future<bool>` |
 | `enableZoom(bool enabled)` | `Future<void>` |
+| `setPageZoom(double factor)` | `Future<bool>` |
 | `setBackgroundColor(Color color)` | `Future<void>` |
 | `setUserAgent(String? userAgent)` | `Future<void>` |
 | `getUserAgent()` | `Future<String?>` |
@@ -278,3 +279,12 @@ See [JavaScript](/webview_all/guides/javascript/) for usage and platform limits.
 | `getNetworkCapabilities`, `setContentRules` | Native rules, supported actions and conditions, and runtime capabilities. |
 | `setRequestDelegate`, `setCustomSchemeDelegate` | HTTP decisions and creation-time custom schemes. |
 | `setContextMenuEnabled`, `setAudioMuted`, `pauseMedia`, `setMediaPlaybackSuspended` | Available native menu and media controls. |
+
+## Page zoom
+
+Since 1.5.1, `setPageZoom` sets native full-page zoom on iOS, macOS, Windows,
+and Linux. `1.0` means 100%; accepted factors range from `0.25` to `5.0`.
+Check `(await controller.getBrowserCapabilities()).pageZoom` for support. This is separate from
+`enableZoom` gesture controls, text zoom, and Flutter view sizing; engine layout
+and rounding can differ. Unsupported engines, invalid factors, and native errors
+print a diagnostic and return `false`.

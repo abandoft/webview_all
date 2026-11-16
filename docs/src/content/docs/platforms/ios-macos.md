@@ -3,7 +3,7 @@ title: iOS and macOS
 description: WKWebView implementation, WebKit APIs, and Apple platform differences.
 ---
 
-iOS and macOS are provided by `webview_all_wkwebview ^1.5.0`. `webview_all` registers it as the default implementation for both Apple platforms.
+iOS and macOS are provided by `webview_all_wkwebview ^1.5.1`. `webview_all` registers it as the default implementation for both Apple platforms.
 
 ## Engine
 
@@ -167,3 +167,16 @@ Flutter versions. No host application changes are required.
 - Passkeys require the relying-party domain to be configured as an Associated
   Domain and remain subject to OS and credential-provider availability.
 - Permission handling still depends on OS privacy entitlements and user decisions.
+
+## Page zoom
+
+Since 1.5.1, use the common API before the first load or on an existing page:
+
+```dart
+await controller.setPageZoom(3.0); // 300%
+await controller.setPageZoom(1.0); // Reset to 100%
+```
+
+iOS and macOS use native `WKWebView.pageZoom` without editing page CSS or the
+viewport. Accepted factors range from `0.25` to `5.0`; repeating a value does not
+multiply the zoom. `enableZoom` controls user gestures independently.

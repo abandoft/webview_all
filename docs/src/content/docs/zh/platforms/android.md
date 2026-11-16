@@ -3,7 +3,7 @@ title: Android
 description: Android WebView 实现、API 和限制。
 ---
 
-Android 由 `webview_all_android ^1.5.0` 提供，`webview_all` 将它注册为默认 Android 实现。
+Android 由 `webview_all_android ^1.5.1` 提供，`webview_all` 将它注册为默认 Android 实现。
 
 | 项 | 值 |
 | --- | --- |
@@ -100,3 +100,27 @@ Android native 代码可通过 `WebViewFlutterAndroidExternalApi` 的
 - Android 插件会根据宿主工程的 Android Gradle Plugin 选择 Kotlin 集成方式：
   AGP 8 及以下使用 Kotlin Gradle Plugin，AGP 9 及以上使用 Built-in Kotlin，
   从而兼容旧版 Flutter 工程并避免与新版 Android 构建冲突。
+
+## 暗化、存储和缓存
+
+以下 Android 扩展自 1.5.1 提供，返回值表示设置是否成功：
+
+```dart
+final android = controller.platform as AndroidWebViewController;
+await android.setAlgorithmicDarkeningAllowed(true);
+await android.setDomStorageEnabled(false);
+await android.setCacheMode(AndroidWebViewCacheMode.noCache);
+```
+
+请在加载网页前设置。算法暗化取决于应用的原生主题和网页自身样式，不会强制
+所有网页变暗或注入 CSS。不支持的内核或 target SDK 低于 33 时返回 `false`
+并打印原因，不使用旧 `forceDark` 接口替代。
+
+DOM 存储默认开启；关闭后不删除已有数据，也不隔离 Cookie，重新开启后仍可
+访问之前保存的数据。
+
+缓存模式包括 `defaultMode`（遵循 HTTP 缓存策略）、`cacheElseNetwork`
+（优先已有缓存，包括过期内容）、`noCache`（不读缓存）和 `cacheOnly`
+（仅缓存，未命中时失败）。Service Worker 自己维护的缓存不由此设置控制。
+有限无痕视图只接受 `noCache`，其他模式返回 `false` 并保留原策略。
+需要删除数据时使用网站数据管理接口。

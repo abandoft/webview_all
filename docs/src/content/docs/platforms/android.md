@@ -3,7 +3,7 @@ title: Android
 description: Android WebView implementation, APIs, and platform limits.
 ---
 
-Android is provided by `webview_all_android ^1.5.0`. `webview_all` registers it as the default Android implementation.
+Android is provided by `webview_all_android ^1.5.1`. `webview_all` registers it as the default Android implementation.
 
 ## Engine
 
@@ -160,3 +160,29 @@ with Flutter 3.35 by using its engine plugin registry.
   Android Gradle Plugin: AGP 8 and earlier use the Kotlin Gradle Plugin, while
   AGP 9 and later use Built-in Kotlin. This keeps older Flutter projects
   compatible without conflicting with newer Android builds.
+
+## Darkening, storage and caching
+
+These Android extensions are available since 1.5.1 and return whether the
+setting was applied:
+
+```dart
+final android = controller.platform as AndroidWebViewController;
+await android.setAlgorithmicDarkeningAllowed(true);
+await android.setDomStorageEnabled(false);
+await android.setCacheMode(AndroidWebViewCacheMode.noCache);
+```
+
+Configure them before loading a page. Algorithmic darkening depends on the app's
+native theme and the page's own styling; it does not force a dark theme or inject
+CSS. Unsupported WebViews or target SDKs below 33 return `false` with a diagnostic.
+The deprecated force-dark API is not used as a fallback.
+
+DOM storage is enabled by default. Disabling it neither deletes existing data nor
+isolates cookies. Re-enabling it makes previously stored values accessible again.
+
+Cache modes are `defaultMode` (normal HTTP policy), `cacheElseNetwork` (prefer
+cached content, including expired entries), `noCache` (do not read cached content),
+and `cacheOnly` (fail on cache misses). This does not control service-worker-owned
+caches. Limited incognito views accept only `noCache`; other modes return `false`
+and retain the current policy. Use website-data management to delete stored data.

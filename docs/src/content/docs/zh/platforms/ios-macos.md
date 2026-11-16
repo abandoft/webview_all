@@ -3,7 +3,7 @@ title: iOS 和 macOS
 description: WKWebView 实现、WebKit API 和 Apple 平台差异。
 ---
 
-iOS 和 macOS 由 `webview_all_wkwebview ^1.5.0` 提供。
+iOS 和 macOS 由 `webview_all_wkwebview ^1.5.1` 提供。
 
 | 项 | 值 |
 | --- | --- |
@@ -102,7 +102,7 @@ macOS 与 iOS 共用 Dart 包。macOS 端只使用公开原生 WebKit API，并�
 | 滚动位置与回调 | macOS `WKWebView` 没有公开内部 scroll view；调用会打印说明并安全忽略，读取返回 `Offset.zero`。 |
 | 滚动条与 overscroll | macOS 没有对应公开 API；调用会打印说明并安全忽略。 |
 | 背景色 | macOS 12+ 使用原生 `underPageBackgroundColor`；更早系统打印版本要求并安全忽略。 |
-| 缩放 | 使用原生 `allowsMagnification`，不使用 JavaScript 兜底。 |
+| 手势缩放（`enableZoom`） | 使用原生 `allowsMagnification`，不使用 JavaScript 兜底。 |
 | inspect | 需要 macOS 13.3+；更早系统打印版本要求并安全忽略。 |
 | link preview | 取决于系统支持。 |
 
@@ -119,3 +119,16 @@ detach 回调。
 iOS 原生 `WKWebView` 访问入口也支持传入 `FlutterPluginRegistrar`：可用时使用
 Flutter 官方 registrar 查询，较早的受支持 Flutter 版本使用按 engine 隔离的兼容
 查询，无需修改宿主应用。
+
+## 网页缩放
+
+自 1.5.1 起，可在网页首次加载前或加载后调用统一接口：
+
+```dart
+await controller.setPageZoom(3.0); // 放大至 300%
+await controller.setPageZoom(1.0); // 恢复至 100%
+```
+
+iOS 和 macOS 使用原生 `WKWebView.pageZoom`，不修改网页 CSS 或 viewport。
+允许范围为 `0.25` 到 `5.0`，重复设置同一数值不会累乘。
+`enableZoom` 继续控制用户手势，和此接口相互独立。

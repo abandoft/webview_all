@@ -16,6 +16,7 @@ Legend:
 | Feature | Android | iOS | macOS | Windows | Linux | OHOS | Web |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `WebViewWidget` | Full | Full | Full | Full | Full | Full | Full |
+| Native page zoom (`setPageZoom`, 1.5.1+) | No; diagnostic | Full | Full | Full | Full | No; diagnostic | No; diagnostic |
 | Controller use without `WebViewWidget` | Full | Full | Full | Full | Full | Page operations require an attached WebView; user scripts can be registered earlier | No, iframe must be attached |
 | `loadRequest` GET | Full | Full | Full | Full | Full | Full | Full |
 | `loadRequest` GET headers | Full | Full | Full | Full | Full | Full | Limited, CORS/fetch |

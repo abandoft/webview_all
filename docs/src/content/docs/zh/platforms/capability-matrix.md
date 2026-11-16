@@ -16,6 +16,7 @@ description: 各平台的 WebView 功能支持与使用限制。
 | 能力 | Android | iOS | macOS | Windows | Linux | OHOS | Web |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `WebViewWidget` | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 |
+| 原生整页缩放（`setPageZoom`，1.5.1+） | 不支持，打印说明 | 完整 | 完整 | 完整 | 完整 | 不支持，打印说明 | 不支持，打印说明 |
 | 不创建 `WebViewWidget` 使用 controller | 完整 | 完整 | 完整 | 完整 | 完整 | 页面操作须绑定 WebView；用户脚本可提前注册 | 不支持，必须挂载 iframe |
 | `loadRequest` GET | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 |
 | GET headers | 完整 | 完整 | 完整 | 完整 | 完整 | 完整 | 有限制，CORS/fetch |

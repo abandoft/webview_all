@@ -60,3 +60,12 @@ Package: `webview_all_web`.
 Main types: `WebWebViewController`, `WebWebViewWidget`, `WebNavigationDelegate`, `WebWebViewCookieManager`, `WebWebViewDataManager`, `WebWebResourceRequest`, `WebWebResourceResponse`, `WebWebViewPermissionRequest`, `WebPlatformSslAuthError`, `HttpRequestFactory`, `ContentType`.
 
 Important APIs: `setIFrameAttribute`, `setIFrameAllow`, `setIFrameSandbox`, `setIFrameReferrerPolicy`, fetch-backed request.
+
+## Android view settings (1.5.1+)
+
+`AndroidWebViewController.setAlgorithmicDarkeningAllowed`, `setDomStorageEnabled`,
+and `setCacheMode` use native Android settings. Darkening requires runtime
+support; disabling DOM storage does not delete data; cache policy does not clear
+existing caches. See [Android](/webview_all/platforms/android/) for details.
+Use the common `WebViewController.setPageZoom` for native page zoom; unsupported
+platforms print a diagnostic.
