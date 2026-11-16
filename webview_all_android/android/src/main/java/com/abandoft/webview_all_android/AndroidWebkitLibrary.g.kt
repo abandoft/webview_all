@@ -2649,6 +2649,9 @@ abstract class PigeonApiWebView(open val pigeonRegistrar: AndroidWebkitLibraryPi
  */
 @Suppress("UNCHECKED_CAST")
 abstract class PigeonApiWebSettings(open val pigeonRegistrar: AndroidWebkitLibraryPigeonProxyApiRegistrar) {
+  /** Sets one of WebSettings' LOAD_* cache policies. */
+  abstract fun setCacheMode(pigeon_instance: android.webkit.WebSettings, mode: Long)
+
   /** Sets whether the DOM storage API is enabled. */
   abstract fun setDomStorageEnabled(pigeon_instance: android.webkit.WebSettings, flag: Boolean)
 
@@ -2719,6 +2722,25 @@ abstract class PigeonApiWebSettings(open val pigeonRegistrar: AndroidWebkitLibra
     @Suppress("LocalVariableName")
     fun setUpMessageHandlers(binaryMessenger: BinaryMessenger, api: PigeonApiWebSettings?) {
       val codec = api?.pigeonRegistrar?.codec ?: AndroidWebkitLibraryPigeonCodec()
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "com.abandoft.pigeon.webview_all_android.WebSettings.setCacheMode", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val pigeon_instanceArg = args[0] as android.webkit.WebSettings
+            val modeArg = args[1] as Long
+            val wrapped: List<Any?> = try {
+              api.setCacheMode(pigeon_instanceArg, modeArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              AndroidWebkitLibraryPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
       run {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "com.abandoft.pigeon.webview_all_android.WebSettings.setDomStorageEnabled", codec)
         if (api != null) {
@@ -6244,6 +6266,9 @@ abstract class PigeonApiCertificate(open val pigeonRegistrar: AndroidWebkitLibra
  */
 @Suppress("UNCHECKED_CAST")
 abstract class PigeonApiWebSettingsCompat(open val pigeonRegistrar: AndroidWebkitLibraryPigeonProxyApiRegistrar) {
+  /** Applies algorithmic darkening only on supported WebViews and target SDKs. */
+  abstract fun setAlgorithmicDarkeningAllowed(webSettings: android.webkit.WebSettings, allowed: Boolean): Boolean
+
   abstract fun setPaymentRequestEnabled(webSettings: android.webkit.WebSettings, enabled: Boolean)
 
   abstract fun setWebAuthenticationSupport(webSettings: android.webkit.WebSettings, support: Long)
@@ -6252,6 +6277,24 @@ abstract class PigeonApiWebSettingsCompat(open val pigeonRegistrar: AndroidWebki
     @Suppress("LocalVariableName")
     fun setUpMessageHandlers(binaryMessenger: BinaryMessenger, api: PigeonApiWebSettingsCompat?) {
       val codec = api?.pigeonRegistrar?.codec ?: AndroidWebkitLibraryPigeonCodec()
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "com.abandoft.pigeon.webview_all_android.WebSettingsCompat.setAlgorithmicDarkeningAllowed", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val webSettingsArg = args[0] as android.webkit.WebSettings
+            val allowedArg = args[1] as Boolean
+            val wrapped: List<Any?> = try {
+              listOf(api.setAlgorithmicDarkeningAllowed(webSettingsArg, allowedArg))
+            } catch (exception: Throwable) {
+              AndroidWebkitLibraryPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
       run {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "com.abandoft.pigeon.webview_all_android.WebSettingsCompat.setPaymentRequestEnabled", codec)
         if (api != null) {

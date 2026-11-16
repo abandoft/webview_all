@@ -460,6 +460,9 @@ abstract class WebView extends View {
   ),
 )
 abstract class WebSettings {
+  /// Sets one of WebSettings' LOAD_* cache policies.
+  void setCacheMode(int mode);
+
   /// Sets whether the DOM storage API is enabled.
   void setDomStorageEnabled(bool flag);
 
@@ -1185,6 +1188,10 @@ abstract class Certificate {
   ),
 )
 abstract class WebSettingsCompat {
+  /// Applies algorithmic darkening only on supported WebViews and target SDKs.
+  @static
+  bool setAlgorithmicDarkeningAllowed(WebSettings webSettings, bool allowed);
+
   @static
   void setPaymentRequestEnabled(WebSettings webSettings, bool enabled);
 

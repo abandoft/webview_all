@@ -266,6 +266,12 @@ class PigeonOverrides {
   /// Overrides [WebView.setWebContentsDebuggingEnabled].
   static Future<void> Function(bool)? webView_setWebContentsDebuggingEnabled;
 
+  /// Overrides [WebSettingsCompat.setAlgorithmicDarkeningAllowed].
+  static Future<bool> Function(
+    WebSettings,
+    bool,
+  )? webSettingsCompat_setAlgorithmicDarkeningAllowed;
+
   /// Overrides [WebSettingsCompat.setPaymentRequestEnabled].
   static Future<void> Function(
     WebSettings,
@@ -294,6 +300,7 @@ class PigeonOverrides {
     flutterAssetManager_instance = null;
     webStorage_forProfile = null;
     webStorage_instance = null;
+    webSettingsCompat_setAlgorithmicDarkeningAllowed = null;
     webSettingsCompat_setPaymentRequestEnabled = null;
     webSettingsCompat_setWebAuthenticationSupport = null;
     webViewFeature_isFeatureSupported = null;
@@ -2884,6 +2891,29 @@ class WebSettings extends PigeonInternalProxyApiBaseClass {
         });
       }
     }
+  }
+
+  /// Sets one of WebSettings' LOAD_* cache policies.
+  Future<void> setCacheMode(int mode) async {
+    final _PigeonInternalProxyApiBaseCodec pigeonChannelCodec =
+        _pigeonVar_codecWebSettings;
+    final BinaryMessenger? pigeonVar_binaryMessenger = pigeon_binaryMessenger;
+    const pigeonVar_channelName =
+        'com.abandoft.pigeon.webview_all_android.WebSettings.setCacheMode';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture =
+        pigeonVar_channel.send(<Object?>[this, mode]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   /// Sets whether the DOM storage API is enabled.
@@ -8353,6 +8383,43 @@ class WebSettingsCompat extends PigeonInternalProxyApiBaseClass {
         });
       }
     }
+  }
+
+  /// Applies algorithmic darkening only on supported WebViews and target SDKs.
+  static Future<bool> setAlgorithmicDarkeningAllowed(
+    WebSettings webSettings,
+    bool allowed, {
+    BinaryMessenger? pigeon_binaryMessenger,
+    PigeonInstanceManager? pigeon_instanceManager,
+  }) async {
+    if (PigeonOverrides.webSettingsCompat_setAlgorithmicDarkeningAllowed !=
+        null) {
+      return PigeonOverrides.webSettingsCompat_setAlgorithmicDarkeningAllowed!(
+        webSettings,
+        allowed,
+      );
+    }
+    final _PigeonInternalProxyApiBaseCodec pigeonChannelCodec =
+        _PigeonInternalProxyApiBaseCodec(
+            pigeon_instanceManager ?? PigeonInstanceManager.instance);
+    final BinaryMessenger? pigeonVar_binaryMessenger = pigeon_binaryMessenger;
+    const pigeonVar_channelName =
+        'com.abandoft.pigeon.webview_all_android.WebSettingsCompat.setAlgorithmicDarkeningAllowed';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture =
+        pigeonVar_channel.send(<Object?>[webSettings, allowed]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as bool;
   }
 
   static Future<void> setPaymentRequestEnabled(

@@ -72,6 +72,21 @@ void _runAndroidAsyncCallbackSafely(
   );
 }
 
+/// Native Android HTTP-cache policies. These do not delete existing cache data.
+enum AndroidWebViewCacheMode {
+  /// Uses the normal HTTP caching policy, including expiry checks.
+  defaultMode,
+
+  /// Uses cached resources when present, even when expired.
+  cacheElseNetwork,
+
+  /// Loads from the network without using cached resources.
+  noCache,
+
+  /// Uses cached resources only; cache misses fail without a network request.
+  cacheOnly,
+}
+
 /// Defines different types of sources causing window insets.
 ///
 /// See https://developer.android.com/reference/androidx/core/view/WindowInsetsCompat.Type
@@ -1873,6 +1888,79 @@ ${params.functionBody}
   /// The default is 100.
   Future<void> setTextZoom(int textZoom) =>
       _webView.settings.setTextZoom(textZoom);
+
+  Future<void> _prepareViewSetting() async {
+    if (_offscreenCloseFuture != null) {
+      throw StateError('This Android WebView controller has been closed.');
+    }
+    await prepareSession();
+    if (_offscreenCloseFuture != null) {
+      throw StateError('This Android WebView controller has been closed.');
+    }
+  }
+
+  /// Allows Android to darken pages that do not define their own dark styling.
+  ///
+  /// Requires target SDK 33+ and ALGORITHMIC_DARKENING support in the installed
+  /// WebView. The app's native theme and the page still determine appearance;
+  /// this does not force a dark theme or inject CSS. Unsupported configurations
+  /// warn and return false.
+  Future<bool> setAlgorithmicDarkeningAllowed(
+    bool allowed,
+  ) => browserOperation('setAlgorithmicDarkeningAllowed', false, () async {
+    await _prepareViewSetting();
+    final applied =
+        await android_webview.WebSettingsCompat.setAlgorithmicDarkeningAllowed(
+          _webView.settings,
+          allowed,
+        );
+    if (!applied) {
+      debugPrint(
+        'webview_all_android: algorithmic darkening was not applied. '
+        'It requires app target SDK >= 33 and ALGORITHMIC_DARKENING support '
+        'in the installed WebView; see the native log for details.',
+      );
+    }
+    return applied;
+  });
+
+  /// Enables localStorage and sessionStorage for this view. Defaults to true.
+  ///
+  /// Apply before loading a document. This does not erase data or create an
+  /// isolated store. Failures warn and return false.
+  Future<bool> setDomStorageEnabled(bool enabled) =>
+      browserOperation('setDomStorageEnabled', false, () async {
+        await _prepareViewSetting();
+        await _webView.settings.setDomStorageEnabled(enabled);
+        return true;
+      });
+
+  /// Sets Android's request cache policy, without clearing shared cache data.
+  ///
+  /// Limited incognito views retain [AndroidWebViewCacheMode.noCache]; other
+  /// modes are rejected with a warning. Service workers can maintain their own
+  /// caches and are not controlled by this setting.
+  Future<bool> setCacheMode(AndroidWebViewCacheMode mode) =>
+      browserOperation('setCacheMode', false, () async {
+        if (params.sessionMode == WebViewSessionMode.incognito &&
+            mode != AndroidWebViewCacheMode.noCache) {
+          debugPrint(
+            'webview_all_android: limited incognito retains noCache; '
+            '${mode.name} was not applied. Use an ordinary session to enable '
+            'cached requests.',
+          );
+          return false;
+        }
+        await _prepareViewSetting();
+        final nativeMode = switch (mode) {
+          AndroidWebViewCacheMode.defaultMode => -1,
+          AndroidWebViewCacheMode.cacheElseNetwork => 1,
+          AndroidWebViewCacheMode.noCache => 2,
+          AndroidWebViewCacheMode.cacheOnly => 3,
+        };
+        await _webView.settings.setCacheMode(nativeMode);
+        return true;
+      });
 
   /// Sets whether the WebView should enable support for the "viewport" HTML
   /// meta tag or should use a wide viewport.

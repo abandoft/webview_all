@@ -1982,15 +1982,49 @@ void main() {
 
     test('closes an offscreen WebView exactly once', () async {
       final MockWebView mockWebView = MockWebView();
+      final MockWebSettings mockSettings = MockWebSettings();
       final AndroidWebViewController controller = createControllerWithMocks(
         mockWebView: mockWebView,
+        mockSettings: mockSettings,
       );
 
       await controller.closeOffscreenWebView();
       await controller.closeOffscreenWebView();
 
       verify(mockWebView.destroy()).called(1);
+      clearInteractions(mockWebView);
+      clearInteractions(mockSettings);
+      expect(await controller.setDomStorageEnabled(false), isFalse);
+      expect(await controller.setAlgorithmicDarkeningAllowed(true), isFalse);
+      expect(
+        await controller.setCacheMode(AndroidWebViewCacheMode.noCache),
+        isFalse,
+      );
+      verifyZeroInteractions(mockWebView);
+      verifyZeroInteractions(mockSettings);
     });
+
+    test(
+      'view settings stop if initialization finishes after closing',
+      () async {
+        final mockWebView = MockWebView();
+        final mockSettings = MockWebSettings();
+        final ready = Completer<String?>();
+        when(mockWebView.getUrl()).thenAnswer((_) => ready.future);
+        final controller = createControllerWithMocks(
+          mockWebView: mockWebView,
+          mockSettings: mockSettings,
+        );
+        final setting = controller.setDomStorageEnabled(false);
+        await Future<void>.delayed(Duration.zero);
+        verify(mockWebView.getUrl()).called(1);
+        await controller.closeOffscreenWebView();
+        clearInteractions(mockSettings);
+        ready.complete(null);
+        expect(await setting, isFalse);
+        verifyZeroInteractions(mockSettings);
+      },
+    );
 
     test('addJavaScriptChannel', () async {
       final mockWebView = MockWebView();

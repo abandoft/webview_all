@@ -19,6 +19,11 @@ public class WebSettingsProxyApi extends PigeonApiWebSettings {
   }
 
   @Override
+  public void setCacheMode(@NonNull WebSettings pigeon_instance, long mode) {
+    pigeon_instance.setCacheMode(Math.toIntExact(mode));
+  }
+
+  @Override
   public void setDomStorageEnabled(@NonNull WebSettings pigeon_instance, boolean flag) {
     pigeon_instance.setDomStorageEnabled(flag);
   }
