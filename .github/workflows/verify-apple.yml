@@ -95,6 +95,14 @@ jobs:
         working-directory: examples/platform
         run: flutter test integration_test/webview_javascript_test.dart -d macos
 
+      - name: Test page zoom and selected form request scripts
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: |
+          flutter test integration_test/webview_presentation_test.dart -d macos
+          flutter test integration_test/webview_form_request_test.dart -d macos
+
       - name: Test native history, text search and cookies
         if: matrix.flutter == '3.44.x'
         timeout-minutes: 15

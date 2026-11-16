@@ -93,6 +93,14 @@ jobs:
         working-directory: examples/platform
         run: xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 flutter test integration_test/webview_browser_test.dart -d linux
 
+      - name: Test page zoom and selected form request scripts
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: |
+          xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 flutter test integration_test/webview_presentation_test.dart -d linux
+          xvfb-run -a env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 flutter test integration_test/webview_form_request_test.dart -d linux
+
       - name: Test native child-window attachment
         if: matrix.flutter == '3.44.x'
         timeout-minutes: 15

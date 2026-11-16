@@ -87,6 +87,14 @@ jobs:
         working-directory: examples/platform
         run: flutter test integration_test/webview_browser_test.dart -d windows
 
+      - name: Test page zoom and selected form request scripts
+        if: matrix.flutter == '3.44.x'
+        timeout-minutes: 15
+        working-directory: examples/platform
+        run: |
+          flutter test integration_test/webview_presentation_test.dart -d windows
+          flutter test integration_test/webview_form_request_test.dart -d windows
+
       - name: Test page exports and selective website-data clearing
         if: matrix.flutter == '3.44.x'
         timeout-minutes: 15

@@ -74,17 +74,19 @@ def main() -> None:
             dependencies = {dep: {'path': '../' + dep}
                             for dep in manifests[name].get('dependencies', {}) if dep in PACKAGES}
             if dependencies:
-                # Preview only: these unpublished siblings are resolved locally.
-                # Pub must exclude this file from the served archive, and the
-                # consumer below resolves every sibling through hosted metadata.
+                # Add developer overrides as a packaging guard: pub must exclude
+                # this file from the served archive. The consumer below resolves
+                # every sibling through hosted metadata without these overrides.
                 (snapshot / name / 'pubspec_overrides.yaml').write_text(
                     yaml.safe_dump({'dependency_overrides': dependencies}))
         for name in PACKAGES:
             package = snapshot / name
-            # Pub chooses files using .pubignore and its built-in exclusions.
-            # A not-yet-published dependency can fail validation after the list
-            # is generated; this check independently resolves the whole bundle.
-            preview = subprocess.run([flutter, 'pub', 'publish', '--dry-run', '--verbose'],
+            # Only enumerate pub's selected files here. Resolving unpublished
+            # siblings during preview can stall older SDKs. The hosted consumer
+            # below checks resolution, analysis and tests for the whole bundle;
+            # actual publication still performs pub's normal validation.
+            preview = subprocess.run([flutter, 'pub', 'publish', '--dry-run',
+                                      '--skip-validation', '--verbose'],
                                      cwd=package, env=env, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT, text=True, timeout=300)
             (work / f'{name}-preview.log').write_text(preview.stdout)

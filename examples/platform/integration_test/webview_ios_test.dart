@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
+import 'webview_presentation_test.dart' as presentation;
+import 'webview_form_request_test.dart' as forms;
 import 'webview_resource_test.dart' as resources;
 import 'webview_javascript_test.dart' as javascript;
 import 'webview_browser_test.dart' as browser;
@@ -22,6 +24,8 @@ void main() {
   binding.platformDispatcher.semanticsEnabledTestValue = true;
   tearDownAll(binding.platformDispatcher.clearSemanticsEnabledTestValue);
   group('iOS integrations', () {
+    group('presentation', presentation.main);
+    group('forms', forms.main);
     group('resources', resources.main);
     group('javascript', javascript.main);
     group('browser', browser.main);

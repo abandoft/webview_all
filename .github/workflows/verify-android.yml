@@ -83,6 +83,8 @@ jobs:
             flutter test integration_test/webview_resource_test.dart -d emulator-5554
             flutter test integration_test/webview_javascript_test.dart -d emulator-5554
             flutter test integration_test/webview_browser_test.dart -d emulator-5554
+            flutter test integration_test/webview_presentation_test.dart -d emulator-5554
+            flutter test integration_test/webview_form_request_test.dart -d emulator-5554
             flutter test integration_test/webview_capture_data_test.dart -d emulator-5554
             flutter test integration_test/webview_advanced_browser_test.dart -d emulator-5554
             flutter test integration_test/webview_profile_management_test.dart -d emulator-5554
