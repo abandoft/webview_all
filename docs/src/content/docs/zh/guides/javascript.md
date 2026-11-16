@@ -241,3 +241,31 @@ await controller.setOnJavaScriptConfirmDialog((request) {
 
 直接跨域 iframe URL 仍不可控制。隔离 HTML 无法通过异步跨 frame 通信返回同步
 对话框结果，因此保留浏览器原生 `confirm` 和 `prompt`。
+
+## 定向修改表单请求
+
+只需修改特定页面的 XHR 表单字段时，可以复用 document-start 用户脚本。
+将 [示例脚本](https://github.com/abandoft/webview_all/blob/main/examples/platform/lib/form_request_script.dart)
+复制到应用工程，再在加载前注册：
+
+```dart
+final script = formRequestFieldsScript(
+  pageOrigin: Uri.parse('https://example.com'),
+  endpoint: Uri.parse('https://api.example.com/notes'),
+  fields: {'title': '中文标题 & 新内容'},
+);
+if (await controller.isUserScriptInjectionSupported(script.injectionTime)) {
+  await controller.addUserScript(script);
+} else {
+  debugPrint('当前内核不支持文档开始脚本，未安装表单改写。');
+}
+```
+
+示例只修改指定来源主文档中、指定接口的 URL 编码 XHR 表单；会正确编码中文和
+`&`、`+` 等字符，保留同步/异步调用方式、事件和原有请求头。JSON、文件表单、
+其他地址及其他来源的页面保留原样，不接管 fetch、导航表单或 Worker。
+重复注入会更新配置，空字段配置可停用该接口的改写。
+移除用户脚本只影响后续文档，可重新加载页面移除当前钩子。
+
+这是应用侧脚本示例；`setRequestDelegate` 仍表示原生请求代理，不会自动安装 XHR
+或 fetch 替换脚本，也不提供修改原请求体后继续发送的操作。

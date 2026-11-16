@@ -269,3 +269,35 @@ Use `loadHtmlString`, same-origin URLs, or fetch-backed `loadRequest` when you
 need those features in Flutter Web. Direct cross-origin iframe URLs remain
 inaccessible. Isolated HTML keeps browser-native `confirm` and `prompt`
 dialogs because synchronous callbacks cannot cross the frame boundary.
+
+## Rewrite selected form requests
+
+Use a document-start user script to change XHR form fields for one selected
+endpoint. Copy the [example helper](https://github.com/abandoft/webview_all/blob/main/examples/platform/lib/form_request_script.dart)
+into your app and register it before loading the page:
+
+```dart
+final script = formRequestFieldsScript(
+  pageOrigin: Uri.parse('https://example.com'),
+  endpoint: Uri.parse('https://api.example.com/notes'),
+  fields: {'title': 'A title with & symbols'},
+);
+if (await controller.isUserScriptInjectionSupported(script.injectionTime)) {
+  await controller.addUserScript(script);
+} else {
+  debugPrint('Document-start scripts are unavailable; form rewriting was not installed.');
+}
+```
+
+The example changes URL-encoded XHR forms only in the trusted main document and
+for the selected endpoint. It encodes Unicode and reserved characters while
+preserving synchronous/asynchronous operation, events and existing headers.
+JSON, file forms, other endpoints and unrelated page origins retain their original
+values. It does not intercept fetch, HTML form navigation or workers. Reinjection
+updates the rule; an empty fields map disables rewriting for that endpoint.
+Removing a user script affects future documents only, so reload the page to
+remove an active hook.
+
+This is an application-side script example. `setRequestDelegate` remains a native
+request API: it does not install XHR/fetch replacements or offer an operation to
+edit an outgoing request body and resume it.
