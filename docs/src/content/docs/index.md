@@ -7,8 +7,6 @@ description: webview_all documentation for full-platform Flutter WebView.
 Windows, Linux, OpenHarmony, and Web. It provides an API compatible with
 [`webview_flutter`](https://pub.dev/packages/webview_flutter).
 
-This documentation covers `1.5.x`. Use the version selector for earlier releases.
-
 ## Platform Compatibility
 
 | Platform | Minimum target | Engine |

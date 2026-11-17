@@ -7,8 +7,6 @@ description: webview_all 文档，全平台的 Flutter WebView。
 Linux、OpenHarmony 和 Web 等平台，并提供与
 [`webview_flutter`](https://pub.dev/packages/webview_flutter) 兼容的接口。
 
-适用于 `1.5.x`。历史版本文档可在顶部切换。
-
 ## 平台兼容性
 
 | 平台 | 最低要求 | 引擎 |
