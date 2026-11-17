@@ -101,13 +101,28 @@ jobs:
         working-directory: examples/platform
         run: flutter test integration_test/webview_capture_data_test.dart -d windows
 
-      - name: Test fullscreen and renderer recovery
+      - name: Test native fullscreen
         if: matrix.flutter == '3.44.x'
-        timeout-minutes: 15
+        timeout-minutes: 7
         working-directory: examples/platform
         run: |
-          flutter test integration_test/webview_fullscreen_test.dart -d windows
-          flutter test integration_test/webview_process_test.dart -d windows
+          flutter test integration_test/webview_fullscreen_test.dart -d windows --reporter expanded --timeout 5m --verbose 2>&1 | Tee-Object "$env:RUNNER_TEMP/webview-fullscreen.log"
+          exit $LASTEXITCODE
+
+      - name: Upload fullscreen diagnostics
+        if: matrix.flutter == '3.44.x' && !cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-fullscreen
+          path: ${{ runner.temp }}/webview-fullscreen.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Test renderer recovery
+        if: matrix.flutter == '3.44.x' && !cancelled()
+        timeout-minutes: 7
+        working-directory: examples/platform
+        run: flutter test integration_test/webview_process_test.dart -d windows --reporter expanded --timeout 5m
 
       - name: Test native child-window attachment
         if: matrix.flutter == '3.44.x'
