@@ -69,5 +69,5 @@ void main() {
       '<html><head><title>Recovered</title></head><body>after crash</body></html>',
     );
     await waitForTitle(controller, 'Recovered');
-  });
+  }, timeout: const Timeout(Duration(minutes: 3)));
 }

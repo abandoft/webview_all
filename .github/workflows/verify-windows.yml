@@ -42,6 +42,7 @@ jobs:
           cache: true
 
       - name: Build Windows example
+        id: build_windows
         working-directory: examples/platform
         run: |
           flutter config --enable-windows-desktop
@@ -102,15 +103,16 @@ jobs:
         run: flutter test integration_test/webview_capture_data_test.dart -d windows
 
       - name: Test native fullscreen
+        id: fullscreen
         if: matrix.flutter == '3.44.x'
         timeout-minutes: 7
         working-directory: examples/platform
         run: |
-          flutter test integration_test/webview_fullscreen_test.dart -d windows --reporter expanded --timeout 5m --verbose 2>&1 | Tee-Object "$env:RUNNER_TEMP/webview-fullscreen.log"
+          flutter test integration_test/webview_fullscreen_test.dart -d windows --reporter expanded --timeout 5m 2>&1 | Tee-Object "$env:RUNNER_TEMP/webview-fullscreen.log"
           exit $LASTEXITCODE
 
       - name: Upload fullscreen diagnostics
-        if: matrix.flutter == '3.44.x' && !cancelled()
+        if: matrix.flutter == '3.44.x' && !cancelled() && steps.fullscreen.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: windows-fullscreen
@@ -119,7 +121,7 @@ jobs:
           retention-days: 7
 
       - name: Test renderer recovery
-        if: matrix.flutter == '3.44.x' && !cancelled()
+        if: matrix.flutter == '3.44.x' && !cancelled() && steps.build_windows.outcome == 'success'
         timeout-minutes: 7
         working-directory: examples/platform
         run: flutter test integration_test/webview_process_test.dart -d windows --reporter expanded --timeout 5m
