@@ -17,7 +17,8 @@ const docsBase = import.meta.env.BASE_URL.replace(/\/$/, '');
 const { locale, version, slug } = documentationPath(Astro.url.pathname, docsBase);
 const pages = new Set((await getCollection('docs')).map((entry) => normalizedDocumentId(entry.id)));
 const options = docsVersions.map((target) => ({
-  label: target,
+  version: target,
+  label: locale === 'zh' && target === 'latest' ? '最新版' : target,
   href: documentHref(docsBase, locale, target,
     pages.has(documentId(locale, target, slug)) ? slug : ''),
 }));
@@ -31,7 +32,7 @@ const versionLabel = locale === 'zh' ? '文档版本' : 'Documentation version';
       <span class="sr-only">{versionLabel}</span>
       <select aria-label={versionLabel} data-docs-version>
         {options.map((option) => (
-          <option value={option.href} selected={version === option.label}>{option.label}</option>
+          <option value={option.href} selected={version === option.version}>{option.label}</option>
         ))}
       </select>
     </label>
