@@ -127,6 +127,13 @@ starlight-lang-select {
 starlight-theme-select select,
 starlight-lang-select select {
   min-height: 2.25rem;
+  width: auto;
+  padding-inline-end: var(--sl-inline-padding);
+}
+
+starlight-theme-select .caret,
+starlight-lang-select .caret {
+  display: none;
 }
 
 button[data-open-modal] {
