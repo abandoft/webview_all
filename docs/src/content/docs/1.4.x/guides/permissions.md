@@ -2,7 +2,7 @@
 title: Permissions
 description: Handle camera, microphone, geolocation, media, and file selector permission flows.
 banner:
-  content: "Documentation for 1.4.x; select latest for up-to-date APIs."
+  content: "Documentation for version 1.4.x; select latest for up-to-date APIs."
 ---
 
 Web content permission flow has two layers:

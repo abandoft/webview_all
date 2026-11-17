@@ -2,7 +2,7 @@
 title: OHOS
 description: ArkWeb implementation, APIs, and HarmonyOS/OpenHarmony limits.
 banner:
-  content: "Documentation for 1.4.x; select latest for up-to-date APIs."
+  content: "Documentation for version 1.4.x; select latest for up-to-date APIs."
 ---
 
 OHOS is provided by `webview_all_ohos` and uses ArkWeb through the OHOS Flutter SDK. Starting with 1.4.5, the host application's minimum compatible SDK must be API 22 or newer; see [platform setup](/webview_all/1.4.x/getting-started/platform-setup/#ohos).

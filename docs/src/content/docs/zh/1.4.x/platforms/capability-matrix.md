@@ -2,7 +2,7 @@
 title: 能力矩阵
 description: 各平台的 WebView 功能支持与使用限制。
 banner:
-  content: "这是 1.4.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.4.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 标记说明：

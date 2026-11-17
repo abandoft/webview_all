@@ -2,7 +2,7 @@
 title: Navigation
 description: Handle page events, URL changes, HTTP errors, auth challenges, SSL errors, and request decisions.
 banner:
-  content: "Documentation for 1.2.x; select latest for up-to-date APIs."
+  content: "Documentation for version 1.2.x; select latest for up-to-date APIs."
 ---
 
 `NavigationDelegate` collects navigation callbacks and installs them into the platform implementation through `WebViewController.setNavigationDelegate`.

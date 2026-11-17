@@ -2,7 +2,7 @@
 title: Common API
 description: Complete app-facing API reference for webview_all.
 banner:
-  content: "Documentation for 1.4.x; select latest for up-to-date APIs."
+  content: "Documentation for version 1.4.x; select latest for up-to-date APIs."
 ---
 
 Import:

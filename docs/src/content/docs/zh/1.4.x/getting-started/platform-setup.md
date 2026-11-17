@@ -2,7 +2,7 @@
 title: 平台设置
 description: Android、Apple、Windows、Linux、OHOS 和 Web 的必要配置。
 banner:
-  content: "这是 1.4.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.4.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 大多数平台添加 `webview_all` 后即可使用，但部分引擎需要运行时组件或权限。

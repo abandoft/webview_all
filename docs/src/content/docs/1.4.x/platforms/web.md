@@ -2,7 +2,7 @@
 title: Web
 description: Browser iframe implementation, iframe attributes, fetch-backed requests, and security limits.
 banner:
-  content: "Documentation for 1.4.x; select latest for up-to-date APIs."
+  content: "Documentation for version 1.4.x; select latest for up-to-date APIs."
 ---
 
 Web is provided by `webview_all_web 1.4.x` and renders an HTML `iframe`.

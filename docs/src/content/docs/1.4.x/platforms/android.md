@@ -2,7 +2,7 @@
 title: Android
 description: Android WebView implementation, APIs, and platform limits.
 banner:
-  content: "Documentation for 1.4.x; select latest for up-to-date APIs."
+  content: "Documentation for version 1.4.x; select latest for up-to-date APIs."
 ---
 
 Android is provided by `webview_all_android '>=1.4.12 <1.5.0'`. `webview_all` registers it as the default Android implementation.

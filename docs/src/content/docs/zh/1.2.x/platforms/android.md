@@ -2,7 +2,7 @@
 title: Android
 description: Android WebView 实现、API 和限制。
 banner:
-  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.2.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 Android 由 `webview_flutter_android ^4.12.0` 提供，`webview_all` 将它注册为默认 Android 实现。

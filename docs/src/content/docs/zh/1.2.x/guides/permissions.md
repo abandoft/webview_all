@@ -2,7 +2,7 @@
 title: 权限
 description: 处理摄像头、麦克风、定位、媒体和文件选择权限。
 banner:
-  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.2.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 Web 内容权限有两层：

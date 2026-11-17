@@ -2,7 +2,7 @@
 title: 安装
 description: 添加 webview_all，并在需要时显式依赖平台包。
 banner:
-  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.2.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 继续使用 1.2.x 时，同时固定主包和平台包的版本，避免混用新版接口或系统要求：

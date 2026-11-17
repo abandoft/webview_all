@@ -2,7 +2,7 @@
 title: Capability Matrix
 description: Cross-platform feature support for webview_all 1.2.1.
 banner:
-  content: "Documentation for 1.2.x; select latest for up-to-date APIs."
+  content: "Documentation for version 1.2.x; select latest for up-to-date APIs."
 ---
 
 Legend:

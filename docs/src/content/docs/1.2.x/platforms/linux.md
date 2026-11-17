@@ -2,7 +2,7 @@
 title: Linux
 description: WebKitGTK implementation, GtkOverlay setup, APIs, and limits.
 banner:
-  content: "Documentation for 1.2.x; select latest for up-to-date APIs."
+  content: "Documentation for version 1.2.x; select latest for up-to-date APIs."
 ---
 
 Linux is provided by `webview_all_linux 1.2.1` and uses WebKitGTK.

@@ -2,7 +2,7 @@
 title: Installation
 description: Add webview_all and prepare platform packages.
 banner:
-  content: "Documentation for 1.2.x; select latest for up-to-date APIs."
+  content: "Documentation for version 1.2.x; select latest for up-to-date APIs."
 ---
 
 To stay on 1.2.x, pin the plugin and its platform packages together to retain the APIs and system requirements documented here:

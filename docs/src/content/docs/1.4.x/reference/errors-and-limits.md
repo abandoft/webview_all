@@ -2,7 +2,7 @@
 title: Errors and Limits
 description: Exceptions, unsupported operations, and engine-specific edge cases.
 banner:
-  content: "Documentation for 1.4.x; select latest for up-to-date APIs."
+  content: "Documentation for version 1.4.x; select latest for up-to-date APIs."
 ---
 
 This page lists important failures and platform limits that production code should handle.

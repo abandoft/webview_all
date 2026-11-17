@@ -2,7 +2,7 @@
 title: 错误与限制
 description: 异常、不可用能力和平台边界。
 banner:
-  content: "这是 1.4.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.4.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 ## 通用校验

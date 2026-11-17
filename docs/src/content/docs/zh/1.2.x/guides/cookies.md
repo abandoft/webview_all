@@ -2,7 +2,7 @@
 title: Cookies
 description: 管理共享 WebView cookie 和平台特有 cookie 元数据。
 banner:
-  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.2.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 `WebViewCookieManager` 管理底层 WebView 引擎的 cookie。

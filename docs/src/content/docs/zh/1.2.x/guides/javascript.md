@@ -2,7 +2,7 @@
 title: JavaScript
 description: 执行 JavaScript、接收消息、处理对话框和 console。
 banner:
-  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.2.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 JavaScript 能力包括执行脚本、返回值、channel、console 和浏览器对话框。

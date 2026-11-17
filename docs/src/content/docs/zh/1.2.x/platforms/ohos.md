@@ -2,7 +2,7 @@
 title: OHOS
 description: ArkWeb 实现、API 和 HarmonyOS/OpenHarmony 限制。
 banner:
-  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.2.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 OHOS 由 `webview_all_ohos 1.2.1` 提供，底层使用 ArkWeb。

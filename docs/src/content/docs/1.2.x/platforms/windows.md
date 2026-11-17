@@ -2,7 +2,7 @@
 title: Windows
 description: WebView2 implementation, runtime setup, APIs, and limits.
 banner:
-  content: "Documentation for 1.2.x; select latest for up-to-date APIs."
+  content: "Documentation for version 1.2.x; select latest for up-to-date APIs."
 ---
 
 Windows is provided by `webview_all_windows 1.2.1` and uses Microsoft Edge WebView2.

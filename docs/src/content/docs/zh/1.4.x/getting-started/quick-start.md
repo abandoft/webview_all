@@ -2,7 +2,7 @@
 title: 快速开始
 description: 创建控制器、加载页面并渲染 WebView。
 banner:
-  content: "这是 1.4.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.4.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 通用 API 主要由四个类组成：

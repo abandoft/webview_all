@@ -2,7 +2,7 @@
 title: 安全
 description: 生产环境中的导航策略、JavaScript、Cookie、TLS 和权限建议。
 banner:
-  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.2.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 WebView 会在应用内执行远程内容，应作为高风险集成点处理。

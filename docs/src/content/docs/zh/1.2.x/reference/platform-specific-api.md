@@ -2,7 +2,7 @@
 title: 平台专属接口
 description: webview_all 及注册平台包暴露的专属 API。
 banner:
-  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.2.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 平台 API 通过 creation params 和 `platform` 字段访问：

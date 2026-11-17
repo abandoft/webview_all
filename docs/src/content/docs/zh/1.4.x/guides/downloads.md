@@ -2,7 +2,7 @@
 title: 下载
 description: 接管 WebView 下载，由应用决定保存交互。
 banner:
-  content: "这是 1.4.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.4.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 从 1.4.8 起，可通过 `WebViewController.setDownloadDelegate` 独立接管下载。

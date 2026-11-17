@@ -2,7 +2,7 @@
 title: Files, Assets, HTML
 description: Load local files, Flutter assets, inline HTML, and custom requests safely.
 banner:
-  content: "Documentation for 1.2.x; select latest for up-to-date APIs."
+  content: "Documentation for version 1.2.x; select latest for up-to-date APIs."
 ---
 
 ## Local Files

@@ -2,7 +2,7 @@
 title: Security
 description: Production guidance for navigation policy, JavaScript, cookies, TLS, and platform permissions.
 banner:
-  content: "Documentation for 1.4.x; select latest for up-to-date APIs."
+  content: "Documentation for version 1.4.x; select latest for up-to-date APIs."
 ---
 
 WebViews execute remote content inside your app. Treat them as a privileged integration point.

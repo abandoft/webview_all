@@ -2,7 +2,7 @@
 title: 导航
 description: 处理页面事件、URL 变化、HTTP 错误、鉴权和证书错误。
 banner:
-  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.2.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 `NavigationDelegate` 通过 `WebViewController.setNavigationDelegate` 安装到平台实现。

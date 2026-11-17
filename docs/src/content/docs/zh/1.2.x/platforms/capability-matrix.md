@@ -2,7 +2,7 @@
 title: 能力矩阵
 description: webview_all 1.2.1 的跨平台能力覆盖。
 banner:
-  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.2.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 标记说明：

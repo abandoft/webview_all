@@ -2,7 +2,7 @@
 title: Web
 description: 浏览器 iframe 实现、iframe 属性、fetch 请求和安全限制。
 banner:
-  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
+  content: "这是 1.2.x 版本的文档，最新接口请切换至 latest。"
 ---
 
 Web 由 `webview_all_web 1.2.1` 提供，底层是 HTML `iframe`。
