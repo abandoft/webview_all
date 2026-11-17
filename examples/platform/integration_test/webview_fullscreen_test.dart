@@ -48,6 +48,7 @@ void main() {
     final loaded = Completer<void>();
     final entered = Completer<WebViewFullscreenRequest>();
     final clicked = Completer<void>();
+    final granted = Completer<void>();
     final rejected = Completer<String>();
     final exited = Completer<void>();
     var exits = 0;
@@ -63,6 +64,8 @@ void main() {
           debugPrintSynchronously('Fullscreen page: ${message.message}');
           if (message.message.startsWith('clicked:') && !clicked.isCompleted) {
             clicked.complete();
+          } else if (message.message == 'granted' && !granted.isCompleted) {
+            granted.complete();
           } else if (message.message.startsWith('rejected:') &&
               !rejected.isCompleted) {
             rejected.complete(message.message);
@@ -113,7 +116,9 @@ void main() {
         '''<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
 <body style="margin:0"><button id="fullscreen-target" style="width:100vw;height:100vh" onclick="
 FullscreenProbe.postMessage('clicked:' + document.visibilityState + ':' + document.hasFocus());
-document.documentElement.requestFullscreen().catch(function(error) {
+document.documentElement.requestFullscreen().then(function() {
+  FullscreenProbe.postMessage('granted');
+}).catch(function(error) {
   FullscreenProbe.postMessage('rejected:' + error.name + ':' + error.message);
 });">Enter fullscreen</button></body></html>''',
       ),
@@ -163,6 +168,11 @@ document.documentElement.requestFullscreen().catch(function(error) {
       () => tester.pumpWidget(page(request.content)),
     );
     await tester.pump();
+    final grant = await _step(
+      'wait for page fullscreen entry',
+      () => Future.any<Object?>([granted.future, rejected.future]),
+    );
+    if (grant is String) fail('The page refused fullscreen: $grant');
     expect(await _step('request fullscreen exit', request.exit), isTrue);
     await _step('wait for native fullscreen exit', () => exited.future);
     expect(exits, 1);
