@@ -2,7 +2,7 @@
 title: iOS and macOS
 description: WKWebView implementation, WebKit APIs, and Apple platform differences.
 banner:
-  content: "Documentation for 1.2.x. Select latest for the current APIs."
+  content: "Documentation for 1.2.x; select latest for up-to-date APIs."
 ---
 
 iOS and macOS are provided by `webview_flutter_wkwebview ^3.25.0`. `webview_all` registers it as the default implementation for both Apple platforms.

@@ -2,7 +2,7 @@
 title: Downloads
 description: Handle WebView downloads with application-owned save UI.
 banner:
-  content: "Documentation for 1.4.x. Select latest for the current APIs."
+  content: "Documentation for 1.4.x; select latest for up-to-date APIs."
 ---
 
 From 1.4.8, `WebViewController.setDownloadDelegate` lets your app handle downloads

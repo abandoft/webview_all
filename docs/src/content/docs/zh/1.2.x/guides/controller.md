@@ -2,7 +2,7 @@
 title: Controller
 description: 加载内容、导航、执行 JavaScript、控制滚动和 WebView 状态。
 banner:
-  content: "这是 1.2.x 系列文档。当前接口请切换至 latest。"
+  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
 ---
 
 `WebViewController` 是核心控制对象。一个 controller 同一时间只能绑定到一个 `WebViewWidget`，具体操作会委托给当前平台实现。

@@ -2,7 +2,7 @@
 title: 调试
 description: 启用引擎调试工具并检查运行时状态。
 banner:
-  content: "这是 1.2.x 系列文档。当前接口请切换至 latest。"
+  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
 ---
 
 ## Android

@@ -2,7 +2,7 @@
 title: WebView All
 description: webview_all 文档，全平台的 Flutter WebView。
 banner:
-  content: "这是 1.4.x 系列文档。当前接口请切换至 latest。"
+  content: "这是 1.4.x 系列文档，最新接口请切换至 latest。"
 ---
 
 `webview_all` 是一个 Flutter WebView 库，支持 Android、iOS、macOS、Windows、

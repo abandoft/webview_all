@@ -2,7 +2,7 @@
 title: WebView All
 description: webview_all documentation for full-platform Flutter WebView.
 banner:
-  content: "Documentation for 1.2.x. Select latest for the current APIs."
+  content: "Documentation for 1.2.x; select latest for up-to-date APIs."
 ---
 
 `webview_all` is a Flutter WebView package that supports Android, iOS, macOS, Windows, Linux, OpenHarmony, and Web, and follows the [webview_flutter platform interface](https://pub.dev/packages/webview_flutter_platform_interface).

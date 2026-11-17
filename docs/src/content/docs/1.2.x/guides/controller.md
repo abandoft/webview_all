@@ -2,7 +2,7 @@
 title: Controller
 description: Load content, navigate, run JavaScript, control scroll, and tune WebView state.
 banner:
-  content: "Documentation for 1.2.x. Select latest for the current APIs."
+  content: "Documentation for 1.2.x; select latest for up-to-date APIs."
 ---
 
 `WebViewController` is the central object. A controller can be attached to one `WebViewWidget` at a time and delegates all work to the active platform implementation.

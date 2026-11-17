@@ -2,7 +2,7 @@
 title: Cookies
 description: Manage shared WebView cookies and platform-specific cookie metadata.
 banner:
-  content: "Documentation for 1.4.x. Select latest for the current APIs."
+  content: "Documentation for 1.4.x; select latest for up-to-date APIs."
 ---
 
 `WebViewCookieManager` manages cookies for WebViews owned by the underlying engine.

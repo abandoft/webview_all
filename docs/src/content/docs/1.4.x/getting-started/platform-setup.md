@@ -2,7 +2,7 @@
 title: Platform Setup
 description: Required platform setup for Android, Apple platforms, Windows, Linux, OHOS, and web.
 banner:
-  content: "Documentation for 1.4.x. Select latest for the current APIs."
+  content: "Documentation for 1.4.x; select latest for up-to-date APIs."
 ---
 
 Most platforms work after adding `webview_all`. Some engines need app-level

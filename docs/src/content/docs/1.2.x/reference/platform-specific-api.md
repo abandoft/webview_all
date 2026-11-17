@@ -2,7 +2,7 @@
 title: Platform API
 description: Platform-specific public APIs exposed by webview_all and its registered platform packages.
 banner:
-  content: "Documentation for 1.2.x. Select latest for the current APIs."
+  content: "Documentation for 1.2.x; select latest for up-to-date APIs."
 ---
 
 Access platform APIs through creation params and the `platform` field:

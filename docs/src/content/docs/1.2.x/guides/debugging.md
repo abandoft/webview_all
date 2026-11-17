@@ -2,7 +2,7 @@
 title: Debugging
 description: Enable engine debugging tools and inspect runtime state.
 banner:
-  content: "Documentation for 1.2.x. Select latest for the current APIs."
+  content: "Documentation for 1.2.x; select latest for up-to-date APIs."
 ---
 
 Debugging support is platform-specific because every engine exposes different tooling.

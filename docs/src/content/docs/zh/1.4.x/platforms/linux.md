@@ -2,7 +2,7 @@
 title: Linux
 description: WebKitGTK 实现、自动 GtkOverlay 集成、API 和限制。
 banner:
-  content: "这是 1.4.x 系列文档。当前接口请切换至 latest。"
+  content: "这是 1.4.x 系列文档，最新接口请切换至 latest。"
 ---
 
 Linux 由 `webview_all_linux` 提供，底层使用 WebKitGTK。

@@ -2,7 +2,7 @@
 title: Quick Start
 description: Create a controller, load content, and render the widget.
 banner:
-  content: "Documentation for 1.4.x. Select latest for the current APIs."
+  content: "Documentation for 1.4.x; select latest for up-to-date APIs."
 ---
 
 The common API uses four app-facing classes:

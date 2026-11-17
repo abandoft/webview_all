@@ -2,7 +2,7 @@
 title: 通用接口
 description: webview_all 应用侧 API 参考。
 banner:
-  content: "这是 1.4.x 系列文档。当前接口请切换至 latest。"
+  content: "这是 1.4.x 系列文档，最新接口请切换至 latest。"
 ---
 
 导入：

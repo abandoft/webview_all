@@ -2,7 +2,7 @@
 title: Android
 description: Android WebView implementation, APIs, and platform limits.
 banner:
-  content: "Documentation for 1.2.x. Select latest for the current APIs."
+  content: "Documentation for 1.2.x; select latest for up-to-date APIs."
 ---
 
 Android is provided by `webview_flutter_android ^4.12.0`. `webview_all` registers it as the default Android implementation.

@@ -2,7 +2,7 @@
 title: iOS 和 macOS
 description: WKWebView 实现、WebKit API 和 Apple 平台差异。
 banner:
-  content: "这是 1.2.x 系列文档。当前接口请切换至 latest。"
+  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
 ---
 
 iOS 和 macOS 由 `webview_flutter_wkwebview ^3.25.0` 提供。

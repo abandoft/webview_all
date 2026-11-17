@@ -2,7 +2,7 @@
 title: OHOS
 description: ArkWeb 实现、API 和 HarmonyOS/OpenHarmony 限制。
 banner:
-  content: "这是 1.4.x 系列文档。当前接口请切换至 latest。"
+  content: "这是 1.4.x 系列文档，最新接口请切换至 latest。"
 ---
 
 OHOS 由 `webview_all_ohos` 提供，底层使用 ArkWeb。从 1.4.5 起，宿主应用的最低兼容版本必须设置为 API 22 或更新版本，详见[平台配置](/webview_all/zh/1.4.x/getting-started/platform-setup/#ohos)。

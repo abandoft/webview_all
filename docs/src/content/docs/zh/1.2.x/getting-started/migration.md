@@ -2,7 +2,7 @@
 title: 迁移
 description: 从 webview_flutter 或旧版 webview_all 迁移。
 banner:
-  content: "这是 1.2.x 系列文档。当前接口请切换至 latest。"
+  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
 ---
 
 `webview_all` 的顶层 API 与 `webview_flutter` 的接口兼容。多数代码可以先替换 import，再按需处理平台差异。

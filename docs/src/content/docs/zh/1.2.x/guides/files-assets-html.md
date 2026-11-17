@@ -2,7 +2,7 @@
 title: 文件、Asset 和 HTML
 description: 安全加载本地文件、Flutter asset、内联 HTML 和自定义请求。
 banner:
-  content: "这是 1.2.x 系列文档。当前接口请切换至 latest。"
+  content: "这是 1.2.x 系列文档，最新接口请切换至 latest。"
 ---
 
 ## 本地文件
