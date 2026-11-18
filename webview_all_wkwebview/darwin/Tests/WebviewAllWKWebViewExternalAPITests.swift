@@ -170,6 +170,7 @@ class TestFlutterTextureRegistry: NSObject, FlutterTextureRegistry {
 }
 
 class TestFlutterPluginRegistrar: NSObject, FlutterPluginRegistrar {
+  var engineIdentifier: Int64 { 0 }
   let testBinaryMessenger = TestBinaryMessenger()
   var publishedValue: NSObject?
   var registeredViewType: String?
