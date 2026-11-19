@@ -928,6 +928,7 @@ class WebKitWebViewController extends PlatformWebViewController
     if (_offscreenCloseFuture != null) {
       throw StateError('The WebKit WebView was closed.');
     }
+    final timeoutMillis = resourceDelegateTimeout.inMilliseconds;
     await _webView.getUrl();
     await const MethodChannel(
       'com.abandoft.webview_all/resources',
@@ -936,6 +937,7 @@ class WebKitWebViewController extends PlatformWebViewController
       'channel': channel,
       'host': host,
       'enabled': enabled,
+      'requestTimeoutMillis': timeoutMillis,
     });
   }
 

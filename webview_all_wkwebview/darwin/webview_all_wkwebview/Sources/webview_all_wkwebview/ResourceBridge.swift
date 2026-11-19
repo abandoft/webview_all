@@ -47,10 +47,22 @@ final class ResourceBridgeChannel {
         result(false)
         return
       }
+      var timeoutMillis = 30000
+      if !custom, let value = args["requestTimeoutMillis"] {
+        guard let milliseconds = value as? Int, (1...300000).contains(milliseconds) else {
+          result(
+            FlutterError(
+              code: "invalid_resource_configuration",
+              message: "Invalid resource request timeout.", details: nil))
+          return
+        }
+        timeoutMillis = milliseconds
+      }
       let handler = ResourceSchemeHandler.forView(view, custom: custom)
       handler.configure(
         name: name, host: args["host"] as? String ?? "", enabled: enabled,
-        messenger: self.messenger, schemes: custom ? Set(schemes) : [])
+        messenger: self.messenger, schemes: custom ? Set(schemes) : [],
+        requestTimeout: TimeInterval(timeoutMillis) / 1000)
       self.handlers.add(handler)
       result(custom ? true : nil)
     }
@@ -88,6 +100,7 @@ final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
   private var enabled = false
   private var channelName = ""
   private var customSchemes: Set<String> = []
+  private var requestTimeout: TimeInterval = 30
   private var requests: [ObjectIdentifier: ResourceTask] = [:]
 
   private final class ResourceTask {
@@ -148,13 +161,14 @@ final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
 
   func configure(
     name: String, host: String, enabled: Bool, messenger: FlutterBinaryMessenger,
-    schemes: Set<String> = []
+    schemes: Set<String> = [], requestTimeout: TimeInterval = 30
   ) {
     if !enabled && name != channelName { return }
     cancelAll()
     self.channel = FlutterMethodChannel(name: name, binaryMessenger: messenger)
     channelName = name
     customSchemes = schemes
+    self.requestTimeout = requestTimeout
     self.host = host
     self.enabled = enabled
   }
@@ -241,7 +255,7 @@ final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
       if let request { self?.fail(request, code: .timedOut) }
     }
     request.timeout = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: work)
+    DispatchQueue.main.asyncAfter(deadline: .now() + requestTimeout, execute: work)
   }
 
   private func remove(_ request: ResourceTask) -> Bool {
