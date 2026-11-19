@@ -14,7 +14,7 @@ public:
   ~ResourceBridgeWindows();
   HRESULT Configure(flutter::BinaryMessenger *messenger,
                     const std::string &channel, const std::string &host,
-                    bool enabled);
+                    bool enabled, UINT request_timeout_millis);
   HRESULT ConfigureNetwork(flutter::BinaryMessenger* messenger,
                            const flutter::EncodableMap& configuration);
   HRESULT ConfigureRules(const flutter::EncodableList& rules);

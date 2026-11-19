@@ -26,9 +26,9 @@ using flutter::EncodableValue;
 
 thread_local std::map<UINT_PTR, std::function<void()>> request_timeouts;
 
-UINT_PTR StartTimeout(std::function<void()> callback) {
+UINT_PTR StartTimeout(UINT timeout_millis, std::function<void()> callback) {
   const UINT_PTR timer =
-      SetTimer(nullptr, 0, 30000, [](HWND, UINT, UINT_PTR id, DWORD) {
+      SetTimer(nullptr, 0, timeout_millis, [](HWND, UINT, UINT_PTR id, DWORD) {
         const auto entry = request_timeouts.find(id);
         if (entry == request_timeouts.end()) return;
         auto expired = std::move(entry->second);
@@ -208,6 +208,7 @@ struct ResourceBridgeWindows::State {
   std::string channel_name, host, kind = "resource";
   std::vector<std::string> selectors;
   bool enabled = false, case_sensitive = false, notify_closed = true;
+  UINT request_timeout_millis = 30000;
   int64_t next_id = 0;
   std::shared_ptr<std::atomic<bool>> alive =
       std::make_shared<std::atomic<bool>>(true);
@@ -362,7 +363,7 @@ struct ResourceBridgeWindows::State {
     auto id = std::to_string(++state->next_id);
     state->pending[id] = pending;
     const std::weak_ptr<State> weak = state;
-    pending->timer = StartTimeout([weak, id] {
+    pending->timer = StartTimeout(state->request_timeout_millis, [weak, id] {
       if (auto current = weak.lock()) {
         current->channel->InvokeMethod(
             "cancel", std::make_unique<EncodableValue>(EncodableMap{
@@ -581,7 +582,8 @@ HRESULT ResourceBridgeWindows::UpdateFilters() {
 HRESULT ResourceBridgeWindows::Configure(flutter::BinaryMessenger* messenger,
                                          const std::string& channel,
                                          const std::string& host,
-                                         bool enabled) {
+                                         bool enabled,
+                                         UINT request_timeout_millis) {
   auto hr = EnsureHandler();
   if (FAILED(hr)) return hr;
   if (host.empty() ||
@@ -592,10 +594,16 @@ HRESULT ResourceBridgeWindows::Configure(flutter::BinaryMessenger* messenger,
   next->channel_name = channel;
   next->host = host;
   next->enabled = enabled;
+  next->request_timeout_millis = request_timeout_millis;
   next->environment = registry_->environment;
   next->channel = std::make_unique<flutter::MethodChannel<EncodableValue>>(
       messenger, channel, &flutter::StandardMethodCodec::GetInstance());
   auto previous = registry_->resource;
+  // Dart keeps the same channel when replacing a resource delegate. Late
+  // cancellation and response messages must not refer to a new request.
+  if (previous && previous->channel_name == channel) {
+    next->next_id = previous->next_id;
+  }
   registry_->resource = next;
   hr = UpdateFilters();
   if (FAILED(hr)) {

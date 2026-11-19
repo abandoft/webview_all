@@ -591,8 +591,14 @@ class WindowsWebViewController extends PlatformWebViewController
     bool enabled,
   ) async {
     _throwIfDisposed();
+    final timeoutMillis = resourceDelegateTimeout.inMilliseconds;
     await _ensureInitialized();
-    await _webviewController.configureResources(channel, host, enabled);
+    await _webviewController.configureResources(
+      channel,
+      host,
+      enabled,
+      requestTimeoutMillis: timeoutMillis,
+    );
   }
 
   /// Creates a [WindowsWebViewController].
