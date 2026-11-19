@@ -9,15 +9,17 @@ class ResourceTask {
   request: web_webview.WebSchemeHandlerRequest;
   handler: web_webview.WebResourceHandler;
   channel: MethodChannel;
+  readonly timeoutMillis: number;
   timer: number = -1;
   done: boolean = false;
 
   constructor(id: string, request: web_webview.WebSchemeHandlerRequest,
-    handler: web_webview.WebResourceHandler, channel: MethodChannel) {
+    handler: web_webview.WebResourceHandler, channel: MethodChannel, timeoutMillis: number) {
     this.id = id;
     this.request = request;
     this.handler = handler;
     this.channel = channel;
+    this.timeoutMillis = timeoutMillis;
   }
 }
 
@@ -31,6 +33,7 @@ export class WebResourceCoordinator {
   private channel?: MethodChannel;
   private host: string = '';
   private enabled: boolean = false;
+  private requestTimeoutMillis: number = 30000;
   private installed: boolean = false;
   private installedCustomSchemes: Set<string> = new Set<string>();
   private customSchemes: Array<string> = [];
@@ -58,7 +61,8 @@ export class WebResourceCoordinator {
         handler.didFail(WebNetErrorList.ERR_ABORTED, true);
         return true;
       }
-      const task = new ResourceTask(String(++this.nextId), request, handler, channel);
+      const task = new ResourceTask(String(++this.nextId), request, handler, channel,
+        custom ? 30000 : this.requestTimeoutMillis);
       this.pending.set(request, task);
       this.begin(task);
       return true;
@@ -84,12 +88,16 @@ export class WebResourceCoordinator {
     if (attached) this.onAttached();
   }
 
-  configure(name: string, host: string, enabled: boolean, attached: boolean): void {
+  configure(name: string, host: string, enabled: boolean, attached: boolean, requestTimeoutMillis: number): void {
     if (this.disposed) throw new Error('The resource coordinator was disposed.');
+    if (!Number.isInteger(requestTimeoutMillis) || requestTimeoutMillis < 1 || requestTimeoutMillis > 300000) {
+      throw new Error('Invalid resource request timeout.');
+    }
     const previous = this.channel;
     Array.from(this.pending.values()).forEach((task: ResourceTask) => { if (task.channel === previous) this.fail(task); });
     this.channel = new MethodChannel(this.messenger, name);
     this.host = host;
+    this.requestTimeoutMillis = requestTimeoutMillis;
     this.enabled = enabled;
     if (attached) this.onAttached();
   }
@@ -110,7 +118,7 @@ export class WebResourceCoordinator {
 
   private arm(task: ResourceTask): void {
     if (task.timer >= 0) clearTimeout(task.timer);
-    task.timer = setTimeout((): void => this.fail(task), 30000);
+    task.timer = setTimeout((): void => this.fail(task), task.timeoutMillis);
   }
 
   private async begin(task: ResourceTask): Promise<void> {
