@@ -224,6 +224,7 @@ jobs:
             -scheme Runner -configuration Debug \
             -destination "platform=iOS Simulator,id=$simulator_id" \
             -only-testing:RunnerTests -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/webview-ios-native.xcresult" \
             IPHONEOS_DEPLOYMENT_TARGET=15.0 \
             CODE_SIGNING_ALLOWED=NO -quiet
 
@@ -245,6 +246,7 @@ jobs:
             -destination "platform=iOS Simulator,id=$simulator_id" \
             FLUTTER_TARGET=test_driver/webview_gesture_app.dart \
             -only-testing:WebViewGestureUITests -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/webview-ios-gestures.xcresult" \
             CODE_SIGNING_ALLOWED=NO -quiet
 
       # Avoid Flutter's simulator log-reader race: flutter/flutter#181771.
@@ -283,10 +285,10 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-${{ matrix.suite }}-simulator-log
+          name: ios-${{ matrix.suite }}-diagnostics
           path: |
             ${{ runner.temp }}/webview-ios-simulator.log
-            ${{ runner.temp }}/webview-ios-integration.xcresult
+            ${{ runner.temp }}/webview-ios-*.xcresult
           if-no-files-found: ignore
 
       - name: Clean up iOS test simulator
