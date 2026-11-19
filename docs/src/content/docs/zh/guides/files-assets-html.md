@@ -81,6 +81,8 @@ if (url != null) {
 
 `WebViewResourceResponse.bytes` 提供字节数据，`.file` 按需读取文件，两者自动支持 HEAD 和单段 Range，包括音视频拖动需要的分段响应。`.stream` 支持持续输出数据，取消请求或更换代理时会取消订阅；需要定位读取的流应自行根据请求头返回对应的 206 响应。
 
+通过 `WebViewResourceDelegate.requestTimeout` 可设置等待资源回调及每次后续读取的时限。默认 30 秒，可按整毫秒设置为 1 毫秒至 5 分钟。Android 取消请求后，可能要等当前读取超时才会释放资源流。
+
 Android、iOS、macOS、Linux、OHOS 支持文件、字节及流响应。Windows 支持文件和字节响应，可通过 `controller.resourceCapabilities.supportsStreaming` 判断持续流能力；不支持的流响应会打印说明并使该资源加载失败，不会中断应用。Web 暂不支持，设置代理会打印说明，`getResourceUri` 返回 `null`。
 
 移除代理可调用 `setResourceDelegate(null)`。资源 URL 由所属 controller 管理，销毁后失效；网页的 CORS、CSP 和媒体格式限制仍然适用。代理应校验请求，只返回应用允许网页读取的文件。
