@@ -12,16 +12,16 @@ final class WebViewGestureUITests: XCTestCase {
       let webView = app.webViews.firstMatch
       var button = webView.buttons["Web taps: 0"]
       XCTAssertTrue(button.waitForExistence(timeout: 30))
-      XCTAssertTrue(webView.staticTexts["Scroll: 0"].exists)
+      XCTAssertTrue(app.staticTexts["WebView at top"].waitForExistence(timeout: 5))
       button.tap()
       button = webView.buttons["Web taps: 1"]
       XCTAssertTrue(button.waitForExistence(timeout: 5))
 
       webView.swipeUp()
-      let scrolled = expectation(
-        for: NSPredicate(format: "exists == false"),
-        evaluatedWith: webView.staticTexts["Scroll: 0"])
-      wait(for: [scrolled], timeout: 5)
+      XCTAssertTrue(
+        app.staticTexts["WebView scrolled"].waitForExistence(timeout: 5),
+        "The WebView did not scroll with \(policy)"
+      )
       button.tap()
       button = webView.buttons["Web taps: 2"]
       XCTAssertTrue(button.waitForExistence(timeout: 5))

@@ -18,6 +18,7 @@ class GestureTestPage extends StatefulWidget {
 class _GestureTestPageState extends State<GestureTestPage> {
   WebViewSession? _session;
   bool _overlayVisible = false;
+  bool _webViewScrolled = false;
   int _overlayTaps = 0;
   WebKitGestureBlockingPolicy _policy =
       WebKitGestureBlockingPolicy.fallbackToPluginDefault;
@@ -34,6 +35,12 @@ class _GestureTestPageState extends State<GestureTestPage> {
     );
     if (session == null) throw StateError('Could not create the test WebView');
     await session.controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    await session.controller.setOnScrollPositionChange((change) {
+      final scrolled = change.y > 1;
+      if (mounted && _webViewScrolled != scrolled) {
+        setState(() => _webViewScrolled = scrolled);
+      }
+    });
     await session.controller.loadHtmlString('''
 <!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -43,11 +50,7 @@ class _GestureTestPageState extends State<GestureTestPage> {
 </style>
 <script>
 window.taps = 0;
-addEventListener('scroll', function() {
-  document.getElementById('scroll').textContent='Scroll: '+Math.round(scrollY);
-});
 </script>
-<div id="scroll" style="position:fixed;top:20px;left:20px">Scroll: 0</div>
 <button onclick="this.textContent='Web taps: '+(++window.taps)">Web taps: 0</button>
 ''');
     if (!mounted) {
@@ -83,6 +86,7 @@ scrollTo(0, 0);
         children: [
           Text('Policy: ${_policy.name}'),
           Text('Overlay taps: $_overlayTaps'),
+          Text(_webViewScrolled ? 'WebView scrolled' : 'WebView at top'),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
