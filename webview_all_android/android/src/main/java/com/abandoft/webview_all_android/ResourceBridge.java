@@ -23,6 +23,8 @@ import java.util.regex.Pattern;
 
 /** Engine-scoped configuration and bounded, pull-based resource delivery. */
 final class ResourceBridge {
+  private static final int DEFAULT_REQUEST_TIMEOUT_MILLIS = 30000;
+
   static final class Registration {
     private final MethodChannel channel;
     private final Map<WebViewProxyApi.WebViewPlatformView, ResourceBridge> bridges =
@@ -53,6 +55,17 @@ final class ResourceBridge {
                   null);
               return;
             }
+            final Object value = args.get("requestTimeoutMillis");
+            long timeoutMillis = DEFAULT_REQUEST_TIMEOUT_MILLIS;
+            if (value != null) {
+              timeoutMillis =
+                  value instanceof Integer || value instanceof Long ? ((Number) value).longValue() : 0;
+            }
+            if (timeoutMillis < 1 || timeoutMillis > 300000) {
+              result.error(
+                  "invalid_resource_configuration", "Invalid resource request timeout.", null);
+              return;
+            }
             WebViewProxyApi.WebViewPlatformView view = (WebViewProxyApi.WebViewPlatformView) object;
             ResourceBridge bridge = bridges.get(view);
             if (bridge == null) {
@@ -64,7 +77,8 @@ final class ResourceBridge {
                 messenger,
                 (String) args.get("channel"),
                 (String) args.get("host"),
-                (Boolean) args.get("enabled"));
+                (Boolean) args.get("enabled"),
+                (int) timeoutMillis);
             result.success(null);
           });
     }
@@ -81,6 +95,7 @@ final class ResourceBridge {
   private volatile String host = "";
   private volatile boolean enabled;
   private volatile int generation;
+  private int requestTimeoutMillis = DEFAULT_REQUEST_TIMEOUT_MILLIS;
   private String kind = "resource", channelName;
   private java.util.List<String> patterns = Collections.emptyList();
   private java.util.List<String> schemes = Collections.emptyList();
@@ -108,17 +123,19 @@ final class ResourceBridge {
     bridge.kind = kind; bridge.caseSensitive = Boolean.TRUE.equals(args.get("caseSensitive"));
     if ("http".equals(kind)) bridge.patterns = Collections.unmodifiableList(values);
     else bridge.schemes = Collections.unmodifiableList(values);
-    bridge.configure(messenger, name, "", true);
+    bridge.configure(messenger, name, "", true, DEFAULT_REQUEST_TIMEOUT_MILLIS);
     if ("http".equals(kind)) owner.networkBridge = bridge; else owner.schemeBridge = bridge;
     if (previous != null) previous.close();
     return true;
   }
 
-  private void configure(BinaryMessenger messenger, String name, String host, boolean enabled) {
+  private synchronized void configure(
+      BinaryMessenger messenger, String name, String host, boolean enabled, int timeoutMillis) {
     generation++;
     this.channelName = name;
     channel = new MethodChannel(messenger, name);
     this.host = host;
+    requestTimeoutMillis = timeoutMillis;
     this.enabled = enabled;
   }
 
@@ -149,9 +166,15 @@ final class ResourceBridge {
         || !host.equals(uri.getHost())
         || uri.getPort() != -1
         || uri.getUserInfo() != null) return null;
-    if (!enabled) return "http".equals(kind) ? null : empty(404);
-    final MethodChannel target = channel;
-    final int expectedGeneration = generation;
+    final MethodChannel target;
+    final int expectedGeneration;
+    final int timeoutMillis;
+    synchronized (this) {
+      if (!enabled) return "http".equals(kind) ? null : empty(404);
+      target = channel;
+      expectedGeneration = generation;
+      timeoutMillis = requestTimeoutMillis;
+    }
     final String id = UUID.randomUUID().toString();
     final Map<String, Object> args = new HashMap<>();
     args.put("id", id);
@@ -161,7 +184,7 @@ final class ResourceBridge {
     args.put("isForMainFrame", request.isForMainFrame());
     args.put("bodyAvailable", false);
     try {
-      Object value = invoke(target, "open", args);
+      Object value = invoke(target, "open", args, expectedGeneration, timeoutMillis);
       if (!(value instanceof Map) || generation != expectedGeneration || !enabled) {
         cancel(target, id);
         return empty(404);
@@ -218,7 +241,13 @@ final class ResourceBridge {
           emptyBody
               ? null
               : new ResourceInputStream(
-                  target, id, expectedGeneration, representationLength, length, rangeOffset);
+                  target,
+                  id,
+                  expectedGeneration,
+                  representationLength,
+                  length,
+                  rangeOffset,
+                  timeoutMillis);
       if (!emptyBody && representationLength >= 0 && representationLength <= Integer.MAX_VALUE) {
         headers.remove("content-length");
       }
@@ -253,42 +282,62 @@ final class ResourceBridge {
     return false;
   }
 
-  private Object invoke(MethodChannel target, String method, Object arguments) throws IOException {
+  private Object invoke(
+      MethodChannel target, String method, Object arguments, int expectedGeneration, int timeoutMillis)
+      throws IOException {
     if (Looper.myLooper() == Looper.getMainLooper()) {
       throw new IOException("A resource read must not block the platform thread.");
     }
+    final long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
     CountDownLatch latch = new CountDownLatch(1);
     AtomicReference<Object> value = new AtomicReference<>();
     AtomicReference<String> error = new AtomicReference<>();
-    main.post(
-        () ->
-            target.invokeMethod(
-                method,
-                arguments,
-                new MethodChannel.Result() {
-                  @Override
-                  public void success(Object result) {
-                    value.set(result);
-                    latch.countDown();
-                  }
+    if (!main.post(
+        () -> {
+          if (latch.getCount() == 0) return;
+          if (!enabled || generation != expectedGeneration) {
+            latch.countDown();
+            return;
+          }
+          if (deadline - System.nanoTime() <= 0) {
+            error.set("Resource callback timed out.");
+            latch.countDown();
+            return;
+          }
+          target.invokeMethod(
+              method,
+              arguments,
+              new MethodChannel.Result() {
+                @Override
+                public void success(Object result) {
+                  value.set(result);
+                  latch.countDown();
+                }
 
-                  @Override
-                  public void error(String code, String message, Object details) {
-                    error.set(code);
-                    latch.countDown();
-                  }
+                @Override
+                public void error(String code, String message, Object details) {
+                  error.set(code);
+                  latch.countDown();
+                }
 
-                  @Override
-                  public void notImplemented() {
-                    error.set("not_implemented");
-                    latch.countDown();
-                  }
-                }));
+                @Override
+                public void notImplemented() {
+                  error.set("not_implemented");
+                  latch.countDown();
+                }
+              });
+        })) {
+      throw new IOException("The platform thread is unavailable.");
+    }
     try {
-      if (!latch.await(30, TimeUnit.SECONDS)) throw new IOException("Resource callback timed out.");
+      if (!latch.await(deadline - System.nanoTime(), TimeUnit.NANOSECONDS)) {
+        throw new IOException("Resource callback timed out.");
+      }
     } catch (InterruptedException exception) {
       Thread.currentThread().interrupt();
       throw new IOException(exception);
+    } finally {
+      latch.countDown();
     }
     if (error.get() != null) throw new IOException(error.get());
     return value.get();
@@ -299,7 +348,7 @@ final class ResourceBridge {
       main.post(() -> target.invokeMethod("cancel", Collections.singletonMap("id", id)));
   }
 
-  void close() {
+  synchronized void close() {
     enabled = false;
     generation++;
     final MethodChannel target = channel;
@@ -311,6 +360,7 @@ final class ResourceBridge {
     private final MethodChannel target;
     private final String id;
     private final int expectedGeneration;
+    private final int timeoutMillis;
     private byte[] chunk;
     private int offset;
     private volatile boolean closed;
@@ -325,10 +375,12 @@ final class ResourceBridge {
         int expectedGeneration,
         long representationLength,
         long length,
-        long rangeOffset) {
+        long rangeOffset,
+        int timeoutMillis) {
       this.target = target;
       this.id = id;
       this.expectedGeneration = expectedGeneration;
+      this.timeoutMillis = timeoutMillis;
       this.representationLength = representationLength;
       this.remaining = length;
       this.rangeOffset = rangeOffset;
@@ -390,7 +442,7 @@ final class ResourceBridge {
           Map<String, Object> args = new HashMap<>();
           args.put("id", id);
           args.put("length", Math.min(count, 65536));
-          Object value = invoke(target, "read", args);
+          Object value = invoke(target, "read", args, expectedGeneration, timeoutMillis);
           if (value == null) {
             close();
             return -1;
@@ -403,6 +455,9 @@ final class ResourceBridge {
           offset = 0;
         }
         if (closed) return -1;
+        if (!enabled || generation != expectedGeneration) {
+          throw new IOException("The resource handler was removed.");
+        }
         int length = Math.min(count, payload.length - offset);
         System.arraycopy(payload, offset, buffer, start, length);
         offset += length;

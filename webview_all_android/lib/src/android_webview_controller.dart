@@ -747,6 +747,7 @@ class AndroidWebViewController extends PlatformWebViewController
     if (_javaScriptSessionError != null) {
       throw StateError('The Android WebView was closed.');
     }
+    final timeoutMillis = resourceDelegateTimeout.inMilliseconds;
     await _webView.getUrl();
     if (_javaScriptSessionError != null) {
       throw StateError('The Android WebView was closed.');
@@ -758,6 +759,7 @@ class AndroidWebViewController extends PlatformWebViewController
       'channel': channel,
       'host': host,
       'enabled': enabled,
+      'requestTimeoutMillis': timeoutMillis,
     });
   }
 
