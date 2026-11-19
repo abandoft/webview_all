@@ -152,10 +152,32 @@ void main() {
       );
       await tester.pumpAndSettle();
       final origin = Uri.parse('http://127.0.0.1:${server.port}');
+      final pageLoads = <String, Completer<void>>{};
+      final cacheMiss = Completer<WebResourceError>();
+      var expectingCacheMiss = false;
+      const pageTimeout = Duration(seconds: 20);
+      await view.setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (url) => pageLoads.remove(url)?.complete(),
+          onWebResourceError: (error) {
+            if (expectingCacheMiss &&
+                error.isForMainFrame != false &&
+                !cacheMiss.isCompleted) {
+              cacheMiss.complete(error);
+            }
+          },
+        ),
+      );
+
       Future<void> load(String page) async {
-        await view.loadRequest(origin.resolve(page));
-        await _until(
-          () async => await _text(view, 'document.body?.dataset.page') == page,
+        final uri = origin.resolve(page);
+        final finished = Completer<void>();
+        pageLoads[uri.toString()] = finished;
+        await view.loadRequest(uri).timeout(pageTimeout);
+        await finished.future.timeout(pageTimeout);
+        expect(
+          await _text(view, 'document.body?.dataset.page').timeout(pageTimeout),
+          page,
         );
       }
 
@@ -181,22 +203,16 @@ void main() {
       );
       await view.runJavaScript('localStorage.removeItem("presentation-test")');
 
-      final cacheMiss = Completer<WebResourceError>();
-      await view.setNavigationDelegate(
-        NavigationDelegate(
-          onWebResourceError: (error) {
-            if (error.isForMainFrame != false && !cacheMiss.isCompleted) {
-              cacheMiss.complete(error);
-            }
-          },
-        ),
-      );
       expect(
         await android.setCacheMode(AndroidWebViewCacheMode.cacheOnly),
         isTrue,
       );
-      await view.loadRequest(origin.resolve('/network-only'));
-      final error = await cacheMiss.future.timeout(const Duration(seconds: 20));
+      expectingCacheMiss = true;
+      await view
+          .loadRequest(origin.resolve('/network-only'))
+          .timeout(pageTimeout);
+      final error = await cacheMiss.future.timeout(pageTimeout);
+      expectingCacheMiss = false;
       expect(error.description, contains('CACHE_MISS'));
       expect(hits['/network-only'] ?? 0, 0);
       expect(
