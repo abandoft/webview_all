@@ -452,10 +452,11 @@ WebviewBridge::WebviewBridge(flutter::BinaryMessenger *messenger,
           const auto timeout =
               args->find(flutter::EncodableValue("requestTimeoutMillis"));
           if (timeout != args->end()) {
-            if (const auto *value = std::get_if<int32_t>(&timeout->second)) {
-              timeout_millis = *value;
-            } else if (const auto *value = std::get_if<int64_t>(&timeout->second)) {
-              timeout_millis = *value;
+            if (const auto *value32 = std::get_if<int32_t>(&timeout->second)) {
+              timeout_millis = *value32;
+            } else if (const auto *value64 =
+                           std::get_if<int64_t>(&timeout->second)) {
+              timeout_millis = *value64;
             } else {
               timeout_millis = 0;
             }
