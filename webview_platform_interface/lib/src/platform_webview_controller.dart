@@ -723,17 +723,29 @@ abstract class PlatformWebViewController extends PlatformInterface {
   Future<Object?> invokeAsyncJavaScriptInWorld(
     JavaScriptInvocationParams params,
   ) async {
-    final caps = await getJavaScriptCapabilities(world: params.world);
+    final generation = _javaScriptDocumentGeneration;
+    final watch = Stopwatch()..start();
+    Never timedOut() => throw TimeoutException(
+      'The JavaScript invocation timed out.',
+      params.timeout,
+    );
+
+    final capabilities = getJavaScriptCapabilities(world: params.world);
+    final caps = await capabilities.timeout(
+      params.timeout - watch.elapsed,
+      onTimeout: timedOut,
+    );
+    if (watch.elapsed >= params.timeout) timedOut();
     if (!caps.supportsWorld(params.world)) {
       debugPrint(
         'webview_all: Isolated JavaScript execution was skipped because it is unavailable.',
       );
       return null;
     }
-    final generation = _javaScriptDocumentGeneration;
     try {
       return await invokeJavaScriptInWorld(
         params,
+        watch: watch,
         evaluate: (source) => evaluateJavaScriptInWorld(source, params.world),
         isCurrentDocument: () =>
             !_javaScriptHandlersDisposed &&

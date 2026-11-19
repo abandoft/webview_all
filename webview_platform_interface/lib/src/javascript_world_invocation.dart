@@ -7,10 +7,10 @@ import 'types/types.dart';
 /// World-aware fallback for native engines without a Promise evaluation API.
 Future<Object?> invokeJavaScriptInWorld(
   JavaScriptInvocationParams params, {
+  required Stopwatch watch,
   required Future<Object?> Function(String) evaluate,
   required bool Function() isCurrentDocument,
 }) async {
-  final watch = Stopwatch()..start();
   final random = Random.secure();
   final identifier =
       '__webviewAllAsync_' +

@@ -69,6 +69,62 @@ void main() {
   );
 
   test(
+    'navigation invalidates an isolated invocation during capability lookup',
+    () async {
+      final ready = Completer<void>();
+      final view = _Controller(capabilitiesReady: ready.future);
+      final invocation = view.callAsyncJavaScript(
+        JavaScriptInvocationParams(
+          functionBody: 'return 1;',
+          world: const WebViewJavaScriptWorld.isolated('isolated-test'),
+        ),
+      );
+      final aborted = expectLater(
+        invocation,
+        throwsA(
+          isA<JavaScriptExecutionException>().having(
+            (error) => error.name,
+            'name',
+            'AbortError',
+          ),
+        ),
+      );
+      view.navigate();
+      ready.complete();
+      await aborted;
+      view.close();
+    },
+  );
+
+  test('isolated invocation times out during capability lookup', () async {
+    const timeout = Duration(milliseconds: 20);
+    final ready = Completer<void>();
+    final view = _Controller(capabilitiesReady: ready.future);
+    addTearDown(view.close);
+    final invocation = view.callAsyncJavaScript(
+      JavaScriptInvocationParams(
+        functionBody: 'return 1;',
+        world: const WebViewJavaScriptWorld.isolated('isolated-test'),
+        timeout: timeout,
+      ),
+    );
+
+    await expectLater(
+      invocation,
+      throwsA(
+        isA<TimeoutException>().having(
+          (error) => error.duration,
+          'timeout',
+          timeout,
+        ),
+      ),
+    );
+    ready.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(view.evaluations, 0);
+  }, timeout: const Timeout(Duration(seconds: 2)));
+
+  test(
     'structured arguments and asynchronous results use the original document',
     () async {
       final view = _Controller();
@@ -344,7 +400,12 @@ class _Controller extends PlatformWebViewController {
   final Map<String, JavaScriptChannelParams> channels = {};
   final Map<String, WebViewUserScript> _scripts = {};
   final List<Map<String, dynamic>> replies = [];
+  int evaluations = 0;
   List<WebViewUserScript> get scripts => _scripts.values.toList();
+
+  @override
+  Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) =>
+      invokeAsyncJavaScriptInWorld(params);
 
   @override
   Future<WebViewJavaScriptCapabilities> getJavaScriptCapabilities({
@@ -357,6 +418,15 @@ class _Controller extends PlatformWebViewController {
       supportsTrustedOrigins: trustedOrigins,
       supportsTrustedFrameInformation: true,
     );
+  }
+
+  @override
+  Future<Object?> evaluateJavaScriptInWorld(
+    String source,
+    WebViewJavaScriptWorld world,
+  ) {
+    evaluations++;
+    return super.evaluateJavaScriptInWorld(source, world);
   }
 
   @override
