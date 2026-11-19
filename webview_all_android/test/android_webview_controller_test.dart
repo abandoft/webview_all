@@ -1980,6 +1980,80 @@ void main() {
       verify(mockWebView.removeDocumentStartJavaScript(identifier)).called(1);
     });
 
+    test(
+      'renderer exit cancels ordinary and asynchronous JavaScript without an application callback',
+      () async {
+        final webView = MockWebView();
+        final bridgeReady = Completer<void>();
+        final nativeResult = Completer<String?>();
+        when(
+          webView.addJavaScriptChannel(any),
+        ).thenAnswer((_) => bridgeReady.future);
+        when(
+          webView.evaluateJavascript(any),
+        ).thenAnswer((_) => nativeResult.future);
+        final identifier = android_webview.PigeonInstanceManager.instance
+            .addDartCreatedInstance(webView);
+        final controller = createControllerWithMocks(mockWebView: webView);
+        final params = JavaScriptInvocationParams(functionBody: 'return 1;');
+        final result = controller.callAsyncJavaScript(params);
+        final aborted = isA<JavaScriptExecutionException>().having(
+          (error) => error.name,
+          'name',
+          'AbortError',
+        );
+        final assertion = expectLater(result, throwsA(aborted));
+        final ordinary = expectLater(
+          controller.runJavaScript('void 0;'),
+          throwsA(aborted),
+        );
+        final returningResult = expectLater(
+          controller.runJavaScriptReturningResult('1 + 1'),
+          throwsA(aborted),
+        );
+
+        await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .handlePlatformMessage(
+              'com.abandoft.webview_all_android/browser',
+              const StandardMethodCodec().encodeMethodCall(
+                MethodCall('processFailed', {
+                  'webViewId': identifier,
+                  'didCrash': false,
+                }),
+              ),
+              (_) {},
+            );
+
+        await Future.wait([
+          assertion,
+          ordinary,
+          returningResult,
+        ]).timeout(const Duration(seconds: 1));
+        await expectLater(
+          controller.callAsyncJavaScript(params),
+          throwsA(aborted),
+        );
+        await expectLater(
+          controller.runJavaScript('void 1;'),
+          throwsA(aborted),
+        );
+        await expectLater(
+          controller.runJavaScriptReturningResult('2 + 2'),
+          throwsA(aborted),
+        );
+        await controller.closeOffscreenWebView();
+        bridgeReady.complete();
+        nativeResult.completeError(
+          StateError('The native evaluation was interrupted.'),
+        );
+        await Future<void>.delayed(Duration.zero);
+        verify(webView.evaluateJavascript('void 0;')).called(1);
+        verify(webView.evaluateJavascript('1 + 1')).called(1);
+        verifyNever(webView.evaluateJavascript(any));
+        verify(webView.destroy()).called(1);
+      },
+    );
+
     test('closes an offscreen WebView exactly once', () async {
       final MockWebView mockWebView = MockWebView();
       final MockWebSettings mockSettings = MockWebSettings();

@@ -361,7 +361,7 @@ class AndroidWebViewController extends PlatformWebViewController
     return restored;
   });
 
-  static final _windowControllers =
+  static final _browserControllers =
       <int, WeakReference<AndroidWebViewController>>{};
   static bool _browserReceiverInstalled = false;
   FutureOr<void> Function(WebViewNewWindowRequest<PlatformWebViewController>)?
@@ -426,47 +426,36 @@ class AndroidWebViewController extends PlatformWebViewController
   Future<void> setOnProcessFailed(
     FutureOr<void> Function(WebViewProcessFailure)? callback,
   ) async {
-    if (_offscreenCloseFuture != null) return;
+    if (_javaScriptSessionError != null) return;
     if (!await _supportsProcessFailures()) {
       debugPrint(
         'webview_all_android: renderer process notifications require Android 8 (API 26). The callback was not installed.',
       );
       return;
     }
-    await _webView.getUrl();
-    _observeWindowEvents();
-    updateProcessFailureCallback(callback);
-    await _browserChannel.invokeMethod<void>('observeProcessFailures', {
-      'webViewId': webViewIdentifier,
-    });
+    if (_javaScriptSessionError == null) {
+      updateProcessFailureCallback(callback);
+    }
   }
 
-  void _observeWindowEvents() {
-    _windowControllers.removeWhere((_, reference) => reference.target == null);
-    _windowControllers[webViewIdentifier] = WeakReference(this);
+  void _observeBrowserEvents() {
+    final identifier = android_webview.PigeonInstanceManager.instance
+        .getIdentifier(_webView);
+    if (identifier == null) return;
+    _browserControllers.removeWhere((_, reference) => reference.target == null);
+    _browserControllers[identifier] = WeakReference(this);
     if (_browserReceiverInstalled) return;
     _browserReceiverInstalled = true;
     _browserChannel.setMethodCallHandler((call) async {
       final args = Map<Object?, Object?>.from(call.arguments as Map);
       final owner =
-          _windowControllers[(args['webViewId'] as num?)?.toInt()]?.target;
+          _browserControllers[(args['webViewId'] as num?)?.toInt()]?.target;
       if (call.method == 'processFailed') {
-        if (owner != null && owner._offscreenCloseFuture == null) {
-          owner._finishCustomView();
-          await owner.notifyProcessFailed(
-            WebViewProcessFailure(
-              kind: WebViewProcessFailureKind.rendererExited,
-              recovery: WebViewProcessRecovery.recreate,
-              didCrash: args['didCrash'] as bool?,
-              description:
-                  'Android removed the failed renderer. Create a new controller; this WebView cannot be reused.',
-            ),
-          );
-        }
+        await owner?._handleRendererExit(args['didCrash'] as bool?);
         return;
       }
       if (call.method == 'windowCloseRequested') {
-        if (owner?._offscreenCloseFuture == null) {
+        if (owner?._javaScriptSessionError == null) {
           try {
             owner?._onWindowCloseRequested?.call();
           } catch (error) {
@@ -483,7 +472,9 @@ class AndroidWebViewController extends PlatformWebViewController
         isUserGesture: args['isUserGesture'] as bool?,
         isDialog: args['isDialog'] as bool?,
         onCreateController: () async {
-          if (owner == null || owner._offscreenCloseFuture != null) return null;
+          if (owner == null || owner._javaScriptSessionError != null) {
+            return null;
+          }
           final child = AndroidWebViewController(owner.params);
           try {
             await child._webView.getUrl();
@@ -497,7 +488,7 @@ class AndroidWebViewController extends PlatformWebViewController
         },
         onAttach: (child) async {
           if (owner == null ||
-              owner._offscreenCloseFuture != null ||
+              owner._javaScriptSessionError != null ||
               owner._popupPolicy == WebViewPopupWindowPolicy.deny ||
               child is! AndroidWebViewController ||
               child == owner ||
@@ -524,10 +515,27 @@ class AndroidWebViewController extends PlatformWebViewController
         }),
       );
       await dispatchWebViewNewWindowRequest(
-        owner?._offscreenCloseFuture == null ? owner?._newWindowDelegate : null,
+        owner?._javaScriptSessionError == null
+            ? owner?._newWindowDelegate
+            : null,
         request,
       );
     });
+  }
+
+  Future<void> _handleRendererExit(bool? didCrash) async {
+    if (_javaScriptSessionError != null) return;
+    _endJavaScriptSession('The Android WebView renderer exited.');
+    _finishCustomView();
+    await notifyProcessFailed(
+      WebViewProcessFailure(
+        kind: WebViewProcessFailureKind.rendererExited,
+        recovery: WebViewProcessRecovery.recreate,
+        didCrash: didCrash,
+        description:
+            'Android removed the failed renderer. Create a new controller; this WebView cannot be reused.',
+      ),
+    );
   }
 
   @override
@@ -535,9 +543,9 @@ class AndroidWebViewController extends PlatformWebViewController
     FutureOr<void> Function(WebViewNewWindowRequest<PlatformWebViewController>)?
     delegate,
   ) async {
-    if (_offscreenCloseFuture != null) return;
+    if (_javaScriptSessionError != null) return;
     await _webView.getUrl();
-    _observeWindowEvents();
+    if (_javaScriptSessionError != null) return;
     final previous = _newWindowDelegate;
     _newWindowDelegate = delegate;
     try {
@@ -556,9 +564,9 @@ class AndroidWebViewController extends PlatformWebViewController
 
   @override
   Future<void> setOnWindowCloseRequested(VoidCallback? callback) async {
-    if (_offscreenCloseFuture != null) return;
+    if (_javaScriptSessionError != null) return;
     await _webView.getUrl();
-    _observeWindowEvents();
+    if (_javaScriptSessionError != null) return;
     _onWindowCloseRequested = callback;
     await _browserChannel.invokeMethod<void>('observeWindowClose', {
       'webViewId': webViewIdentifier,
@@ -736,10 +744,13 @@ class AndroidWebViewController extends PlatformWebViewController
     String host,
     bool enabled,
   ) async {
-    if (_offscreenCloseFuture != null) {
+    if (_javaScriptSessionError != null) {
       throw StateError('The Android WebView was closed.');
     }
     await _webView.getUrl();
+    if (_javaScriptSessionError != null) {
+      throw StateError('The Android WebView was closed.');
+    }
     await const MethodChannel(
       'com.abandoft.webview_all/resources',
     ).invokeMethod<void>('configure', <String, Object?>{
@@ -787,6 +798,7 @@ class AndroidWebViewController extends PlatformWebViewController
             },
       ),
     );
+    _observeBrowserEvents();
   }
 
   Future<void>? _limitedIncognitoReady;
@@ -1105,8 +1117,11 @@ class AndroidWebViewController extends PlatformWebViewController
       <String, AndroidJavaScriptChannelParams>{};
   final Map<String, Completer<Object?>> _pendingAsyncJavaScriptInvocations =
       <String, Completer<Object?>>{};
+  final Set<Completer<String?>> _pendingJavaScriptEvaluations =
+      <Completer<String?>>{};
   final Set<String> _userScriptIdentifiers = <String>{};
   late final Future<void> _asyncJavaScriptBridgeReady;
+  JavaScriptExecutionException? _javaScriptSessionError;
   late final VoidCallback _navigationStartCallback = withWeakReferenceTo(this, (
     WeakReference<AndroidWebViewController> weakReference,
   ) {
@@ -1438,13 +1453,13 @@ class AndroidWebViewController extends PlatformWebViewController
   }
 
   @override
-  Future<void> runJavaScript(String javaScript) {
-    return _webView.evaluateJavascript(javaScript);
+  Future<void> runJavaScript(String javaScript) async {
+    await _evaluateJavaScript(javaScript);
   }
 
   @override
   Future<Object> runJavaScriptReturningResult(String javaScript) async {
-    final String? result = await _webView.evaluateJavascript(javaScript);
+    final String? result = await _evaluateJavaScript(javaScript);
 
     if (result == null) {
       return '';
@@ -1459,38 +1474,31 @@ class AndroidWebViewController extends PlatformWebViewController
 
   @override
   Future<Object?> callAsyncJavaScript(JavaScriptInvocationParams params) async {
-    if (!params.world.isPage) return invokeAsyncJavaScriptInWorld(params);
-    await _asyncJavaScriptBridgeReady;
+    _checkJavaScriptSession();
     final String identifier = _createAndroidOpaqueIdentifier(
       'async_${++_nextAsyncJavaScriptInvocationIdentifier}',
     );
     final Completer<Object?> completer = Completer<Object?>();
     _pendingAsyncJavaScriptInvocations[identifier] = completer;
 
-    final Future<Object?> completion = completer.future.timeout(
-      params.timeout,
-      onTimeout: () {
-        _pendingAsyncJavaScriptInvocations.remove(identifier);
-        throw TimeoutException(
-          'The asynchronous JavaScript invocation timed out.',
-          params.timeout,
-        );
-      },
-    );
+    final execution = params.world.isPage
+        ? _asyncJavaScriptBridgeReady.then((_) async {
+            if (!_pendingAsyncJavaScriptInvocations.containsKey(identifier)) {
+              return null;
+            }
+            await _webView.evaluateJavascript(
+              _buildAsyncJavaScriptInvocation(identifier, params),
+            );
+            return completer.future;
+          })
+        : invokeAsyncJavaScriptInWorld(params);
+    final completion = Future.any<Object?>([completer.future, execution]);
     try {
-      final List<Object?> values = await Future.wait<Object?>(<Future<Object?>>[
-        _webView.evaluateJavascript(
-          _buildAsyncJavaScriptInvocation(identifier, params),
-        ),
-        completion,
-      ], eagerError: true);
-      return values[1];
-    } catch (error, stackTrace) {
+      return await (params.world.isPage
+          ? completion.timeout(params.timeout)
+          : completion);
+    } finally {
       _pendingAsyncJavaScriptInvocations.remove(identifier);
-      if (!completer.isCompleted) {
-        completer.completeError(error, stackTrace);
-      }
-      rethrow;
     }
   }
 
@@ -1531,6 +1539,7 @@ class AndroidWebViewController extends PlatformWebViewController
   }
 
   Future<void> _closeOffscreenWebView() async {
+    _endJavaScriptSession('The offscreen WebView session was closed.');
     if (_exitCustomView != null) await exitFullscreen();
     disposeBrowserLifecycleCallbacks();
     _fullscreenBuildContext = null;
@@ -1539,7 +1548,7 @@ class AndroidWebViewController extends PlatformWebViewController
     final identifier = android_webview.PigeonInstanceManager.instance
         .getIdentifier(_webView);
     if (identifier != null) {
-      _windowControllers.remove(identifier);
+      _browserControllers.remove(identifier);
     }
     _newWindowDelegate = null;
     _onWindowCloseRequested = null;
@@ -1559,30 +1568,28 @@ class AndroidWebViewController extends PlatformWebViewController
       );
     }
     _currentNavigationDelegate = null;
-    _cancelPendingAsyncJavaScriptInvocations(
-      const JavaScriptExecutionException(
-        name: 'AbortError',
-        message: 'The offscreen WebView session was closed.',
-      ),
-    );
+    // The initialization messages were already sent on the platform thread.
+    // Releasing the native view does not depend on their replies.
+    unawaited(_limitedIncognitoReady?.catchError((Object _) {}));
+    unawaited(_asyncJavaScriptBridgeReady.catchError((Object _) {}));
     try {
-      await _limitedIncognitoReady;
-      await _asyncJavaScriptBridgeReady;
-    } catch (_) {
-      // Continue releasing a partially initialized native WebView.
+      await _webView.destroy();
+    } finally {
+      android_webview.PigeonInstanceManager.instance.removeWeakReference(
+        _webView,
+      );
     }
-    await _webView.destroy();
-    android_webview.PigeonInstanceManager.instance.removeWeakReference(
-      _webView,
-    );
   }
 
   @override
   Future<WebViewJavaScriptCapabilities> getJavaScriptCapabilities({
     WebViewJavaScriptWorld world = WebViewJavaScriptWorld.page,
   }) async {
+    _checkJavaScriptSession();
     final start = await _webView.isDocumentStartJavaScriptSupported();
+    _checkJavaScriptSession();
     final isolated = await _webView.isJavaScriptWorldSupported();
+    _checkJavaScriptSession();
     final metadata = await _webView.isJavaScriptMessageMetadataSupported();
     return WebViewJavaScriptCapabilities(
       supportsPromiseHandlers: world.isPage ? start : isolated,
@@ -1639,9 +1646,7 @@ class AndroidWebViewController extends PlatformWebViewController
     String source,
     WebViewJavaScriptWorld world,
   ) async {
-    final raw = world.isPage
-        ? await _webView.evaluateJavascript(source)
-        : await _webView.evaluateJavaScriptInWorld(source, world.name!);
+    final raw = await _evaluateJavaScript(source, worldName: world.name);
     return raw == null ? null : jsonDecode(raw);
   }
 
@@ -1743,10 +1748,47 @@ class AndroidWebViewController extends PlatformWebViewController
   }
 
   Future<void> _prepareForNavigation() async {
+    _checkJavaScriptSession();
     _invalidateAndroidNavigationPolicy(_navigationLoadRequest);
     prepareJavaScriptForNavigation();
     _cancelPendingAsyncJavaScriptInvocations();
     await _asyncJavaScriptBridgeReady;
+    _checkJavaScriptSession();
+  }
+
+  void _checkJavaScriptSession() {
+    if (_javaScriptSessionError case final error?) throw error;
+  }
+
+  Future<String?> _evaluateJavaScript(
+    String source, {
+    String? worldName,
+  }) async {
+    _checkJavaScriptSession();
+    final interrupted = Completer<String?>();
+    _pendingJavaScriptEvaluations.add(interrupted);
+    try {
+      return await Future.any<String?>([
+        interrupted.future,
+        worldName == null
+            ? _webView.evaluateJavascript(source)
+            : _webView.evaluateJavaScriptInWorld(source, worldName),
+      ]);
+    } finally {
+      _pendingJavaScriptEvaluations.remove(interrupted);
+    }
+  }
+
+  void _endJavaScriptSession(String message) {
+    final error = _javaScriptSessionError ??= JavaScriptExecutionException(
+      name: 'AbortError',
+      message: message,
+    );
+    _cancelPendingAsyncJavaScriptInvocations(error);
+    for (final evaluation in _pendingJavaScriptEvaluations) {
+      evaluation.completeError(error);
+    }
+    _pendingJavaScriptEvaluations.clear();
   }
 
   void _cancelPendingAsyncJavaScriptInvocations([

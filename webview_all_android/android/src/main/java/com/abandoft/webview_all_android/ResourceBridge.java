@@ -43,6 +43,7 @@ final class ResourceBridge {
                     ? registrar.getInstanceManager().getInstance(((Number) identifier).longValue())
                     : null;
             if (!(object instanceof WebViewProxyApi.WebViewPlatformView)
+                || ((WebViewProxyApi.WebViewPlatformView) object).isReleased()
                 || !(args.get("channel") instanceof String)
                 || !(args.get("host") instanceof String)
                 || !(args.get("enabled") instanceof Boolean)) {

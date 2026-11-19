@@ -12,6 +12,7 @@ import android.webkit.GeolocationPermissions;
 import android.webkit.JsPromptResult;
 import android.webkit.JsResult;
 import android.webkit.PermissionRequest;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -19,6 +20,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.VisibleForTesting;
 import java.util.List;
 import java.util.Objects;
@@ -265,7 +267,7 @@ public class WebChromeClientProxyApi extends PigeonApiWebChromeClient {
       Boolean handled = BrowserOperations.requestWindow(view, isDialog, isUserGesture, resultMsg);
       if (handled != null)
         return handled;
-      return onCreateWindow(view, resultMsg, new WebView(view.getContext()));
+      return onCreateWindow(view, resultMsg, null);
     }
 
     /**
@@ -296,6 +298,13 @@ public class WebChromeClientProxyApi extends PigeonApiWebChromeClient {
 
       final WebViewClient windowWebViewClient =
           new WebViewClient() {
+            @Override
+            @RequiresApi(26)
+            public boolean onRenderProcessGone(
+                WebView windowWebView, RenderProcessGoneDetail detail) {
+              return BrowserOperations.rendererGone(windowWebView, detail);
+            }
+
             @Override
             public boolean shouldOverrideUrlLoading(
                 @NonNull WebView windowWebView, @NonNull WebResourceRequest request) {

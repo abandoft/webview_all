@@ -206,6 +206,7 @@ public class WebViewProxyApi extends PigeonApiWebView {
     private final WebViewProxyApi api;
 
     private boolean destroyed;
+    private boolean rendererExited;
     volatile ResourceBridge resourceBridge;
     volatile ResourceBridge networkBridge, schemeBridge;
     volatile List<NetworkControl.Rule> contentRules = Collections.emptyList();
@@ -257,6 +258,18 @@ public class WebViewProxyApi extends PigeonApiWebView {
     @Override
     public void dispose() {}
 
+    boolean isReleased() {
+      return destroyed || rendererExited;
+    }
+
+    boolean markRendererExited() {
+      if (isReleased()) {
+        return false;
+      }
+      rendererExited = true;
+      return true;
+    }
+
     @Override
     public void destroy() {
       if (destroyed) {
@@ -271,7 +284,10 @@ public class WebViewProxyApi extends PigeonApiWebView {
         if (schemeBridge != null) schemeBridge.close();
         api.removeAllDocumentStartJavaScripts(this);
         api.removeAllJavaScriptChannels(this);
-        if (limitedIncognito) { clearHistory(); clearFormData(); }
+        if (limitedIncognito && !rendererExited) {
+          clearHistory();
+          clearFormData();
+        }
       } catch (RuntimeException error) {
         android.util.Log.w("webview_all", "WebView cleanup failed: " + error);
       } finally {
@@ -384,6 +400,10 @@ public class WebViewProxyApi extends PigeonApiWebView {
     }
     displayListenerProxy.onPostWebViewInitialization(displayManager);
 
+    BrowserOperations browserOperations = getPigeonRegistrar().browserOperations;
+    if (browserOperations != null) {
+      browserOperations.register(webView);
+    }
     return webView;
   }
   public WebView pigeon_defaultConstructor() { return pigeon_defaultConstructor(null, null); }

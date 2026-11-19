@@ -13,6 +13,7 @@ import android.print.PrintJob;
 import android.print.PrintManager;
 import androidx.webkit.WebViewCompat;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebView;
 import androidx.webkit.WebViewFeature;
@@ -173,21 +174,39 @@ final class BrowserOperations {
 
   @androidx.annotation.RequiresApi(26)
   static boolean rendererGone(WebView view, RenderProcessGoneDetail detail) {
+    if (view instanceof WebViewProxyApi.WebViewPlatformView
+        && !((WebViewProxyApi.WebViewPlatformView) view).markRendererExited()) {
+      return true;
+    }
     BrowserOperations owner = owners.get(view);
-    if (owner != null) {
+    final Long id = owner == null
+        ? null
+        : owner.registrar.getInstanceManager().getIdentifierForStrongReference(view);
+    // Android requires removing and destroying each affected WebView. Returning
+    // true handles the failure and keeps the application process alive.
+    try {
+      try {
+        ViewParent parent = view.getParent();
+        if (parent instanceof ViewGroup) {
+          ((ViewGroup) parent).removeView(view);
+        }
+      } finally {
+        view.destroy();
+      }
+    } catch (RuntimeException error) {
+      android.util.Log.w("webview_all", "Cleaning up the failed renderer: " + error);
+    }
+    if (id != null) {
       Map<String, Object> event = new HashMap<>();
-      event.put("webViewId", owner.registrar.getInstanceManager().getIdentifierForStrongReference(view));
+      event.put("webViewId", id);
       event.put("didCrash", detail.didCrash());
       owner.channel.invokeMethod("processFailed", event);
     }
-    // Android requires removing and destroying each affected WebView. Returning
-    // true handles the failure and keeps the application process alive.
-    if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
-    try { view.destroy(); }
-    catch (RuntimeException error) {
-      android.util.Log.w("webview_all", "Cleaning up the failed renderer: " + error);
-    }
     return true;
+  }
+
+  void register(WebView view) {
+    owners.put(view, this);
   }
 
   static void cancel(WebView view) {
@@ -207,6 +226,7 @@ final class BrowserOperations {
 
   BrowserOperations(ProxyApiRegistrar registrar, BinaryMessenger messenger) {
     this.registrar = registrar;
+    registrar.browserOperations = this;
     channel = new MethodChannel(messenger, "com.abandoft.webview_all_android/browser");
     channel.setMethodCallHandler((call, result) -> {
       if (BrowserProfiles.handle(call, result)) return;
@@ -258,6 +278,8 @@ final class BrowserOperations {
             : registrar.getInstanceManager().getInstance(childId.longValue());
         WebView child = candidate instanceof WebView ? (WebView) candidate : null;
         if (child == null || child == request.parent.get()
+            || (child instanceof WebViewProxyApi.WebViewPlatformView
+                && ((WebViewProxyApi.WebViewPlatformView) child).isReleased())
             || Boolean.TRUE.equals(usedTargets.get(child))
             || child.copyBackForwardList().getSize() != 0) {
           request.finish(null);
@@ -278,7 +300,6 @@ final class BrowserOperations {
           && !call.method.equals("saveNavigationState")
           && !call.method.equals("restoreNavigationState")
           && !call.method.equals("setNewWindowDelegateEnabled")
-          && !call.method.equals("observeProcessFailures")
           && !call.method.equals("observeWindowClose")) {
         result.notImplemented();
         return;
@@ -286,12 +307,13 @@ final class BrowserOperations {
       Number id = call.argument("webViewId");
       Object instance =
           id == null ? null : registrar.getInstanceManager().getInstance(id.longValue());
-      if (!(instance instanceof WebView)) {
+      if (!(instance instanceof WebView)
+          || (instance instanceof WebViewProxyApi.WebViewPlatformView
+              && ((WebViewProxyApi.WebViewPlatformView) instance).isReleased())) {
         result.error("invalid_view", "The WebView is closed or unavailable.", null);
         return;
       }
       WebView view = (WebView) instance;
-      owners.put(view, this);
       if (call.method.equals("setContentRules") || call.method.equals("configureNetworkBridge")) {
         try {
           result.success(call.method.equals("setContentRules") ? NetworkControl.configure(view, call.argument("rules")) :
@@ -355,9 +377,7 @@ final class BrowserOperations {
         return;
       }
       if (call.method.equals("setNewWindowDelegateEnabled")
-          || call.method.equals("observeProcessFailures")
           || call.method.equals("observeWindowClose")) {
-        owners.put(view, this);
         if (call.method.equals("setNewWindowDelegateEnabled")) {
           enabled.put(view, Boolean.TRUE.equals(call.argument("enabled")));
           if (!Boolean.TRUE.equals(enabled.get(view))) {
@@ -397,6 +417,7 @@ final class BrowserOperations {
   }
 
   void close() {
+    registrar.browserOperations = null;
     for (PendingArchive request : new ArrayList<>(archives.values())) request.fail("archive_cancelled", "The Flutter engine was detached.");
     navigationStates.clear();
     printJobs.clear();

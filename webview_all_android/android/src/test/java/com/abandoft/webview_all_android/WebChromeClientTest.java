@@ -21,6 +21,7 @@ import android.webkit.GeolocationPermissions;
 import android.webkit.JsPromptResult;
 import android.webkit.JsResult;
 import android.webkit.PermissionRequest;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
@@ -99,6 +100,12 @@ public class WebChromeClientTest {
         onCreateWindowWebViewClient.shouldOverrideUrlLoading(
             mockOnCreateWindowWebView, mockRequest));
     verify(mockWebView).loadUrl("https://www.google.com");
+
+    assertTrue(
+        onCreateWindowWebViewClient.onRenderProcessGone(
+            mockOnCreateWindowWebView, mock(RenderProcessGoneDetail.class)));
+    verify(mockOnCreateWindowWebView).destroy();
+    verify(mockWebView, never()).destroy();
   }
 
   @Test

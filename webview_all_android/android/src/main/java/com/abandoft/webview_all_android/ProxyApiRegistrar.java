@@ -12,12 +12,14 @@ import android.os.Looper;
 import android.util.Log;
 import androidx.annotation.ChecksSdkIntAtLeast;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import io.flutter.plugin.common.BinaryMessenger;
 
 public class ProxyApiRegistrar extends AndroidWebkitLibraryPigeonProxyApiRegistrar {
   @NonNull private Context context;
 
   @NonNull private final FlutterAssetManager flutterAssetManager;
+  @Nullable BrowserOperations browserOperations;
 
   public ProxyApiRegistrar(
       @NonNull BinaryMessenger binaryMessenger,
