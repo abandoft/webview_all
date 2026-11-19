@@ -63,6 +63,14 @@ jobs:
         if: matrix.flutter == '3.44.x'
         run: tool/test_plugin_coexistence.sh android
 
+      - name: Build Android integration test APK
+        if: matrix.flutter == '3.44.x'
+        working-directory: examples/platform
+        run: |
+          flutter build apk --debug --no-pub \
+            --target=integration_test/webview_android_test.dart \
+            --dart-define=INTEGRATION_TEST_SHOULD_REPORT_RESULTS_TO_NATIVE=false
+
       - name: Enable KVM for integration tests
         if: matrix.flutter == '3.44.x'
         run: |
@@ -70,8 +78,9 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Test Android resources, downloads, JavaScript and browser operations
+      - name: Run Android integration tests
         if: matrix.flutter == '3.44.x'
+        timeout-minutes: 30
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -79,17 +88,9 @@ jobs:
           arch: x86_64
           disable-animations: true
           working-directory: examples/platform
-          script: |
-            flutter test integration_test/webview_resource_test.dart -d emulator-5554
-            flutter test integration_test/webview_javascript_test.dart -d emulator-5554
-            flutter test integration_test/webview_browser_test.dart -d emulator-5554
-            flutter test integration_test/webview_presentation_test.dart -d emulator-5554
-            flutter test integration_test/webview_form_request_test.dart -d emulator-5554
-            flutter test integration_test/webview_capture_data_test.dart -d emulator-5554
-            flutter test integration_test/webview_advanced_browser_test.dart -d emulator-5554
-            flutter test integration_test/webview_profile_management_test.dart -d emulator-5554
-            flutter test integration_test/webview_network_test.dart -d emulator-5554
-            flutter test integration_test/webview_new_window_test.dart -d emulator-5554
-            flutter test integration_test/webview_fullscreen_test.dart -d emulator-5554
-            flutter test integration_test/webview_process_test.dart -d emulator-5554
-            flutter test integration_test/webview_download_test.dart -d emulator-5554
+          script: >-
+            flutter drive --no-pub
+            --driver=test_driver/integration_test.dart
+            --target=integration_test/webview_android_test.dart
+            --use-application-binary=build/app/outputs/flutter-apk/app-debug.apk
+            -d emulator-5554 --timeout=1200
