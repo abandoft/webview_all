@@ -7,7 +7,7 @@ Add the app-facing package:
 
 ```yaml
 dependencies:
-  webview_all: ^1.5.1
+  webview_all: ^1.5.2
 ```
 
 Run:
@@ -24,13 +24,13 @@ If you cast to a platform implementation, add that package explicitly so the imp
 
 ```yaml
 dependencies:
-  webview_all: ^1.5.1
-  webview_all_windows: ^1.5.1
-  webview_all_linux: ^1.5.1
-  webview_all_ohos: ^1.5.1
-  webview_all_web: ^1.5.1
-  webview_all_android: ^1.5.1
-  webview_all_wkwebview: ^1.5.1
+  webview_all: ^1.5.2
+  webview_all_windows: ^1.5.2
+  webview_all_linux: ^1.5.2
+  webview_all_ohos: ^1.5.2
+  webview_all_web: ^1.5.2
+  webview_all_android: ^1.5.2
+  webview_all_wkwebview: ^1.5.2
 ```
 
 Then import only the packages you need:

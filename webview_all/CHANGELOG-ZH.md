@@ -1,3 +1,10 @@
+## 1.5.2
+
+* 修复 Android WebView 渲染进程退出时应用可能崩溃的问题。
+* Android 渲染进程退出时，取消尚未完成的 JavaScript 调用。
+* 修复独立执行环境中的 JavaScript 调用可能超过设定时限的问题。
+* 支持设置网页读取应用内资源时的超时时间。
+
 ## 1.5.1
 
 * 新增网页缩放接口，支持 iOS、macOS、Windows 和 Linux。

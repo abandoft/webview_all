@@ -1,3 +1,10 @@
+## 1.5.2
+
+* Fix a potential app crash when the Android WebView renderer exits.
+* Cancel pending JavaScript calls when the Android WebView renderer exits.
+* Apply the configured timeout to the entire isolated JavaScript call.
+* Add configurable timeouts for app-provided resources requested by web pages.
+
 ## 1.5.1
 
 * Add native page zoom on iOS, macOS, Windows, and Linux.
