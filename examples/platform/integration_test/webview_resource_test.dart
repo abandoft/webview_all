@@ -56,6 +56,7 @@ void main() {
       final mediaResult = Completer<Map<String, dynamic>>();
       final streamCancelled = Completer<void>();
       final cancelRequested = Completer<void>();
+      final cancellationTime = Stopwatch();
       StreamController<List<int>>? source;
       StreamController<List<int>>? cancelledSource;
       addTearDown(() async {
@@ -69,6 +70,10 @@ void main() {
         WebViewResourceDelegate(onRequest: (_) => null),
       );
       expect(controller.resourceCapabilities.supportsResources, isTrue);
+      final supportsStreaming =
+          controller.resourceCapabilities.supportsStreaming;
+      // Android WebView can hold an aborted stream open until its current read ends.
+      final verifyBrowserAbort = supportsStreaming && !Platform.isAndroid;
       if (controller.platform is LinuxWebViewController) {
         final linux = controller.platform as LinuxWebViewController;
         await linux.setMediaPlaybackRequiresUserGesture(false);
@@ -143,8 +148,10 @@ void main() {
                   mimeType: 'application/octet-stream',
                 );
               case '/cancel.bin':
+                cancellationTime.start();
                 cancelledSource = StreamController<List<int>>(
                   onCancel: () {
+                    cancellationTime.stop();
                     if (!streamCancelled.isCompleted) {
                       streamCancelled.complete();
                     }
@@ -198,7 +205,7 @@ void main() {
           const absent = await fetch(${jsonEncode(missing.toString())});
           const unicode = await fetch(${jsonEncode(unicode.toString())});
           let streamLength = 0;
-          if (${controller.resourceCapabilities.supportsStreaming}) {
+          if ($supportsStreaming) {
             const response = await fetch(${jsonEncode(stream.toString())});
             const reader = response.body.getReader();
             const first = await reader.read();
@@ -209,9 +216,14 @@ void main() {
               if (next.done) break;
               streamLength += next.value.length;
             }
+          }
+          if ($verifyBrowserAbort) {
             const abort = new AbortController();
             const cancelled = await fetch(${jsonEncode(cancel.toString())}, {signal: abort.signal});
-            await cancelled.body.getReader().read();
+            const first = await cancelled.body.getReader().read();
+            if (first.done || !first.value.length) {
+              throw new Error('No data was received before cancelling the stream');
+            }
             abort.abort();
             ResourceResults.postMessage(JSON.stringify({phase: 'abort'}));
           }
@@ -248,13 +260,13 @@ void main() {
         'length': '16777220',
         'missing': 404,
         'unicode': 200,
-        'streamLength': controller.resourceCapabilities.supportsStreaming
-            ? 65539
-            : 0,
+        'streamLength': supportsStreaming ? 65539 : 0,
       });
-      if (controller.resourceCapabilities.supportsStreaming) {
-        await cancelRequested.future.timeout(const Duration(seconds: 10));
-        await streamCancelled.future.timeout(const Duration(seconds: 10));
+      if (verifyBrowserAbort) {
+        const cancellationDeadline = Duration(seconds: 10);
+        await cancelRequested.future.timeout(cancellationDeadline);
+        await streamCancelled.future.timeout(cancellationDeadline);
+        expect(cancellationTime.elapsed, lessThan(cancellationDeadline));
       }
       expect(seen, contains('/图像/空 格.bin'));
       // Exercise the documented HTML media use case, including seeking and a
@@ -295,4 +307,102 @@ JSON.stringify({readyState: video.readyState, networkState: video.networkState, 
     },
     timeout: const Timeout(Duration(minutes: 2)),
   );
+
+  testWidgets('custom resource deadlines end stalled requests', (tester) async {
+    final controller = WebViewController();
+    final supportsStreaming = controller.resourceCapabilities.supportsStreaming;
+    final loaded = Completer<void>();
+    final callback = Completer<WebViewResourceResponse?>();
+    final streamCancelled = Completer<void>();
+    StreamController<List<int>>? stalledStream;
+    addTearDown(() async {
+      callback.complete(null);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await controller.platform.closeWebViewSession();
+      await stalledStream?.close();
+    });
+
+    const html = '<!doctype html><title>Resource deadline</title>';
+    final paths = ['slow-callback', if (supportsStreaming) 'slow-stream'];
+    final requested = <String>{};
+    await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    await controller.setResourceDelegate(
+      WebViewResourceDelegate(
+        requestTimeout: const Duration(seconds: 2),
+        onRequest: (request) {
+          requested.add(request.path);
+          switch (request.path) {
+            case '/index.html':
+              return WebViewResourceResponse.bytes(
+                Uint8List.fromList(utf8.encode(html)),
+                mimeType: 'text/html',
+              );
+            case '/slow-callback':
+              return callback.future;
+            case '/slow-stream':
+              final stream = StreamController<List<int>>(
+                onCancel: streamCancelled.complete,
+              );
+              stalledStream = stream;
+              return WebViewResourceResponse.stream(
+                stream.stream,
+                mimeType: 'application/octet-stream',
+              );
+            default:
+              return null;
+          }
+        },
+      ),
+    );
+    await controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageFinished: (_) {
+          if (!loaded.isCompleted) loaded.complete();
+        },
+      ),
+    );
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: WebViewWidget(controller: controller),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final entry = controller.getResourceUri('index.html')!;
+    await controller.loadRequest(entry);
+    await loaded.future.timeout(const Duration(seconds: 20));
+
+    final result = await controller.callAsyncJavaScript(
+      '''
+return Promise.all(urls.map(async (url) => {
+  try {
+    const response = await fetch(url);
+    return !response.ok || (await response.arrayBuffer()).byteLength === 0;
+  } catch (_) {
+    return true;
+  }
+}));
+''',
+      arguments: {
+        'urls': [
+          for (final path in paths) controller.getResourceUri(path)!.toString(),
+        ],
+      },
+      timeout: const Duration(seconds: 10),
+    );
+    expect(result, List<bool>.filled(paths.length, true));
+    expect(requested, containsAll(paths.map((path) => '/$path')));
+    if (supportsStreaming) {
+      await streamCancelled.future.timeout(const Duration(seconds: 10));
+    }
+
+    expect(
+      await controller.callAsyncJavaScript(
+        'return (await fetch(url)).text();',
+        arguments: {'url': entry.toString()},
+        timeout: const Duration(seconds: 10),
+      ),
+      html,
+    );
+  }, timeout: const Timeout(Duration(minutes: 1)));
 }
