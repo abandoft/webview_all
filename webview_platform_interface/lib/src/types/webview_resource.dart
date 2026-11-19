@@ -124,7 +124,15 @@ class WebViewResourceResponse {
 /// WebView behavior. Replacing or removing the delegate cancels pending work.
 @immutable
 class WebViewResourceDelegate {
-  const WebViewResourceDelegate({required this.onRequest});
+  const WebViewResourceDelegate({required this.onRequest, this.requestTimeout});
+
+  /// Maximum wait for the application resource callback and for each body read.
+  ///
+  /// Applies to resources installed with `setResourceDelegate`. The default is
+  /// 30 seconds. Use a whole number of milliseconds from 1 through 300000.
+  /// A progressing stream may take longer overall. Cancellation and cleanup
+  /// have a separate deadline.
+  final Duration? requestTimeout;
 
   final FutureOr<WebViewResourceResponse?> Function(
     WebViewResourceRequest request,

@@ -19,6 +19,13 @@ mixin WebViewResourceControllerMixin on PlatformWebViewController {
   bool get supportsStreamingResources => true;
   bool get nativeResourceBodies => false;
 
+  /// Capture this value when configuring the native application resource bridge.
+  @protected
+  Duration get resourceDelegateTimeout {
+    final bridge = resourceBridge;
+    return bridge._configurationTimeout ?? bridge._delegateTimeout;
+  }
+
   Future<void> configureResourceBridge(
     String channel,
     String host,
@@ -128,9 +135,12 @@ class WebViewResourceBridge {
   late Uri _baseUri;
   final Map<String, _ResourceBody> _requests = <String, _ResourceBody>{};
   WebViewResourceDelegate? _delegate;
+  Duration? _configurationTimeout;
   Future<void> _updates = Future<void>.value();
   final Completer<void> _closedSignal = Completer<void>();
   bool _closed = false;
+
+  Duration get _delegateTimeout => _delegate?.requestTimeout ?? requestTimeout;
 
   String get channelName => _channel.name;
 
@@ -176,17 +186,29 @@ class WebViewResourceBridge {
   }
 
   Future<void> update(WebViewResourceDelegate? delegate) {
+    final timeout = delegate?.requestTimeout;
+    if (timeout != null &&
+        (timeout.inMilliseconds < 1 ||
+            timeout > const Duration(minutes: 5) ||
+            timeout.inMicroseconds % Duration.microsecondsPerMillisecond !=
+                0)) {
+      return Future<void>.error(
+        ArgumentError.value(
+          timeout,
+          'requestTimeout',
+          'Use a whole number of milliseconds between 1 and 300000.',
+        ),
+      );
+    }
     if (_closed) {
       return Future<void>.error(
         StateError('The resource bridge has been closed.'),
       );
     }
-    final update = _updates.catchError((Object _) {}).then((_) async {
+    Future<void>? cleanup;
+    final configured = _updates.catchError((Object _) {}).then((_) async {
       if (_closed) return;
-      final previous = _delegate;
-      _delegate = delegate;
-      await _cancelAll();
-      if (_closed) return;
+      _configurationTimeout = timeout ?? requestTimeout;
       try {
         await Future.any<void>(<Future<void>>[
           Future<void>.sync(
@@ -196,12 +218,20 @@ class WebViewResourceBridge {
         ]);
       } catch (_) {
         if (_closed) return;
-        if (!_closed) _delegate = previous;
         rethrow;
+      } finally {
+        _configurationTimeout = null;
       }
+      if (_closed) return;
+      _delegate = delegate;
+      cleanup = _cancelAll();
     });
-    _updates = update;
-    return update;
+    // Serialize native configuration. Old streams can finish cleaning up
+    // while later requests and configurations use the committed delegate.
+    _updates = configured;
+    return configured.then((_) async {
+      await cleanup;
+    });
   }
 
   Future<void> close() async {
@@ -247,15 +277,15 @@ class WebViewResourceBridge {
             1,
             65536,
           );
-          final data = await body.read(count).timeout(requestTimeout);
+          final data = await body.read(count).timeout(body.requestTimeout);
           if (data == null) {
-            _requests.remove(id);
+            _forgetRequest(id, body);
             await body.close();
           }
           return data;
         } catch (error) {
-          _requests.remove(id);
-          await body.close();
+          _forgetRequest(id, body);
+          unawaited(body.close());
           _log(error);
           throw PlatformException(
             code: 'resource_read_failed',
@@ -317,7 +347,10 @@ class WebViewResourceBridge {
     if (_requests.length >= 64 || _requests.containsKey(id)) {
       return _emptyResponse(503);
     }
-    final body = _ResourceBody(requestTimeout);
+    final body = _ResourceBody(
+      requestTimeout: _delegateTimeout,
+      cleanupTimeout: requestTimeout,
+    );
     _requests[id] = body;
     final headers = <String, String>{};
     for (final entry
@@ -365,17 +398,17 @@ class WebViewResourceBridge {
           }),
           body.cancelled.future.then((_) => null),
         ],
-      ).timeout(requestTimeout);
+      ).timeout(body.requestTimeout);
       if (body.closed || response == null) {
         if (response?.stream != null) {
           await body.discardStream(response!.stream!);
         }
-        _requests.remove(id);
+        _forgetRequest(id, body);
         await body.close();
         return _emptyResponse(404);
       }
       if (response is WebViewPassThroughResponse) {
-        _requests.remove(id);
+        _forgetRequest(id, body);
         await body.close();
         return allowPassThrough ? {'passThrough': true} : _emptyResponse(501);
       }
@@ -430,7 +463,7 @@ class WebViewResourceBridge {
             : null;
         if (range != null) {
           if (range.$1 < 0) {
-            _requests.remove(id);
+            _forgetRequest(id, body);
             await body.close();
             return _emptyResponse(416, <String, String>{
               'content-range': 'bytes */$length',
@@ -452,10 +485,10 @@ class WebViewResourceBridge {
       body.remaining = length;
       body.offset = offset;
       if (method == 'HEAD' || length == 0) {
-        _requests.remove(id);
+        _forgetRequest(id, body);
         await body.close();
       } else if (nativeBodies) {
-        _requests.remove(id);
+        _forgetRequest(id, body);
         await body.close();
       } else if (body.file != null) {
         await body.file!.seek(offset);
@@ -490,7 +523,7 @@ class WebViewResourceBridge {
           ),
       };
     } catch (error) {
-      _requests.remove(id);
+      _forgetRequest(id, body);
       await body.close();
       _log(error);
       return _emptyResponse(
@@ -501,6 +534,10 @@ class WebViewResourceBridge {
             : 500,
       );
     }
+  }
+
+  void _forgetRequest(String id, _ResourceBody body) {
+    if (identical(_requests[id], body)) _requests.remove(id);
   }
 
   void _validateResponse(WebViewResourceResponse response) {
@@ -559,9 +596,10 @@ class WebViewResourceBridge {
 }
 
 class _ResourceBody {
-  _ResourceBody(this.timeout);
+  _ResourceBody({required this.requestTimeout, required this.cleanupTimeout});
 
-  final Duration timeout;
+  final Duration requestTimeout;
+  final Duration cleanupTimeout;
   ResourceFile? file;
   Uint8List? bytes;
   StreamIterator<List<int>>? iterator;
@@ -583,7 +621,7 @@ class _ResourceBody {
     if (identical(discardedStream, stream)) return;
     discardedStream = stream;
     try {
-      await _cancelUnstartedStream(stream).timeout(timeout);
+      await _cancelUnstartedStream(stream).timeout(cleanupTimeout);
     } catch (error) {
       WebViewResourceBridge._log(error);
     }
@@ -662,7 +700,7 @@ class _ResourceBody {
     closed = true;
     cancelled.complete();
     try {
-      await iterator?.cancel().timeout(timeout);
+      await iterator?.cancel().timeout(cleanupTimeout);
       if (unstartedStream != null) {
         await discardStream(unstartedStream!);
       }

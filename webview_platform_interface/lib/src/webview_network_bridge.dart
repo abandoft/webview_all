@@ -143,9 +143,16 @@ mixin WebViewNetworkControllerMixin on PlatformWebViewController {
       );
       return false;
     }
+    if (delegate?.requestTimeout != null) {
+      debugPrint(
+        'webview_all: requestTimeout applies to application resources only. Custom scheme handlers use the normal deadline.',
+      );
+    }
     return _replaceBridge(
       'schemes',
-      delegate,
+      delegate == null
+          ? null
+          : WebViewResourceDelegate(onRequest: delegate.onRequest),
       (uri) => declaredCustomSchemes.contains(uri.scheme),
       {'schemes': declaredCustomSchemes.toList()},
       caps,

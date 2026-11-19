@@ -526,22 +526,170 @@ void main() {
   });
 
   test(
-    'callback timeout fails one resource and permits the next request',
+    'a custom callback deadline fails one resource and permits the next request',
     () async {
-      await bridge.close();
-      bridge = WebViewResourceBridge(
-        scheme: 'webview-all-resource',
-        configure: (_, _, _) async {},
-        requestTimeout: const Duration(milliseconds: 20),
-      );
       await bridge.update(
         WebViewResourceDelegate(
           onRequest: (_) => Completer<WebViewResourceResponse?>().future,
+          requestTimeout: const Duration(milliseconds: 20),
         ),
       );
       expect((await open())['statusCode'], 504);
       await serve((_) => null);
       expect((await open(id: 'next'))['statusCode'], 404);
+    },
+  );
+
+  test(
+    'invalid resource deadlines leave the existing delegate active',
+    () async {
+      await serve(
+        (_) =>
+            WebViewResourceResponse.bytes(Uint8List(1), mimeType: 'text/plain'),
+      );
+      for (final invalid in [
+        Duration.zero,
+        const Duration(microseconds: 1100),
+        const Duration(minutes: 6),
+      ]) {
+        await expectLater(
+          bridge.update(
+            WebViewResourceDelegate(
+              onRequest: (_) => null,
+              requestTimeout: invalid,
+            ),
+          ),
+          throwsArgumentError,
+        );
+      }
+      expect((await open())['statusCode'], 200);
+      expect(await readAll(), [0]);
+    },
+  );
+
+  test(
+    'each stream read has its own deadline and cancels a stalled producer',
+    () async {
+      final cancelled = Completer<void>();
+      final source = StreamController<List<int>>(onCancel: cancelled.complete);
+      addTearDown(source.close);
+      await bridge.update(
+        WebViewResourceDelegate(
+          requestTimeout: const Duration(milliseconds: 100),
+          onRequest: (_) => WebViewResourceResponse.stream(
+            source.stream,
+            mimeType: 'application/octet-stream',
+          ),
+        ),
+      );
+      expect((await open())['statusCode'], 200);
+      source.add([1]);
+      const args = <String, Object?>{'id': 'one'};
+      expect(await native('read', args), [1]);
+      // An idle reader does not consume the next read's deadline.
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      source.add([2]);
+      expect(await native('read', args), [2]);
+      await expectLater(
+        native('read', args),
+        throwsA(isA<PlatformException>()),
+      );
+      await cancelled.future.timeout(const Duration(seconds: 1));
+    },
+  );
+
+  test(
+    'keeps serving resources during configuration and stream cleanup',
+    () async {
+      await bridge.close();
+      final configuring = Completer<void>();
+      final configured = Completer<void>();
+      final cleanupStarted = Completer<void>();
+      final cleanupAllowed = Completer<void>();
+      final source = StreamController<List<int>>(
+        onCancel: () {
+          cleanupStarted.complete();
+          return cleanupAllowed.future;
+        },
+      );
+      var configurations = 0;
+      bridge = WebViewResourceBridge(
+        scheme: 'https',
+        configure: (_, _, _) async {
+          if (++configurations == 2) {
+            configuring.complete();
+            await configured.future;
+          }
+        },
+      );
+      await serve(
+        (request) => request.path == '/old-stream'
+            ? WebViewResourceResponse.stream(
+                source.stream,
+                mimeType: 'application/octet-stream',
+              )
+            : WebViewResourceResponse.bytes(
+                Uint8List.fromList([1]),
+                mimeType: 'text/plain',
+              ),
+      );
+      final streamUri = bridge.getResourceUri('old-stream')!;
+      expect((await open(uri: streamUri.toString()))['statusCode'], 200);
+      final update = bridge.update(
+        WebViewResourceDelegate(
+          requestTimeout: const Duration(seconds: 1),
+          onRequest: (_) => WebViewResourceResponse.bytes(
+            Uint8List.fromList([2]),
+            mimeType: 'text/plain',
+          ),
+        ),
+      );
+      try {
+        await configuring.future;
+        expect((await open(id: 'before'))['statusCode'], 200);
+        expect(await readAll('before'), [1]);
+        configured.complete();
+
+        await cleanupStarted.future;
+        expect((await open(id: 'after'))['statusCode'], 200);
+        expect(await readAll('after'), [2]);
+        await bridge.update(null).timeout(const Duration(seconds: 1));
+      } finally {
+        if (!configured.isCompleted) configured.complete();
+        cleanupAllowed.complete();
+        await update;
+        await source.close();
+      }
+    },
+  );
+
+  test(
+    'failed native configuration leaves in-flight resources available',
+    () async {
+      await bridge.close();
+      var configurations = 0;
+      bridge = WebViewResourceBridge(
+        scheme: 'https',
+        configure: (_, _, _) async {
+          if (++configurations == 2) {
+            throw StateError('Native configuration was rejected.');
+          }
+        },
+      );
+      await serve(
+        (_) => WebViewResourceResponse.bytes(
+          Uint8List.fromList([1]),
+          mimeType: 'text/plain',
+        ),
+      );
+      expect((await open())['statusCode'], 200);
+      await expectLater(serve((_) => null), throwsStateError);
+      expect(await readAll(), [1]);
+      expect((await open(id: 'later'))['statusCode'], 200);
+      expect(await readAll('later'), [1]);
+
+      await serve((_) => null);
+      expect((await open())['statusCode'], 404);
     },
   );
 
